@@ -2,12 +2,14 @@
 
 #include "Framework/Common/Public/BaseApplication.h"
 
-namespace ShadowEngineInterface
+namespace ShadowEngine
 {
     class EmptyApplication final : public BaseApplication
     {
         public:
             EmptyApplication();
             ~EmptyApplication() override;
+
+            int Initialize() override;
     };
 }

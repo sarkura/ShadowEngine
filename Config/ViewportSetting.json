@@ -1,0 +1,14 @@
+{
+    "ViewportSetting": 
+    {
+        "Width": 1920,
+        "Height": 1080,
+        "AspectWidth": 16,
+        "AspectHeight": 9,
+        "FOV": 90,
+        "NearPlane": 0.1,
+        "FarPlane": 1000,
+        "BackgroundColor": [0, 0, 0],
+        "ClearFlags": "SolidColor"
+    }
+}

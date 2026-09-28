@@ -2,7 +2,7 @@
 
 #include "Interface/Public/IApplication.hpp"
 
-namespace ShadowEngineInterface
+namespace ShadowEngine
 {
     class BaseApplication : public IApplication
     {

@@ -3,7 +3,7 @@
 #include "Interface/Public/Interface.hpp"
 #include "Interface/Public/IRuntimeModule.hpp"
 
-namespace ShadowEngineInterface
+namespace ShadowEngine
 {
     IInterface IApplication :  IImplements IRuntimeModule
     {

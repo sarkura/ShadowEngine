@@ -17,6 +17,19 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ------------------------------------------------------------------------------
+# Header-only Third-Party Libraries
+# ------------------------------------------------------------------------------
+add_library(RapidJSON INTERFACE)
+target_include_directories(RapidJSON SYSTEM INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/ThirdParty/RapidJSON/include
+)
+
+add_library(Stb INTERFACE)
+target_include_directories(Stb SYSTEM INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/ThirdParty/Stb
+)
+
+# ------------------------------------------------------------------------------
 # 1. Interface Module (Header-Only Interface Library)
 # ------------------------------------------------------------------------------
 add_library(Interface INTERFACE)
@@ -30,29 +43,56 @@ target_include_directories(Interface INTERFACE
 # ------------------------------------------------------------------------------
 # 2. Framework Module (Base Framework)
 # ------------------------------------------------------------------------------
-add_library(Framework STATIC
-    Source/Framework/Common/Private/BaseApplication.cpp
+file(GLOB_RECURSE FRAMEWORK_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Framework/*.cpp"
 )
+
+add_library(Framework STATIC ${FRAMEWORK_SOURCES})
 
 # Link Interface using PUBLIC to propagate the include directory to Framework and its consumers
-target_link_libraries(Framework PUBLIC Interface)
-
-# ------------------------------------------------------------------------------
-# 3. Platform/Empty Module (Null/Empty Platform Implementation)
-# ------------------------------------------------------------------------------
-add_library(EmptyPlatform STATIC
-    Source/Platform/Empty/Private/EmptyApplication.cpp
+target_link_libraries(Framework
+    PUBLIC Interface
+    PRIVATE
+    RapidJSON
+    Stb
 )
 
-# Link Framework using PUBLIC to transitively pass Interface include paths and Framework symbols
-target_link_libraries(EmptyPlatform PUBLIC Framework)
+# ------------------------------------------------------------------------------
+# 3. Platform Module
+# ------------------------------------------------------------------------------
+if(WIN32)
+    file(GLOB_RECURSE WINDOWS_PLATFORM_SOURCES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/Source/Platform/Windows/*.cpp"
+    )
+
+    add_library(WindowsPlatform STATIC ${WINDOWS_PLATFORM_SOURCES})
+
+    target_link_libraries(WindowsPlatform
+        PUBLIC Framework
+        PRIVATE user32
+    )
+
+    set(SHADOW_PLATFORM_TARGET WindowsPlatform)
+else()
+    file(GLOB_RECURSE EMPTY_PLATFORM_SOURCES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/Source/Platform/Empty/*.cpp"
+    )
+
+    add_library(EmptyPlatform STATIC ${EMPTY_PLATFORM_SOURCES})
+
+    target_link_libraries(EmptyPlatform PUBLIC Framework)
+
+    set(SHADOW_PLATFORM_TARGET EmptyPlatform)
+endif()
 
 # ------------------------------------------------------------------------------
 # 4. Launch Module (Executable Entry Point)
 # ------------------------------------------------------------------------------
-add_executable(ShadowEngine
-    Source/Launch/Private/main.cpp
+file(GLOB_RECURSE LAUNCH_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/Launch/*.cpp"
 )
 
-# Link Platform module using PRIVATE to acquire all required headers and dependencies
-target_link_libraries(ShadowEngine PRIVATE EmptyPlatform)
+add_executable(ShadowEngine ${LAUNCH_SOURCES})
+
+# Link the platform selected for the current operating system.
+target_link_libraries(ShadowEngine PRIVATE ${SHADOW_PLATFORM_TARGET})

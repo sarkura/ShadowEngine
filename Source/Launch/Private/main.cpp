@@ -1,7 +1,7 @@
 #include <iostream>
 #include "Interface/Public/IApplication.hpp"
 
-namespace ShadowEngineInterface
+namespace ShadowEngine
 {
     extern IApplication* G_App;
 }
@@ -9,24 +9,21 @@ namespace ShadowEngineInterface
 
 int main(int argc, char** argv) 
 {
-    int Ret = ShadowEngineInterface::G_App->Initialize();
+    int Ret = ShadowEngine::G_App->Initialize();
     if (Ret != 0)
     {
         std::cout << "App Initialize failed, exit!" << std::endl;
         return Ret;
     }
 
-    while (!ShadowEngineInterface::G_App->IsQuit())
+    while (!ShadowEngine::G_App->IsQuit())
     {
-        ShadowEngineInterface::G_App->Tick(0.0F);
-        //Test Code
-        //std::cout << "Test" << std::endl;
-        //break;
+        ShadowEngine::G_App->Tick(0.0F);
     }
 
-    ShadowEngineInterface::G_App->Finalize();
-    delete ShadowEngineInterface::G_App;
-    ShadowEngineInterface::G_App = nullptr;
+    ShadowEngine::G_App->Finalize();
+    delete ShadowEngine::G_App;
+    ShadowEngine::G_App = nullptr;
 
     return 0;
 }
