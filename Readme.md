@@ -9,17 +9,69 @@ Launch
        -> EmptyApplication       every other platform
 ```
 
-Windows creates a native window from the viewport configuration. Every other platform reports that it is unsupported and exits.
+Windows creates a native window from the viewport configuration and renders into it with Direct3D 12. Every other platform reports that it is unsupported and exits.
+
+On Windows, startup runs this sequence:
+
+```text
+main                     registers the D3D12 RHI and the Slang shader compiler
+ -> WindowsApplication   loads Config/, creates the Win32 window
+ -> Engine               creates the RHI device selected in Renderer.json, then the swap chain
+ -> ShaderManager        loads slang-compiler.dll, compiles Shaders/Debug/Triangle.slang
+ -> Renderer             creates the graphics pipeline and the command list
+ -> every frame          clear the back buffer, draw a triangle, present
+```
+
+Rendering is split into a backend-agnostic core and pluggable backends. The core defines the render hardware interface (RHI) and the shader data model. Direct3D 12 and Vulkan implement the RHI. Shader compilation lives in its own module, which loads the Slang compiler at runtime instead of linking against it.
+
+```text
+ShadowEngine.exe
+ ├── WindowsPlatform ── ImGuiWin32
+ ├── RHID3D12 ────────── ImGuiDX12, d3d12 / dxgi
+ ├── RHIVulkan           empty implementation
+ └── ShaderCompiler ──── Slang headers only
+         ┆ loaded at runtime
+         ↓
+   slang-compiler.dll
+```
+
+Every module above links `Framework`. `Framework` depends on none of them.
+
+## Building
+
+The project targets the MSYS2 UCRT64 toolchain: GCC, Ninja, and CMake 3.20 or newer.
+
+```sh
+cmake --preset ucrt64
+cmake --build --preset ucrt64
+```
+
+The executable is written to `build/bin`. The build copies the Slang runtime DLLs next to it. Static libraries are written to `build/lib`.
+
+The engine reads `Config/` relative to the working directory, so run it from the repository root.
 
 ## Layout
 
 ```text
 Config/                  Runtime configuration
+Shaders/                 Slang shader sources
 Source/
   Interface/             Contracts shared by every module
-  Framework/
-    Common/              Base application and shared runtime services
+  Framework/             Backend-agnostic engine core
+    Asset/               Assets, asset registry and asset management
+    Common/              Base application, logging, shared types, third-party implementations
     Config/              Configuration storage and JSON parsing
+    Engine/              Engine entry object
+    Material/            Materials, material instances and parameters
+    Render/              Renderer, render passes and render queue
+    RHI/                 Render hardware interface abstraction
+    Scene/               Scene, entities and transforms
+    Shader/              Shader objects, reflection data and shader management
+    UI/                  UI management and ImGui rendering
+  RHI/
+    Direct3D12/          Direct3D 12 RHI backend
+    Vulkan/              Vulkan RHI backend
+  ShaderCompiler/        Slang shader compiler
   Platform/
     Windows/             Win32 application
     Empty/               Unsupported-platform application
@@ -27,9 +79,13 @@ Source/
   ThirdParty/            Vendored libraries
 ```
 
-Implementation modules keep their API in `Public` and their `.cpp` files and internal headers in `Private`.
+Implementation modules keep their API in `Public` and their `.cpp` files and internal headers in `Private`. Include paths start at `Source/`, for example `#include "RHI/Direct3D12/Public/D3D12Device.h"`.
+
+Abstractions and their implementations follow one pattern. `Interface` declares `IApplication` and `Platform/*` implements it. `Framework/RHI` declares the RHI and `RHI/*` implements it.
 
 ## Modules
+
+The startup path above is implemented: `Common`, `Config`, `Engine`, `Render`, `RHI`, `Shader`, the D3D12 backend and `ShaderCompiler`. `Asset`, `Scene`, `Material`, `UI`, `RenderPass`, `RenderQueue` and the Vulkan backend are still skeletons. The sections below describe the responsibility of each module.
 
 ### Interface
 
@@ -41,11 +97,50 @@ Defines the contracts used across the engine.
 
 ### Framework
 
-Contains behavior shared by every platform.
+Contains everything that does not depend on a graphics API, a shader compiler, or an operating system. It is one static library.
 
-- `Common` provides `BaseApplication`, the default lifecycle, and `GraphManager`, the graphics-system placeholder.
-- `Config` owns runtime settings. `ConfigManager` is the single store for those settings. `JsonConfigParser` reads configuration files and validates them before they enter that store.
-- `BaseApplication` loads configuration before the selected platform continues initialization.
+- `Common` provides `BaseApplication` and its default lifecycle, plus logging, shared types, and `NonCopyable`. `ThirdPartyImpl.cpp` is the single translation unit that compiles the stb and cgltf implementations.
+- `Config` owns runtime settings. See [Config](#config).
+- `Engine` is the composition root. `EngineModules` is the registry where backends and the shader compiler register factories at startup, so `Framework` never names a concrete implementation. `Engine` creates the device, swap chain, shader manager and renderer, and ticks the renderer every frame.
+- `Asset` loads assets and tracks them in a registry.
+- `Scene` holds scenes, entities, and transforms.
+- `Material` describes materials, their instances, and their parameters.
+- `Render` owns the renderer, render passes, and the render queue. `Renderer` currently clears the back buffer and draws the debug triangle.
+- `RHI` declares the device, adapter, swap chain, command list, fence, texture, shader, and pipeline abstractions that backends implement. Buffer, sampler and descriptor abstractions are still empty.
+- `Shader` holds shader objects, reflection data, and the shader manager. It declares `IShaderCompiler` but does not compile shaders itself. `ShaderManager` asks the device which bytecode format it needs, compiles through `IShaderCompiler`, and creates the RHI shader.
+- `UI` manages the user interface and renders it through ImGui.
+
+`BaseApplication` loads configuration before the selected platform continues initialization.
+
+### RHI Backends
+
+Each backend is a separate static library. It implements `Framework/RHI` and owns the graphics API and ImGui backend it needs.
+
+| Module | Host | Links | Status |
+| --- | --- | --- | --- |
+| `RHID3D12` | Windows | `d3d12`, `dxgi`, `dxguid`, `ImGuiDX12` | Device, swap chain, command list, fence, pipeline, render target clear and present |
+| `RHIVulkan` | Every host | Nothing yet | Empty implementation, not registered, no Vulkan SDK required |
+
+Each backend exposes one registration function, such as `RegisterD3D12RHI()`, which `main` calls before the application starts. The D3D12 backend requires feature level 12_0 and Shader Model 6.0. It picks the high-performance hardware adapter that supports feature level 12_0, then checks the driver's shader model. If either requirement fails, the engine logs the reason and the process exits. The backend consumes DXIL bytecode:
+
+```text
+.slang -> Slang -> DXIL (SM 6.0) -> D3D12
+```
+
+The engine requests `SLANG_DXIL` directly from the Slang API and passes the returned
+bytecode to D3D12. It does not ask Slang for HLSL and does not invoke DXC itself.
+
+The swap chain follows the window size. When the window is resized, the engine waits for the GPU and resizes the back buffers. While the window is minimized, rendering pauses and the application sleeps until the next window message.
+
+When `DebugLayer` is enabled, the backend enables the D3D12 debug layer and forwards its warnings and errors to the engine log. Frames are fully synchronized: the CPU waits for the GPU after every present.
+
+### ShaderCompiler
+
+Compiles Slang shaders from `Shaders/`. It uses only the Slang headers and loads `slang-compiler.dll` at runtime. The engine therefore has no link-time dependency on Slang, and it can start without the Slang DLLs when shaders are precompiled.
+
+The module implements `IShaderCompiler` and registers it with `RegisterSlangShaderCompiler()`. It resolves `slang_createGlobalSession` from the library and reaches everything else through Slang's COM interfaces. Each compile loads the module named after the file, finds the entry point for the requested stage, links it, and returns the bytecode. Slang diagnostics are included in the error message or logged as warnings.
+
+`ShaderCompiler` is the only module that owns shader compiler runtimes. It declares the Slang DLLs and Slang's Windows DXIL backend dependencies in its `SHADOW_RUNTIME_DLLS` target property, and the executable copies whatever that property lists. The RHI backends never see compiler implementation details. They only report the bytecode format they consume through `RHIDevice::GetShaderFormat()`, such as DXIL for D3D12.
 
 ### Platform
 
@@ -58,15 +153,45 @@ Exactly one platform library is built.
 
 Both modules supply the global application object consumed by Launch. Launch does not depend on a concrete platform type.
 
-`WindowsApplication` uses the viewport configuration for the window client size and ends the main loop when the window closes. `EmptyApplication` reports `Platform Unsupported` and then quits.
+`WindowsApplication` uses the viewport configuration for the initial window client size and passes the window to the engine. Each tick it processes window messages first and renders only while the window is open. It forwards `WM_SIZE` to the engine and renders a frame for each one, so the image stays correct while the window is dragged. It ends the main loop when the window closes, and it releases the engine before destroying the window. `EmptyApplication` reports `Platform Unsupported` and then quits.
 
 ### Launch
 
-Owns the process entry point. It initializes the application, ticks it until it quits, and then finalizes it.
+Owns the process entry point. It initializes the application, ticks it until it quits, and then finalizes it. The executable links the platform library, the RHI backends, and `ShaderCompiler`.
 
 ### Config
 
-`Config` holds runtime settings loaded at startup. `ViewportSetting` describes the viewport: resolution, aspect ratio, field of view, clip planes, background color, and clear mode. Later changes, including changes from a UI, go through `ConfigManager` rather than through another copy of the settings.
+`Config` holds runtime settings loaded at startup from `Config/`.
+
+| File | Contents |
+| --- | --- |
+| `Engine.json` | `ViewportSetting`: resolution, aspect ratio, field of view, clip planes, background color, and clear mode |
+| `Renderer.json` | `RHISetting`: backend name (`D3D12`), VSync, debug layer, and back buffer count (2 to 8) |
+
+`JsonConfigParser` reads these files and validates them before they enter `ConfigManager`. `ConfigManager` is the single store for settings. Later changes, including changes from a UI, go through it rather than through another copy of the settings.
+
+## Third-Party Libraries
+
+Each library is a separate CMake target. A module links only the libraries it uses.
+
+| Library | Version | Target | Used by |
+| --- | --- | --- | --- |
+| RapidJSON | 1.1.0 | `RapidJSON` (header-only) | `Framework` |
+| stb | see below | `Stb` (header-only) | `Framework` |
+| cgltf | 1.15 | `Cgltf` (header-only) | `Framework` |
+| GLM | 1.0.3 | `GLM` (header-only) | `Framework`, public |
+| meshoptimizer | 1.3 | `MeshOptimizer` (static) | `Framework` |
+| Dear ImGui | 1.92.9b | `ImGui` (static, core only) | `Framework` |
+| | | `ImGuiDX12` (static) | `RHID3D12` |
+| | | `ImGuiWin32` (static) | `WindowsPlatform` |
+| Slang | 2026.18.3 | `SlangHeaders` (headers only) | `ShaderCompiler` |
+| DXC | 1.9.2609.5 | runtime DLLs only, Windows | `ShaderCompiler`, loaded by Slang |
+
+The stb and cgltf implementations are compiled once, in `Framework/Common/Private/ThirdPartyImpl.cpp`. The ImGui Vulkan backend is not built while the Vulkan RHI is empty.
+
+Slang ships only MSVC-built binaries. They work with the UCRT64 toolchain because Slang exposes a C entry point and COM-style interfaces, and its DLLs depend only on system libraries.
+
+The engine uses neither the DXC API, headers, nor import libraries, and there is no engine-level HLSL compilation stage. DXC lives in `Source/ThirdParty/DXC/Windows` solely as Slang's downstream implementation dependency for its `SLANG_DXIL` target. The build copies `dxcompiler.dll` and `dxil.dll` for the target architecture from `bin/<arch>` next to the executable, and configuration fails if either file is missing. Slang may load `dxcompiler.dll` internally when it emits DXIL, and `dxcompiler.dll` loads `dxil.dll` to sign the result. Without them, shader compilation fails and the engine exits with a Slang diagnostic.
 
 ## Third-Party Notices
 
@@ -89,3 +214,47 @@ stb_image_resize2 v2.18   Jeff Roberts and Jorge L Rodriguez  Public Domain
 ```
 
 The upstream snapshot also includes a dual MIT / Unlicense text. These headers are provided with no warranty.
+
+### cgltf
+
+```text
+Copyright (c) 2018-2021 Johannes Kuhlmann
+```
+
+cgltf is under the MIT License.
+
+### GLM
+
+```text
+Copyright (c) 2005 - G-Truc Creation
+```
+
+GLM is under the Happy Bunny License or the MIT License.
+
+### meshoptimizer
+
+```text
+Copyright (c) 2016-2026 Arseny Kapoulkine
+```
+
+meshoptimizer is under the MIT License.
+
+### Dear ImGui
+
+```text
+Copyright (c) 2014-2026 Omar Cornut
+```
+
+Dear ImGui is under the MIT License.
+
+### Slang
+
+Slang is under the Apache License 2.0 with LLVM Exception. Its binaries bundle further components, such as glslang, SPIRV-Tools, LZ4, miniz, and mimalloc, whose licenses are in `Source/ThirdParty/Slang/LICENSES` and `Source/ThirdParty/Slang/third-party-notices`. Ship those notices with any build that includes the Slang DLLs.
+
+### DirectX Shader Compiler
+
+```text
+(c) Microsoft Corporation
+```
+
+The DXC source is under the University of Illinois/NCSA Open Source License (`LICENSE-LLVM.txt`) and the MIT License (`LICENCE-MIT.txt`). The prebuilt release is also covered by the Microsoft Software License Terms for the DirectX Shader Compiler (`LICENSE-MS.txt`), which limit use to Windows and define which files may be redistributed. All three files are in `Source/ThirdParty/DXC/Windows`. Ship them with any build that includes `dxcompiler.dll` and `dxil.dll`.

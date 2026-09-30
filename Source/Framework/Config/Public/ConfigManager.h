@@ -20,10 +20,11 @@ namespace ShadowEngine
             bool Reload(std::string* ErrorMessage = nullptr);
 
             [[nodiscard]] bool IsInitialized() const;
-            [[nodiscard]] ViewportSetting GetViewportSetting() const;
+            [[nodiscard]] EngineSetting::ViewportSetting GetViewportSetting() const;
+            [[nodiscard]] RenderSetting::RHISetting GetRHISetting() const;
 
             bool SetViewportSetting(
-                ViewportSetting Setting,
+                EngineSetting::ViewportSetting Setting,
                 std::string* ErrorMessage = nullptr);
 
             ConfigManager(const ConfigManager&) = delete;
@@ -36,7 +37,8 @@ namespace ShadowEngine
 
             mutable std::mutex ConfigMutex;
             std::filesystem::path ConfigRoot = "Config";
-            ViewportSetting Viewport;
+            EngineSetting::ViewportSetting Viewport;
+            RenderSetting::RHISetting RHI;
             bool bInitialized = false;
     };
 }

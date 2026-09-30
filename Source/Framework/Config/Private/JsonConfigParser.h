@@ -14,11 +14,20 @@ namespace ShadowEngine
 
             static bool LoadViewportSetting(
                 const std::filesystem::path& FilePath,
-                ViewportSetting& Setting,
+                EngineSetting::ViewportSetting& Setting,
                 std::string* ErrorMessage = nullptr);
 
             static bool ValidateViewportSetting(
-                const ViewportSetting& Setting,
+                const EngineSetting::ViewportSetting& Setting,
+                std::string* ErrorMessage = nullptr);
+
+            static bool LoadRHISetting(
+                const std::filesystem::path& FilePath,
+                RenderSetting::RHISetting& Setting,
+                std::string* ErrorMessage = nullptr);
+
+            static bool ValidateRHISetting(
+                const RenderSetting::RHISetting& Setting,
                 std::string* ErrorMessage = nullptr);
     };
 }

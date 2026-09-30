@@ -16,10 +16,19 @@ namespace ShadowEngine
         const std::filesystem::path& ConfigDirectory,
         std::string* ErrorMessage)
     {
-        ViewportSetting LoadedViewport;
+        EngineSetting::ViewportSetting LoadedViewport;
         if (!JsonConfigParser::LoadViewportSetting(
-                ConfigDirectory / "ViewportSetting.json",
+                ConfigDirectory / "Engine.json",
                 LoadedViewport,
+                ErrorMessage))
+        {
+            return false;
+        }
+
+        RenderSetting::RHISetting LoadedRHI;
+        if (!JsonConfigParser::LoadRHISetting(
+                ConfigDirectory / "Renderer.json",
+                LoadedRHI,
                 ErrorMessage))
         {
             return false;
@@ -28,6 +37,7 @@ namespace ShadowEngine
         const std::scoped_lock Lock(ConfigMutex);
         ConfigRoot = ConfigDirectory;
         Viewport = std::move(LoadedViewport);
+        RHI = std::move(LoadedRHI);
         bInitialized = true;
         return true;
     }
@@ -49,14 +59,20 @@ namespace ShadowEngine
         return bInitialized;
     }
 
-    ViewportSetting ConfigManager::GetViewportSetting() const
+    EngineSetting::ViewportSetting ConfigManager::GetViewportSetting() const
     {
         const std::scoped_lock Lock(ConfigMutex);
         return Viewport;
     }
 
+    RenderSetting::RHISetting ConfigManager::GetRHISetting() const
+    {
+        const std::scoped_lock Lock(ConfigMutex);
+        return RHI;
+    }
+
     bool ConfigManager::SetViewportSetting(
-        ViewportSetting Setting,
+        EngineSetting::ViewportSetting Setting,
         std::string* ErrorMessage)
     {
         if (!JsonConfigParser::ValidateViewportSetting(

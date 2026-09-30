@@ -1,0 +1,9 @@
+{
+    "RHISetting":
+    {
+        "Backend": "D3D12",
+        "VSync": true,
+        "DebugLayer": true,
+        "BackBufferCount": 2
+    }
+}

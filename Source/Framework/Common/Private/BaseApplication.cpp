@@ -1,8 +1,7 @@
 #include "Framework/Common/Public/BaseApplication.h"
 
+#include "Framework/Common/Public/Log.h"
 #include "Framework/Config/Public/ConfigManager.h"
-
-#include <iostream>
 
 namespace ShadowEngine
 {
@@ -22,8 +21,7 @@ namespace ShadowEngine
             std::string ErrorMessage;
             if (!Config.Initialize("Config", &ErrorMessage))
             {
-                std::cerr << "Config initialization failed: "
-                          << ErrorMessage << std::endl;
+                Log::Error("Config initialization failed: {}", ErrorMessage);
                 return -1;
             }
         }
@@ -34,10 +32,12 @@ namespace ShadowEngine
 
     void BaseApplication::Finalize()
     {
+        EngineInstance.Finalize();
     }
     
     void BaseApplication::Tick(float DeltaTime)
     {
+        EngineInstance.Tick(DeltaTime);
     }
 
     bool BaseApplication::IsQuit()

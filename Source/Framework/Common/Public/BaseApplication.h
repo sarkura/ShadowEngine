@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Framework/Engine/Public/Engine.h"
 #include "Interface/Public/IApplication.hpp"
 
 namespace ShadowEngine
@@ -16,6 +17,7 @@ namespace ShadowEngine
             virtual bool IsQuit() override;
 
         protected:
+            Engine EngineInstance;
             bool bQuit = false;
     };
 }

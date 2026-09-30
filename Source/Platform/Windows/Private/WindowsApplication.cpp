@@ -1,6 +1,9 @@
 #include "Platform/Windows/Public/WindowsApplication.h"
 
+#include "Framework/Common/Public/Log.h"
 #include "Framework/Config/Public/ConfigManager.h"
+
+#include <string>
 
 #include <windows.h>
 
@@ -16,10 +19,36 @@ namespace ShadowEngine
             WPARAM WParam,
             LPARAM LParam)
         {
-            if (Message == WM_DESTROY)
+            if (Message == WM_NCCREATE)
             {
-                PostQuitMessage(0);
-                return 0;
+                const auto* CreateInfo = reinterpret_cast<const CREATESTRUCTW*>(LParam);
+                SetWindowLongPtrW(
+                    Window,
+                    GWLP_USERDATA,
+                    reinterpret_cast<LONG_PTR>(CreateInfo->lpCreateParams));
+            }
+
+            auto* Application = reinterpret_cast<WindowsApplication*>(
+                GetWindowLongPtrW(Window, GWLP_USERDATA));
+
+            switch (Message)
+            {
+                case WM_SIZE:
+                    if (Application != nullptr)
+                    {
+                        Application->OnWindowResized(
+                            static_cast<uint32>(LOWORD(LParam)),
+                            static_cast<uint32>(HIWORD(LParam)));
+                    }
+                    return 0;
+
+                case WM_DESTROY:
+                    SetWindowLongPtrW(Window, GWLP_USERDATA, 0);
+                    PostQuitMessage(0);
+                    return 0;
+
+                default:
+                    break;
             }
 
             return DefWindowProcW(Window, Message, WParam, LParam);
@@ -40,7 +69,7 @@ namespace ShadowEngine
         const HINSTANCE Instance = GetModuleHandleW(nullptr);
         ModuleHandle = Instance;
 
-        const ViewportSetting Viewport =
+        const EngineSetting::ViewportSetting Viewport =
             ConfigManager::Get().GetViewportSetting();
 
         WNDCLASSEXW WindowClass{};
@@ -50,8 +79,7 @@ namespace ShadowEngine
         WindowClass.hInstance = Instance;
         WindowClass.hCursor =
             LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
-        WindowClass.hbrBackground =
-            reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+        WindowClass.hbrBackground = nullptr;
         WindowClass.lpszClassName = WindowClassName;
 
         if (RegisterClassExW(&WindowClass) == 0)
@@ -86,7 +114,7 @@ namespace ShadowEngine
             nullptr,
             nullptr,
             Instance,
-            nullptr);
+            this);
 
         if (Window == nullptr)
         {
@@ -97,11 +125,46 @@ namespace ShadowEngine
         WindowHandle = Window;
         ShowWindow(Window, SW_SHOW);
         UpdateWindow(Window);
+
+        RECT ClientRectangle{};
+        GetClientRect(Window, &ClientRectangle);
+
+        EngineInitDesc EngineDesc;
+        EngineDesc.WindowHandle = Window;
+        EngineDesc.Width = static_cast<uint32>(ClientRectangle.right - ClientRectangle.left);
+        EngineDesc.Height = static_cast<uint32>(ClientRectangle.bottom - ClientRectangle.top);
+        if (EngineDesc.Width == 0 || EngineDesc.Height == 0)
+        {
+            EngineDesc.Width = static_cast<uint32>(Viewport.Width);
+            EngineDesc.Height = static_cast<uint32>(Viewport.Height);
+        }
+
+        std::string ErrorMessage;
+        if (!EngineInstance.Initialize(EngineDesc, &ErrorMessage))
+        {
+            Log::Error("Engine initialization failed: {}", ErrorMessage);
+            Finalize();
+            return -1;
+        }
+
+        if (IsIconic(Window))
+        {
+            EngineInstance.Resize(0, 0);
+        }
+
         return 0;
+    }
+
+    void WindowsApplication::OnWindowResized(uint32 Width, uint32 Height)
+    {
+        EngineInstance.Resize(Width, Height);
+        EngineInstance.Tick(0.0F);
     }
 
     void WindowsApplication::Finalize()
     {
+        BaseApplication::Finalize();
+
         const HWND Window = static_cast<HWND>(WindowHandle);
         if (Window != nullptr && IsWindow(Window))
         {
@@ -116,12 +179,14 @@ namespace ShadowEngine
 
         WindowHandle = nullptr;
         ModuleHandle = nullptr;
-        BaseApplication::Finalize();
     }
 
     void WindowsApplication::Tick(float DeltaTime)
     {
-        BaseApplication::Tick(DeltaTime);
+        if (EngineInstance.IsRenderingPaused())
+        {
+            WaitMessage();
+        }
 
         MSG Message{};
         while (PeekMessageW(&Message, nullptr, 0, 0, PM_REMOVE))
@@ -134,6 +199,11 @@ namespace ShadowEngine
 
             TranslateMessage(&Message);
             DispatchMessageW(&Message);
+        }
+
+        if (!bQuit)
+        {
+            BaseApplication::Tick(DeltaTime);
         }
     }
 

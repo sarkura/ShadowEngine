@@ -151,6 +151,54 @@ namespace ShadowEngine
             return true;
         }
 
+        bool ReadBool(
+            const rapidjson::Value& Object,
+            const char* Name,
+            bool& Result,
+            std::string* ErrorMessage)
+        {
+            const rapidjson::Value* Value =
+                FindMember(Object, Name, ErrorMessage);
+            if (Value == nullptr)
+            {
+                return false;
+            }
+
+            if (!Value->IsBool())
+            {
+                SetError(
+                    ErrorMessage,
+                    std::string("JSON member must be a boolean: ") + Name);
+                return false;
+            }
+
+            Result = Value->GetBool();
+            return true;
+        }
+
+        const rapidjson::Value* FindObject(
+            const rapidjson::Value& Object,
+            const char* Name,
+            std::string* ErrorMessage)
+        {
+            const rapidjson::Value* Value =
+                FindMember(Object, Name, ErrorMessage);
+            if (Value == nullptr)
+            {
+                return nullptr;
+            }
+
+            if (!Value->IsObject())
+            {
+                SetError(
+                    ErrorMessage,
+                    std::string("JSON member must be an object: ") + Name);
+                return nullptr;
+            }
+
+            return Value;
+        }
+
         bool ReadColor(
             const rapidjson::Value& Object,
             const char* Name,
@@ -199,7 +247,7 @@ namespace ShadowEngine
 
     bool JsonConfigParser::LoadViewportSetting(
         const std::filesystem::path& FilePath,
-        ViewportSetting& Setting,
+        EngineSetting::ViewportSetting& Setting,
         std::string* ErrorMessage)
     {
         rapidjson::Document Document;
@@ -223,7 +271,7 @@ namespace ShadowEngine
             return false;
         }
 
-        ViewportSetting ParsedSetting;
+        EngineSetting::ViewportSetting ParsedSetting;
         if (!ReadInt(
                 *Viewport,
                 "Width",
@@ -283,7 +331,7 @@ namespace ShadowEngine
     }
 
     bool JsonConfigParser::ValidateViewportSetting(
-        const ViewportSetting& Setting,
+        const EngineSetting::ViewportSetting& Setting,
         std::string* ErrorMessage)
     {
         if (Setting.Width <= 0 ||
@@ -326,6 +374,79 @@ namespace ShadowEngine
         if (Setting.ClearFlags.empty())
         {
             SetError(ErrorMessage, "ClearFlags cannot be empty");
+            return false;
+        }
+
+        return true;
+    }
+
+    bool JsonConfigParser::LoadRHISetting(
+        const std::filesystem::path& FilePath,
+        RenderSetting::RHISetting& Setting,
+        std::string* ErrorMessage)
+    {
+        rapidjson::Document Document;
+        if (!ParseJsonFile(FilePath, Document, ErrorMessage))
+        {
+            return false;
+        }
+
+        const rapidjson::Value* RHI =
+            FindObject(Document, "RHISetting", ErrorMessage);
+        if (RHI == nullptr)
+        {
+            return false;
+        }
+
+        RenderSetting::RHISetting ParsedSetting;
+        if (!ReadString(
+                *RHI,
+                "Backend",
+                ParsedSetting.Backend,
+                ErrorMessage) ||
+            !ReadBool(
+                *RHI,
+                "VSync",
+                ParsedSetting.bVSync,
+                ErrorMessage) ||
+            !ReadBool(
+                *RHI,
+                "DebugLayer",
+                ParsedSetting.bDebugLayer,
+                ErrorMessage) ||
+            !ReadInt(
+                *RHI,
+                "BackBufferCount",
+                ParsedSetting.BackBufferCount,
+                ErrorMessage))
+        {
+            return false;
+        }
+
+        if (!ValidateRHISetting(ParsedSetting, ErrorMessage))
+        {
+            return false;
+        }
+
+        Setting = std::move(ParsedSetting);
+        return true;
+    }
+
+    bool JsonConfigParser::ValidateRHISetting(
+        const RenderSetting::RHISetting& Setting,
+        std::string* ErrorMessage)
+    {
+        if (Setting.Backend.empty())
+        {
+            SetError(ErrorMessage, "RHI Backend cannot be empty");
+            return false;
+        }
+
+        if (Setting.BackBufferCount < 2 || Setting.BackBufferCount > 8)
+        {
+            SetError(
+                ErrorMessage,
+                "BackBufferCount must be between 2 and 8");
             return false;
         }
 

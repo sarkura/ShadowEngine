@@ -14,6 +14,8 @@ namespace ShadowEngine
             void Finalize() override;
             void Tick(float DeltaTime) override;
 
+            void OnWindowResized(uint32 Width, uint32 Height);
+
         private:
             void* WindowHandle = nullptr;
             void* ModuleHandle = nullptr;
