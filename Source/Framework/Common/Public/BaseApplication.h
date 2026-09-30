@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Framework/Engine/Public/Engine.h"
-#include "Interface/Public/IApplication.hpp"
+#include "Framework/Common/Public/IApplication.hpp"
 
 namespace ShadowEngine
 {

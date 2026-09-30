@@ -1,5 +1,5 @@
 #include <iostream>
-#include "Interface/Public/IApplication.hpp"
+#include "Framework/Common/Public/IApplication.hpp"
 #include "ShaderCompiler/Public/ShaderCompiler.h"
 
 #if SHADOW_WITH_D3D12
