@@ -1,6 +1,7 @@
 #include "RHI/Direct3D12/Public/D3D12CommandList.h"
 
 #include "Framework/Common/Public/Log.h"
+#include "RHI/Direct3D12/Public/D3D12Buffer.h"
 #include "RHI/Direct3D12/Public/D3D12Pipeline.h"
 #include "RHI/Direct3D12/Public/D3D12Texture.h"
 
@@ -44,17 +45,41 @@ namespace ShadowEngine
         CommandList->Close();
     }
 
-    void D3D12CommandList::BeginRenderPass(RHITexture& RenderTarget, const RHIColor& ClearColor)
+    void D3D12CommandList::BeginRenderPass(
+        RHITexture& RenderTarget,
+        RHITexture* DepthTarget,
+        const RHIColor& ClearColor)
     {
         auto& Texture = static_cast<D3D12Texture&>(RenderTarget);
         RenderTargetRestoreState = Texture.GetState();
         Transition(Texture, D3D12_RESOURCE_STATE_RENDER_TARGET);
         CurrentRenderTarget = &Texture;
 
+        D3D12Texture* DepthTexture = nullptr;
+        if (DepthTarget != nullptr)
+        {
+            DepthTexture = &static_cast<D3D12Texture&>(*DepthTarget);
+            Transition(*DepthTexture, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+        }
+
         const D3D12_CPU_DESCRIPTOR_HANDLE RenderTargetView = Texture.GetRenderTargetView();
+        const D3D12_CPU_DESCRIPTOR_HANDLE DepthStencilView =
+            DepthTexture != nullptr ? DepthTexture->GetDepthStencilView() : D3D12_CPU_DESCRIPTOR_HANDLE{};
+        const D3D12_CPU_DESCRIPTOR_HANDLE* DepthStencil =
+            DepthTexture != nullptr && DepthTexture->HasDepthStencil() ? &DepthStencilView : nullptr;
         const float Color[4] = {ClearColor.R, ClearColor.G, ClearColor.B, ClearColor.A};
-        CommandList->OMSetRenderTargets(1, &RenderTargetView, FALSE, nullptr);
+        CommandList->OMSetRenderTargets(1, &RenderTargetView, FALSE, DepthStencil);
         CommandList->ClearRenderTargetView(RenderTargetView, Color, 0, nullptr);
+        if (DepthStencil != nullptr)
+        {
+            CommandList->ClearDepthStencilView(
+                *DepthStencil,
+                D3D12_CLEAR_FLAG_DEPTH,
+                1.0F,
+                0,
+                0,
+                nullptr);
+        }
     }
 
     void D3D12CommandList::EndRenderPass()
@@ -72,6 +97,18 @@ namespace ShadowEngine
         CommandList->SetGraphicsRootSignature(D3D12PipelineObject.GetRootSignature());
         CommandList->SetPipelineState(D3D12PipelineObject.GetPipelineState());
         CommandList->IASetPrimitiveTopology(D3D12PipelineObject.GetTopology());
+    }
+
+    void D3D12CommandList::SetVertexBuffer(RHIBuffer& Buffer)
+    {
+        const D3D12_VERTEX_BUFFER_VIEW View = static_cast<D3D12Buffer&>(Buffer).GetVertexBufferView();
+        CommandList->IASetVertexBuffers(0, 1, &View);
+    }
+
+    void D3D12CommandList::SetIndexBuffer(RHIBuffer& Buffer)
+    {
+        const D3D12_INDEX_BUFFER_VIEW View = static_cast<D3D12Buffer&>(Buffer).GetIndexBufferView();
+        CommandList->IASetIndexBuffer(&View);
     }
 
     void D3D12CommandList::SetViewport(const RHIViewport& Viewport)
@@ -95,6 +132,11 @@ namespace ShadowEngine
     void D3D12CommandList::Draw(uint32 VertexCount, uint32 FirstVertex)
     {
         CommandList->DrawInstanced(VertexCount, 1, FirstVertex, 0);
+    }
+
+    void D3D12CommandList::DrawIndexed(uint32 IndexCount, uint32 FirstIndex, int32 VertexOffset)
+    {
+        CommandList->DrawIndexedInstanced(IndexCount, 1, FirstIndex, VertexOffset, 0);
     }
 
     ID3D12GraphicsCommandList* D3D12CommandList::GetHandle() const

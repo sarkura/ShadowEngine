@@ -2,6 +2,7 @@
 
 #include "Framework/Common/Public/NonCopyable.h"
 #include "Framework/RHI/Public/RHIAdapter.h"
+#include "Framework/RHI/Public/RHIBuffer.h"
 #include "Framework/RHI/Public/RHICommandList.h"
 #include "Framework/RHI/Public/RHIDefinitions.h"
 #include "Framework/RHI/Public/RHIPipeline.h"
@@ -37,6 +38,20 @@ namespace ShadowEngine
 
             virtual std::unique_ptr<RHIPipeline> CreateGraphicsPipeline(
                 const RHIGraphicsPipelineDesc& Desc,
+                std::string* ErrorMessage = nullptr) = 0;
+
+            virtual std::unique_ptr<RHIBuffer> CreateVertexBuffer(
+                const RHIBufferDesc& Desc,
+                std::string* ErrorMessage = nullptr) = 0;
+
+            virtual std::unique_ptr<RHIBuffer> CreateIndexBuffer(
+                const RHIBufferDesc& Desc,
+                ERHIIndexFormat Format,
+                std::string* ErrorMessage = nullptr) = 0;
+
+            virtual std::unique_ptr<RHITexture> CreateDepthTexture(
+                uint32 Width,
+                uint32 Height,
                 std::string* ErrorMessage = nullptr) = 0;
 
             virtual std::unique_ptr<RHICommandList> CreateCommandList(

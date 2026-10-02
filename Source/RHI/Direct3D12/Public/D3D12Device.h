@@ -36,6 +36,20 @@ namespace ShadowEngine
                 const RHIGraphicsPipelineDesc& Desc,
                 std::string* ErrorMessage = nullptr) override;
 
+            std::unique_ptr<RHIBuffer> CreateVertexBuffer(
+                const RHIBufferDesc& Desc,
+                std::string* ErrorMessage = nullptr) override;
+
+            std::unique_ptr<RHIBuffer> CreateIndexBuffer(
+                const RHIBufferDesc& Desc,
+                ERHIIndexFormat Format,
+                std::string* ErrorMessage = nullptr) override;
+
+            std::unique_ptr<RHITexture> CreateDepthTexture(
+                uint32 Width,
+                uint32 Height,
+                std::string* ErrorMessage = nullptr) override;
+
             std::unique_ptr<RHICommandList> CreateCommandList(
                 std::string* ErrorMessage = nullptr) override;
 

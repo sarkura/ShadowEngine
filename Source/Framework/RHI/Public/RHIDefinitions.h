@@ -31,11 +31,27 @@ namespace ShadowEngine
         std::span<const uint8> Bytecode;
     };
 
+    struct RHIBufferDesc
+    {
+        uint32 Stride = 0;
+        std::span<const uint8> Data;
+    };
+
+    struct RHIInputElement
+    {
+        const char* Semantic = "";
+        uint32 SemanticIndex = 0;
+        uint32 Offset = 0;
+        ERHIVertexFormat Format = ERHIVertexFormat::Float32x3;
+    };
+
     struct RHIGraphicsPipelineDesc
     {
         RHIShader* VertexShader = nullptr;
         RHIShader* PixelShader = nullptr;
         ERHIFormat RenderTargetFormat = ERHIFormat::R8G8B8A8_UNorm;
         ERHIPrimitiveTopology Topology = ERHIPrimitiveTopology::TriangleList;
+        std::span<const RHIInputElement> InputLayout;
+        bool bEnableDepth = false;
     };
 }

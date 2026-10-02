@@ -4,6 +4,7 @@
 #include "RHI/Direct3D12/Public/D3D12Shader.h"
 
 #include <climits>
+#include <vector>
 
 namespace ShadowEngine
 {
@@ -46,12 +47,12 @@ namespace ShadowEngine
             return Desc;
         }
 
-        D3D12_DEPTH_STENCIL_DESC MakeDisabledDepthStencilDesc()
+        D3D12_DEPTH_STENCIL_DESC MakeDepthStencilDesc(bool bEnableDepth)
         {
             D3D12_DEPTH_STENCIL_DESC Desc{};
-            Desc.DepthEnable = FALSE;
-            Desc.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
-            Desc.DepthFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+            Desc.DepthEnable = bEnableDepth ? TRUE : FALSE;
+            Desc.DepthWriteMask = bEnableDepth ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
+            Desc.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
             Desc.StencilEnable = FALSE;
             return Desc;
         }
@@ -76,6 +77,17 @@ namespace ShadowEngine
             }
 
             return D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
+        }
+
+        DXGI_FORMAT ToVertexFormat(ERHIVertexFormat Format)
+        {
+            switch (Format)
+            {
+                case ERHIVertexFormat::Float32x3:
+                    return DXGI_FORMAT_R32G32B32_FLOAT;
+            }
+
+            return DXGI_FORMAT_UNKNOWN;
         }
     }
 
@@ -105,12 +117,28 @@ namespace ShadowEngine
         PipelineDesc.BlendState = MakeOpaqueBlendDesc();
         PipelineDesc.SampleMask = UINT_MAX;
         PipelineDesc.RasterizerState = MakeRasterizerDesc();
-        PipelineDesc.DepthStencilState = MakeDisabledDepthStencilDesc();
-        PipelineDesc.InputLayout = {nullptr, 0};
+        PipelineDesc.DepthStencilState = MakeDepthStencilDesc(Desc.bEnableDepth);
+
+        std::vector<D3D12_INPUT_ELEMENT_DESC> InputElements;
+        InputElements.reserve(Desc.InputLayout.size());
+        for (const RHIInputElement& Element : Desc.InputLayout)
+        {
+            D3D12_INPUT_ELEMENT_DESC Input{};
+            Input.SemanticName = Element.Semantic;
+            Input.SemanticIndex = Element.SemanticIndex;
+            Input.Format = ToVertexFormat(Element.Format);
+            Input.InputSlot = 0;
+            Input.AlignedByteOffset = Element.Offset;
+            Input.InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA;
+            Input.InstanceDataStepRate = 0;
+            InputElements.push_back(Input);
+        }
+        PipelineDesc.InputLayout.pInputElementDescs = InputElements.data();
+        PipelineDesc.InputLayout.NumElements = static_cast<UINT>(InputElements.size());
         PipelineDesc.PrimitiveTopologyType = ToTopologyType(Desc.Topology);
         PipelineDesc.NumRenderTargets = 1;
         PipelineDesc.RTVFormats[0] = ToDXGIFormat(Desc.RenderTargetFormat);
-        PipelineDesc.DSVFormat = DXGI_FORMAT_UNKNOWN;
+        PipelineDesc.DSVFormat = Desc.bEnableDepth ? DXGI_FORMAT_D32_FLOAT : DXGI_FORMAT_UNKNOWN;
         PipelineDesc.SampleDesc.Count = 1;
         PipelineDesc.SampleDesc.Quality = 0;
 
@@ -136,7 +164,7 @@ namespace ShadowEngine
         Desc.pParameters = nullptr;
         Desc.NumStaticSamplers = 0;
         Desc.pStaticSamplers = nullptr;
-        Desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+        Desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
         ComPtr<ID3DBlob> Signature;
         ComPtr<ID3DBlob> Error;

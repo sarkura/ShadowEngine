@@ -1,9 +1,11 @@
 #pragma once
 
 #include "Framework/Common/Public/NonCopyable.h"
+#include "Framework/RHI/Public/RHIBuffer.h"
 #include "Framework/RHI/Public/RHICommandList.h"
 #include "Framework/RHI/Public/RHIPipeline.h"
 #include "Framework/RHI/Public/RHIShader.h"
+#include "Framework/RHI/Public/RHITexture.h"
 #include "Framework/RHI/Public/RHITypes.h"
 
 #include <memory>
@@ -30,6 +32,7 @@ namespace ShadowEngine
             void Finalize();
 
             bool RenderFrame();
+            bool Resize(uint32 Width, uint32 Height, std::string* ErrorMessage = nullptr);
 
         private:
             RHIDevice* Device = nullptr;
@@ -40,5 +43,9 @@ namespace ShadowEngine
             std::unique_ptr<RHIShader> VertexShader;
             std::unique_ptr<RHIShader> PixelShader;
             std::unique_ptr<RHIPipeline> Pipeline;
+            std::unique_ptr<RHIBuffer> VertexBuffer;
+            std::unique_ptr<RHIBuffer> IndexBuffer;
+            std::unique_ptr<RHITexture> DepthBuffer;
+            uint32 IndexCount = 0;
     };
 }

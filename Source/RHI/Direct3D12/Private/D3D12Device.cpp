@@ -1,9 +1,11 @@
 #include "RHI/Direct3D12/Public/D3D12Device.h"
 
 #include "Framework/Common/Public/Log.h"
+#include "RHI/Direct3D12/Public/D3D12Buffer.h"
 #include "RHI/Direct3D12/Public/D3D12CommandList.h"
 #include "RHI/Direct3D12/Public/D3D12Pipeline.h"
 #include "RHI/Direct3D12/Public/D3D12Shader.h"
+#include "RHI/Direct3D12/Public/D3D12Texture.h"
 #include "RHI/Direct3D12/Public/D3D12SwapChain.h"
 
 #include <string_view>
@@ -172,6 +174,41 @@ namespace ShadowEngine
         }
 
         return Pipeline;
+    }
+
+    std::unique_ptr<RHIBuffer> D3D12Device::CreateVertexBuffer(
+        const RHIBufferDesc& Desc,
+        std::string* ErrorMessage)
+    {
+        auto Buffer = std::make_unique<D3D12Buffer>();
+        if (!Buffer->InitializeVertex(Device.Get(), Desc, ErrorMessage))
+        {
+            return nullptr;
+        }
+
+        return Buffer;
+    }
+
+    std::unique_ptr<RHIBuffer> D3D12Device::CreateIndexBuffer(
+        const RHIBufferDesc& Desc,
+        ERHIIndexFormat Format,
+        std::string* ErrorMessage)
+    {
+        auto Buffer = std::make_unique<D3D12Buffer>();
+        if (!Buffer->InitializeIndex(Device.Get(), Desc, Format, ErrorMessage))
+        {
+            return nullptr;
+        }
+
+        return Buffer;
+    }
+
+    std::unique_ptr<RHITexture> D3D12Device::CreateDepthTexture(
+        uint32 Width,
+        uint32 Height,
+        std::string* ErrorMessage)
+    {
+        return D3D12Texture::CreateDepth(Device.Get(), Width, Height, ErrorMessage);
     }
 
     std::unique_ptr<RHICommandList> D3D12Device::CreateCommandList(std::string* ErrorMessage)

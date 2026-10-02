@@ -17,13 +17,19 @@ namespace ShadowEngine
             void Begin() override;
             void End() override;
 
-            void BeginRenderPass(RHITexture& RenderTarget, const RHIColor& ClearColor) override;
+            void BeginRenderPass(
+                RHITexture& RenderTarget,
+                RHITexture* DepthTarget,
+                const RHIColor& ClearColor) override;
             void EndRenderPass() override;
 
             void SetPipeline(RHIPipeline& Pipeline) override;
+            void SetVertexBuffer(RHIBuffer& Buffer) override;
+            void SetIndexBuffer(RHIBuffer& Buffer) override;
             void SetViewport(const RHIViewport& Viewport) override;
             void SetScissor(const RHIRect& Scissor) override;
             void Draw(uint32 VertexCount, uint32 FirstVertex = 0) override;
+            void DrawIndexed(uint32 IndexCount, uint32 FirstIndex = 0, int32 VertexOffset = 0) override;
 
             [[nodiscard]] ID3D12GraphicsCommandList* GetHandle() const;
 

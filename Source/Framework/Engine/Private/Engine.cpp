@@ -180,9 +180,10 @@ namespace ShadowEngine
         Device->WaitIdle();
 
         std::string ErrorMessage;
-        if (!SwapChain->Resize(Width, Height, &ErrorMessage))
+        if (!SwapChain->Resize(Width, Height, &ErrorMessage) ||
+            !MainRenderer->Resize(Width, Height, &ErrorMessage))
         {
-            Log::Error("Swap chain resize failed, stopping rendering: {}", ErrorMessage);
+            Log::Error("Resize failed, stopping rendering: {}", ErrorMessage);
             bInitialized = false;
         }
     }
