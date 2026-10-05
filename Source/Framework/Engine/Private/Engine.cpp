@@ -195,14 +195,30 @@ namespace ShadowEngine
         bRenderingPaused = false;
     }
 
+    void Engine::SetCameraMotion(float Forward, float Right, float Yaw, float Pitch)
+    {
+        CameraForward = Forward;
+        CameraRight = Right;
+        CameraYaw = Yaw;
+        CameraPitch = Pitch;
+    }
+
     void Engine::Tick(float DeltaTime)
     {
-        (void)DeltaTime;
-
-        if (!bInitialized || bRenderingPaused)
+        if (!bInitialized || bRenderingPaused || MainRenderer == nullptr)
         {
+            CameraForward = 0.0F;
+            CameraRight = 0.0F;
+            CameraYaw = 0.0F;
+            CameraPitch = 0.0F;
             return;
         }
+
+        MainRenderer->UpdateCamera(DeltaTime, CameraForward, CameraRight, CameraYaw, CameraPitch);
+        CameraForward = 0.0F;
+        CameraRight = 0.0F;
+        CameraYaw = 0.0F;
+        CameraPitch = 0.0F;
 
         if (!MainRenderer->RenderFrame(*MainScene))
         {

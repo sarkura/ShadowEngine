@@ -220,7 +220,7 @@ if(WIN32)
 
     target_link_libraries(WindowsPlatform
         PUBLIC Framework
-        PRIVATE ImGuiWin32 user32
+        PRIVATE ImGuiWin32 user32 gdi32
     )
 
     set(SHADOW_PLATFORM_TARGET WindowsPlatform)

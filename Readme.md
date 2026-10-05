@@ -17,9 +17,12 @@ On Windows, startup runs this sequence:
 main                     registers the D3D12 RHI and the Slang shader compiler
  -> WindowsApplication   loads Config/, creates the Win32 window
  -> Engine               creates the RHI device selected in Renderer.json, then the swap chain
- -> ShaderManager        loads slang-compiler.dll, compiles Shaders/Debug/Triangle.slang
- -> Renderer             creates the graphics pipeline and the command list
- -> every frame          clear the back buffer, draw a triangle, present
+ -> ShaderManager        loads slang-compiler.dll
+ -> AssetManager         loads each Scene.json mesh: .asset.json, its .material.json files, then the glTF source
+ -> Scene                one entity per instance, each with its own transform
+ -> Renderer             uploads one GPU batch per material slot, then the constant buffer and the depth buffer
+ -> every frame          move the camera, write world matrices, draw each entity, present
+                         the FPS number is drawn with Win32 GDI, outside the swap chain
 ```
 
 Rendering is split into a backend-agnostic core and pluggable backends. The core defines the render hardware interface (RHI) and the shader data model. Direct3D 12 and Vulkan implement the RHI. Shader compilation lives in its own module, which loads the Slang compiler at runtime instead of linking against it.
@@ -53,6 +56,9 @@ The engine reads `Config/` relative to the working directory, so run it from the
 ## Layout
 
 ```text
+Assets/                  Mesh and material descriptions, plus glTF sources
+  Mesh/                  .asset.json and .glb
+  Material/              .material.json
 Config/                  Runtime configuration
 Shaders/                 Slang shader sources
 Source/
@@ -85,7 +91,7 @@ Abstractions and their implementations follow one pattern. `Interface` declares 
 
 ## Modules
 
-The startup path above is implemented: `Common`, `Config`, `Engine`, `Render`, `RHI`, `Shader`, the D3D12 backend and `ShaderCompiler`. `Asset`, `Scene`, `Material`, `UI`, `RenderPass`, `RenderQueue` and the Vulkan backend are still skeletons. The sections below describe the responsibility of each module.
+The startup path above is implemented: `Common`, `Config`, `Engine`, `Asset`, `Scene`, `Material`, `Render`, `RHI`, `Shader`, the D3D12 backend and `ShaderCompiler`. `UI`, `RenderPass`, `RenderQueue` and the Vulkan backend are still skeletons. Dear ImGui is linked, but the FPS readout is a Win32 layered window. The sections below describe the responsibility of each module.
 
 ### Interface
 
@@ -101,14 +107,14 @@ Contains everything that does not depend on a graphics API, a shader compiler, o
 
 - `Common` provides `BaseApplication` and its default lifecycle, plus logging, shared types, and `NonCopyable`. `ThirdPartyImpl.cpp` is the single translation unit that compiles the stb and cgltf implementations.
 - `Config` owns runtime settings. See [Config](#config).
-- `Engine` is the composition root. `EngineModules` is the registry where backends and the shader compiler register factories at startup, so `Framework` never names a concrete implementation. `Engine` creates the device, swap chain, shader manager and renderer, and ticks the renderer every frame.
-- `Asset` loads assets and tracks them in a registry.
-- `Scene` holds scenes, entities, and transforms.
-- `Material` describes materials, their instances, and their parameters.
-- `Render` owns the renderer, render passes, and the render queue. `Renderer` currently clears the back buffer and draws the debug triangle.
-- `RHI` declares the device, adapter, swap chain, command list, fence, texture, shader, and pipeline abstractions that backends implement. Buffer, sampler and descriptor abstractions are still empty.
+- `Engine` is the composition root. `EngineModules` is the registry where backends and the shader compiler register factories at startup, so `Framework` never names a concrete implementation. `Engine` creates the device, swap chain, shader manager, asset manager, scene and renderer. Each frame it updates the camera and ticks the renderer.
+- `Asset` loads mesh descriptions and tracks the resulting mesh assets in a registry. `Asset` is only a scene model. A `.asset.json` names the glTF source and one or more material slots. Each slot matches a glTF material index and becomes one mesh section.
+- `Scene` holds entities and transforms. `Scene.json` groups instances under a mesh description path. Each instance has translation, rotation and scale. Light entries are parsed and are not spawned.
+- `Material` describes a shader and its parameters. `Material` does not inherit `Asset`. A `.material.json` names the shader under `Shaders/` and holds a `parameters` object. Each mesh section keeps a `MaterialInstance`.
+- `Render` owns the renderer, the fly camera, render passes, and the render queue. `Renderer` uploads one batch per material slot, writes a 256-byte constant slot per entity, and draws with depth. Render passes and the render queue are still empty.
+- `RHI` declares the device, adapter, swap chain, command list, fence, texture, shader, pipeline, and buffer abstractions that backends implement. Vertex, index and constant buffers are in use. Sampler and descriptor abstractions are still empty.
 - `Shader` holds shader objects, reflection data, and the shader manager. It declares `IShaderCompiler` but does not compile shaders itself. `ShaderManager` asks the device which bytecode format it needs, compiles through `IShaderCompiler`, and creates the RHI shader.
-- `UI` manages the user interface and renders it through ImGui.
+- `UI` is still empty. The FPS number is drawn by `WindowsPlatform` with GDI.
 
 `BaseApplication` loads configuration before the selected platform continues initialization.
 
@@ -118,7 +124,7 @@ Each backend is a separate static library. It implements `Framework/RHI` and own
 
 | Module | Host | Links | Status |
 | --- | --- | --- | --- |
-| `RHID3D12` | Windows | `d3d12`, `dxgi`, `dxguid`, `ImGuiDX12` | Device, swap chain, command list, fence, pipeline, render target clear and present |
+| `RHID3D12` | Windows | `d3d12`, `dxgi`, `dxguid`, `ImGuiDX12` | Device, swap chain, command list, fence, pipeline, vertex, index and constant buffers, depth, render target clear and present |
 | `RHIVulkan` | Every host | Nothing yet | Empty implementation, not registered, no Vulkan SDK required |
 
 Each backend exposes one registration function, such as `RegisterD3D12RHI()`, which `main` calls before the application starts. The D3D12 backend requires feature level 12_0 and Shader Model 6.0. It picks the high-performance hardware adapter that supports feature level 12_0, then checks the driver's shader model. If either requirement fails, the engine logs the reason and the process exits. The backend consumes DXIL bytecode:
@@ -153,7 +159,9 @@ Exactly one platform library is built.
 
 Both modules supply the global application object consumed by Launch. Launch does not depend on a concrete platform type.
 
-`WindowsApplication` uses the viewport configuration for the initial window client size and passes the window to the engine. Each tick it processes window messages first and renders only while the window is open. It forwards `WM_SIZE` to the engine and renders a frame for each one, so the image stays correct while the window is dragged. It ends the main loop when the window closes, and it releases the engine before destroying the window. `EmptyApplication` reports `Platform Unsupported` and then quits.
+`WindowsApplication` uses the viewport configuration for the initial window client size and passes the window to the engine. Each tick it processes window messages first, measures the frame time, and renders only while the window is open. It forwards `WM_SIZE` to the engine and renders a frame for each one, so the image stays correct while the window is dragged. It ends the main loop when the window closes, and it releases the engine before destroying the window. `EmptyApplication` reports `Platform Unsupported` and then quits.
+
+The camera is a fly camera. It starts at `(0, 4, 14)`, looking at the origin. **W** and **S** move along the view, **A** and **D** strafe, and the mouse changes yaw and pitch. The cursor is captured when the window opens. **Esc** releases it, and a click in the window captures it again. **U** shows or hides the FPS number in the top-left corner. That number is drawn with `DrawText` into a layered window, so it stays above the flip-model swap chain.
 
 ### Launch
 
@@ -167,6 +175,7 @@ Owns the process entry point. It initializes the application, ticks it until it 
 | --- | --- |
 | `Engine.json` | `ViewportSetting`: resolution, aspect ratio, field of view, clip planes, background color, and clear mode |
 | `Renderer.json` | `RHISetting`: backend name (`D3D12`), VSync, debug layer, and back buffer count (2 to 8) |
+| `Scene.json` | Scene meshes and lights. Each mesh key is an `.asset.json` path. Each instance stores translation, rotation in radians as pitch, yaw and roll, and scale |
 
 `JsonConfigParser` reads these files and validates them before they enter `ConfigManager`. `ConfigManager` is the single store for settings. Later changes, including changes from a UI, go through it rather than through another copy of the settings.
 

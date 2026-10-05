@@ -30,6 +30,7 @@ namespace ShadowEngine
             void Finalize();
             void Tick(float DeltaTime);
             void Resize(uint32 Width, uint32 Height);
+            void SetCameraMotion(float Forward, float Right, float Yaw, float Pitch);
 
             [[nodiscard]] bool IsInitialized() const;
             [[nodiscard]] bool IsRenderingPaused() const;
@@ -45,5 +46,9 @@ namespace ShadowEngine
             std::unique_ptr<Renderer> MainRenderer;
             bool bInitialized = false;
             bool bRenderingPaused = false;
+            float CameraForward = 0.0F;
+            float CameraRight = 0.0F;
+            float CameraYaw = 0.0F;
+            float CameraPitch = 0.0F;
     };
 }

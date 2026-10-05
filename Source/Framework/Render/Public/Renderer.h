@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Framework/Common/Public/NonCopyable.h"
+#include "Framework/Render/Public/Camera.h"
 #include "Framework/RHI/Public/RHIBuffer.h"
 #include "Framework/RHI/Public/RHICommandList.h"
 #include "Framework/RHI/Public/RHIPipeline.h"
@@ -37,6 +38,7 @@ namespace ShadowEngine
 
             bool RenderFrame(const Scene& InScene);
             bool Resize(uint32 Width, uint32 Height, std::string* ErrorMessage = nullptr);
+            void UpdateCamera(float DeltaTime, float Forward, float Right, float Yaw, float Pitch);
 
         private:
             struct MeshBatch
@@ -61,5 +63,6 @@ namespace ShadowEngine
             std::unique_ptr<RHITexture> DepthBuffer;
             std::vector<MeshBatch> MeshBatches;
             uint32 ConstantCapacity = 0;
+            Camera ViewCamera;
     };
 }

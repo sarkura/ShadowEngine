@@ -251,6 +251,12 @@ namespace ShadowEngine
         Device = nullptr;
     }
 
+    void Renderer::UpdateCamera(float DeltaTime, float Forward, float Right, float Yaw, float Pitch)
+    {
+        ViewCamera.AddLook(Yaw, Pitch);
+        ViewCamera.Move(DeltaTime, Forward, Right);
+    }
+
     bool Renderer::RenderFrame(const Scene& InScene)
     {
         if (Device == nullptr || SwapChain == nullptr || CommandList == nullptr || ConstantBuffer == nullptr ||
@@ -262,10 +268,7 @@ namespace ShadowEngine
         const float Width = static_cast<float>(SwapChain->GetWidth());
         const float Height = static_cast<float>(SwapChain->GetHeight());
         const float Aspect = Height > 0.0F ? Width / Height : 1.0F;
-        const glm::mat4 View = glm::lookAtRH(
-            glm::vec3(0.0F, 4.0F, 14.0F),
-            glm::vec3(0.0F, 0.0F, 0.0F),
-            glm::vec3(0.0F, 1.0F, 0.0F));
+        const glm::mat4 View = ViewCamera.ViewMatrix();
         const glm::mat4 Projection = glm::perspectiveRH_ZO(glm::radians(45.0F), Aspect, 0.1F, 100.0F);
         const glm::mat4 ViewProjection = Projection * View;
 
