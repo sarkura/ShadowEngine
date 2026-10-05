@@ -10,6 +10,7 @@ namespace ShadowEngine
         public:
             Camera();
 
+            void SetMoveSpeed(float ForwardSpeed, float RightSpeed);
             void AddLook(float YawDelta, float PitchDelta);
             void Move(float DeltaTime, float Forward, float Right);
             [[nodiscard]] glm::mat4 ViewMatrix() const;
@@ -20,5 +21,7 @@ namespace ShadowEngine
             glm::vec3 Position{0.0F, 4.0F, 14.0F};
             float Yaw = 0.0F;
             float Pitch = 0.0F;
+            float ForwardSpeed = 10.0F;
+            float RightSpeed = 10.0F;
     };
 }

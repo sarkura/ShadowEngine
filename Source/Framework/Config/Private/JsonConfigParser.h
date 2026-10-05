@@ -21,6 +21,15 @@ namespace ShadowEngine
                 const EngineSetting::ViewportSetting& Setting,
                 std::string* ErrorMessage = nullptr);
 
+            static bool LoadMovementSetting(
+                const std::filesystem::path& FilePath,
+                EngineSetting::MovementSetting& Setting,
+                std::string* ErrorMessage = nullptr);
+
+            static bool ValidateMovementSetting(
+                const EngineSetting::MovementSetting& Setting,
+                std::string* ErrorMessage = nullptr);
+
             static bool LoadRHISetting(
                 const std::filesystem::path& FilePath,
                 RenderSetting::RHISetting& Setting,

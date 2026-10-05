@@ -18,6 +18,14 @@ namespace ShadowEngine
             std::vector<float> BackgroundColor;
             std::string ClearFlags;
         };
+
+        struct MovementSetting
+        {
+            float ForwardSpeed = 0.0F;
+            float RightSpeed = 0.0F;
+            float YawSpeed = 0.0F;
+            float PitchSpeed = 0.0F;
+        };
     }
 
     namespace RenderSetting

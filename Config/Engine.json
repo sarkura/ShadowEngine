@@ -10,5 +10,12 @@
         "FarPlane": 1000,
         "BackgroundColor": [0, 0, 0],
         "ClearFlags": "SolidColor"
+    },
+    "MovementSetting": 
+    {
+        "ForwardSpeed": 10,
+        "RightSpeed": 10,
+        "YawSpeed": 10,
+        "PitchSpeed": 10
     }
 }

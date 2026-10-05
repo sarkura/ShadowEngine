@@ -39,6 +39,7 @@ namespace ShadowEngine
             bool RenderFrame(const Scene& InScene);
             bool Resize(uint32 Width, uint32 Height, std::string* ErrorMessage = nullptr);
             void UpdateCamera(float DeltaTime, float Forward, float Right, float Yaw, float Pitch);
+            void SetCameraMoveSpeed(float ForwardSpeed, float RightSpeed);
 
         private:
             struct MeshBatch

@@ -445,6 +445,82 @@ namespace ShadowEngine
         return true;
     }
 
+    bool JsonConfigParser::LoadMovementSetting(
+        const std::filesystem::path& FilePath,
+        EngineSetting::MovementSetting& Setting,
+        std::string* ErrorMessage)
+    {
+        rapidjson::Document Document;
+        if (!ParseJsonFile(FilePath, Document, ErrorMessage))
+        {
+            return false;
+        }
+
+        const rapidjson::Value* Movement =
+            FindMember(Document, "MovementSetting", ErrorMessage);
+        if (Movement == nullptr)
+        {
+            return false;
+        }
+
+        if (!Movement->IsObject())
+        {
+            SetError(
+                ErrorMessage,
+                "JSON member must be an object: MovementSetting");
+            return false;
+        }
+
+        EngineSetting::MovementSetting ParsedSetting;
+        if (!ReadFloat(
+                *Movement,
+                "ForwardSpeed",
+                ParsedSetting.ForwardSpeed,
+                ErrorMessage) ||
+            !ReadFloat(
+                *Movement,
+                "RightSpeed",
+                ParsedSetting.RightSpeed,
+                ErrorMessage) ||
+            !ReadFloat(
+                *Movement,
+                "YawSpeed",
+                ParsedSetting.YawSpeed,
+                ErrorMessage) ||
+            !ReadFloat(
+                *Movement,
+                "PitchSpeed",
+                ParsedSetting.PitchSpeed,
+                ErrorMessage))
+        {
+            return false;
+        }
+
+        if (!ValidateMovementSetting(ParsedSetting, ErrorMessage))
+        {
+            return false;
+        }
+
+        Setting = ParsedSetting;
+        return true;
+    }
+
+    bool JsonConfigParser::ValidateMovementSetting(
+        const EngineSetting::MovementSetting& Setting,
+        std::string* ErrorMessage)
+    {
+        if (Setting.ForwardSpeed <= 0.0F ||
+            Setting.RightSpeed <= 0.0F ||
+            Setting.YawSpeed <= 0.0F ||
+            Setting.PitchSpeed <= 0.0F)
+        {
+            SetError(ErrorMessage, "Movement speeds must be positive");
+            return false;
+        }
+
+        return true;
+    }
+
     bool JsonConfigParser::LoadRHISetting(
         const std::filesystem::path& FilePath,
         RenderSetting::RHISetting& Setting,

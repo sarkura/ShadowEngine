@@ -21,6 +21,7 @@ namespace ShadowEngine
 
             [[nodiscard]] bool IsInitialized() const;
             [[nodiscard]] EngineSetting::ViewportSetting GetViewportSetting() const;
+            [[nodiscard]] EngineSetting::MovementSetting GetMovementSetting() const;
             [[nodiscard]] RenderSetting::RHISetting GetRHISetting() const;
             [[nodiscard]] SceneSetting::Setting GetSceneSetting() const;
 
@@ -39,6 +40,7 @@ namespace ShadowEngine
             mutable std::mutex ConfigMutex;
             std::filesystem::path ConfigRoot = "Config";
             EngineSetting::ViewportSetting Viewport;
+            EngineSetting::MovementSetting Movement;
             RenderSetting::RHISetting RHI;
             SceneSetting::Setting Scene;
             bool bInitialized = false;

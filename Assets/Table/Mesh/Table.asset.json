@@ -1,0 +1,11 @@
+{
+    "type": "Mesh",
+    "source": "Assets/Table/Mesh/Table.glb",
+
+    "materials": [
+        {
+            "slot": 0,
+            "material": "Assets/Table/Material/Table.material.json"
+        }
+    ]
+}

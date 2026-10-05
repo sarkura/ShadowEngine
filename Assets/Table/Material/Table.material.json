@@ -1,0 +1,6 @@
+{
+    "type": "Material",
+    "shader": "Debug/Table.slang",
+
+    "parameters": {}
+}

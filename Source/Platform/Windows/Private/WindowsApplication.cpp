@@ -16,7 +16,7 @@ namespace ShadowEngine
         constexpr int FpsWidth = 88;
         constexpr int FpsHeight = 32;
         constexpr int FpsMargin = 12;
-        constexpr float LookSensitivity = 0.0025F;
+        constexpr float LookRadiansPerSpeed = 0.00025F;
         constexpr float MaxFrameTime = 0.1F;
 
         LRESULT CALLBACK WindowProcedure(
@@ -403,8 +403,9 @@ namespace ShadowEngine
         ClientToScreen(Window, &Center);
         SetCursorPos(Center.x, Center.y);
 
-        Yaw = -static_cast<float>(DeltaX) * LookSensitivity;
-        Pitch = -static_cast<float>(DeltaY) * LookSensitivity;
+        const EngineSetting::MovementSetting Movement = ConfigManager::Get().GetMovementSetting();
+        Yaw = -static_cast<float>(DeltaX) * Movement.YawSpeed * LookRadiansPerSpeed;
+        Pitch = -static_cast<float>(DeltaY) * Movement.PitchSpeed * LookRadiansPerSpeed;
     }
 
     float WindowsApplication::AdvanceTime()

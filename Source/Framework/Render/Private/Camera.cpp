@@ -9,7 +9,6 @@ namespace ShadowEngine
 {
     namespace
     {
-        constexpr float MoveSpeed = 8.0F;
         constexpr float MinPitch = -1.5533F;
         constexpr float MaxPitch = 1.5533F;
         constexpr glm::vec3 WorldUp(0.0F, 1.0F, 0.0F);
@@ -30,6 +29,12 @@ namespace ShadowEngine
             glm::cos(Pitch) * glm::cos(Yaw));
     }
 
+    void Camera::SetMoveSpeed(float InForwardSpeed, float InRightSpeed)
+    {
+        ForwardSpeed = InForwardSpeed;
+        RightSpeed = InRightSpeed;
+    }
+
     void Camera::AddLook(float YawDelta, float PitchDelta)
     {
         Yaw += YawDelta;
@@ -45,8 +50,8 @@ namespace ShadowEngine
 
         const glm::vec3 Face = ForwardDirection();
         const glm::vec3 Strafe = glm::normalize(glm::cross(Face, WorldUp));
-        Position += Face * Forward * MoveSpeed * DeltaTime;
-        Position += Strafe * Right * MoveSpeed * DeltaTime;
+        Position += Face * Forward * ForwardSpeed * DeltaTime;
+        Position += Strafe * Right * RightSpeed * DeltaTime;
     }
 
     glm::mat4 Camera::ViewMatrix() const

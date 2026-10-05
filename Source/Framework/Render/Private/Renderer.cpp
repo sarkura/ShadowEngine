@@ -251,6 +251,11 @@ namespace ShadowEngine
         Device = nullptr;
     }
 
+    void Renderer::SetCameraMoveSpeed(float ForwardSpeed, float RightSpeed)
+    {
+        ViewCamera.SetMoveSpeed(ForwardSpeed, RightSpeed);
+    }
+
     void Renderer::UpdateCamera(float DeltaTime, float Forward, float Right, float Yaw, float Pitch)
     {
         ViewCamera.AddLook(Yaw, Pitch);

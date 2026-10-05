@@ -34,6 +34,15 @@ namespace ShadowEngine
             return false;
         }
 
+        EngineSetting::MovementSetting LoadedMovement;
+        if (!JsonConfigParser::LoadMovementSetting(
+                ConfigDirectory / "Engine.json",
+                LoadedMovement,
+                ErrorMessage))
+        {
+            return false;
+        }
+
         SceneSetting::Setting LoadedScene;
         if (!JsonConfigParser::LoadSceneSetting(
                 ConfigDirectory / "Scene.json",
@@ -46,6 +55,7 @@ namespace ShadowEngine
         const std::scoped_lock Lock(ConfigMutex);
         ConfigRoot = ConfigDirectory;
         Viewport = std::move(LoadedViewport);
+        Movement = std::move(LoadedMovement);
         RHI = std::move(LoadedRHI);
         Scene = std::move(LoadedScene);
         bInitialized = true;
@@ -73,6 +83,12 @@ namespace ShadowEngine
     {
         const std::scoped_lock Lock(ConfigMutex);
         return Viewport;
+    }
+
+    EngineSetting::MovementSetting ConfigManager::GetMovementSetting() const
+    {
+        const std::scoped_lock Lock(ConfigMutex);
+        return Movement;
     }
 
     RenderSetting::RHISetting ConfigManager::GetRHISetting() const

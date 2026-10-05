@@ -117,6 +117,10 @@ namespace ShadowEngine
             return false;
         }
 
+        const EngineSetting::MovementSetting Movement =
+            ConfigManager::Get().GetMovementSetting();
+        MainRenderer->SetCameraMoveSpeed(Movement.ForwardSpeed, Movement.RightSpeed);
+
         bInitialized = true;
         Log::Info("Engine initialized");
         return true;
