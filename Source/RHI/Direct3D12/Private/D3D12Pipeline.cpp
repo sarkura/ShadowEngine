@@ -159,9 +159,15 @@ namespace ShadowEngine
 
     bool D3D12Pipeline::CreateRootSignature(ID3D12Device* Device, std::string* ErrorMessage)
     {
+        D3D12_ROOT_PARAMETER Parameter{};
+        Parameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        Parameter.Descriptor.ShaderRegister = 0;
+        Parameter.Descriptor.RegisterSpace = 0;
+        Parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+
         D3D12_ROOT_SIGNATURE_DESC Desc{};
-        Desc.NumParameters = 0;
-        Desc.pParameters = nullptr;
+        Desc.NumParameters = 1;
+        Desc.pParameters = &Parameter;
         Desc.NumStaticSamplers = 0;
         Desc.pStaticSamplers = nullptr;
         Desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;

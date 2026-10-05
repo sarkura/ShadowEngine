@@ -68,6 +68,68 @@ namespace ShadowEngine
         return CreateUploadBuffer(Device, Desc, ErrorMessage);
     }
 
+    bool D3D12Buffer::InitializeConstant(
+        ID3D12Device* Device,
+        uint32 InSize,
+        std::string* ErrorMessage)
+    {
+        if (InSize == 0 || InSize % 256 != 0)
+        {
+            SetErrorMessage(ErrorMessage, "Constant buffer size must be a non-zero multiple of 256");
+            return false;
+        }
+
+        D3D12_HEAP_PROPERTIES HeapProperties{};
+        HeapProperties.Type = D3D12_HEAP_TYPE_UPLOAD;
+        HeapProperties.CreationNodeMask = 1;
+        HeapProperties.VisibleNodeMask = 1;
+
+        D3D12_RESOURCE_DESC ResourceDesc{};
+        ResourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+        ResourceDesc.Width = InSize;
+        ResourceDesc.Height = 1;
+        ResourceDesc.DepthOrArraySize = 1;
+        ResourceDesc.MipLevels = 1;
+        ResourceDesc.Format = DXGI_FORMAT_UNKNOWN;
+        ResourceDesc.SampleDesc.Count = 1;
+        ResourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+        const HRESULT Result = Device->CreateCommittedResource(
+            &HeapProperties,
+            D3D12_HEAP_FLAG_NONE,
+            &ResourceDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(Resource.GetAddressOf()));
+        if (FAILED(Result))
+        {
+            SetErrorMessage(ErrorMessage, "CreateCommittedResource failed: " + FormatHResult(Result));
+            return false;
+        }
+
+        void* Mapped = nullptr;
+        if (FAILED(Resource->Map(0, nullptr, &Mapped)))
+        {
+            SetErrorMessage(ErrorMessage, "ID3D12Resource::Map failed for the constant buffer");
+            return false;
+        }
+
+        MappedData = static_cast<uint8*>(Mapped);
+        std::memset(MappedData, 0, InSize);
+        Size = InSize;
+        Stride = 256;
+        return true;
+    }
+
+    D3D12Buffer::~D3D12Buffer()
+    {
+        if (Resource != nullptr && MappedData != nullptr)
+        {
+            Resource->Unmap(0, nullptr);
+            MappedData = nullptr;
+        }
+    }
+
     bool D3D12Buffer::CreateUploadBuffer(
         ID3D12Device* Device,
         const RHIBufferDesc& Desc,
@@ -130,6 +192,22 @@ namespace ShadowEngine
     uint32 D3D12Buffer::GetStride() const
     {
         return Stride;
+    }
+
+    bool D3D12Buffer::Update(uint32 Offset, std::span<const uint8> Data)
+    {
+        if (MappedData == nullptr || Offset + Data.size() > Size)
+        {
+            return false;
+        }
+
+        std::memcpy(MappedData + Offset, Data.data(), Data.size());
+        return true;
+    }
+
+    D3D12_GPU_VIRTUAL_ADDRESS D3D12Buffer::GetGPUVirtualAddress() const
+    {
+        return Resource->GetGPUVirtualAddress();
     }
 
     D3D12_VERTEX_BUFFER_VIEW D3D12Buffer::GetVertexBufferView() const

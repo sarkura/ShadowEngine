@@ -45,6 +45,10 @@ namespace ShadowEngine
                 ERHIIndexFormat Format,
                 std::string* ErrorMessage = nullptr) override;
 
+            std::unique_ptr<RHIBuffer> CreateConstantBuffer(
+                uint32 Size,
+                std::string* ErrorMessage = nullptr) override;
+
             std::unique_ptr<RHITexture> CreateDepthTexture(
                 uint32 Width,
                 uint32 Height,

@@ -203,6 +203,19 @@ namespace ShadowEngine
         return Buffer;
     }
 
+    std::unique_ptr<RHIBuffer> D3D12Device::CreateConstantBuffer(
+        uint32 Size,
+        std::string* ErrorMessage)
+    {
+        auto Buffer = std::make_unique<D3D12Buffer>();
+        if (!Buffer->InitializeConstant(Device.Get(), Size, ErrorMessage))
+        {
+            return nullptr;
+        }
+
+        return Buffer;
+    }
+
     std::unique_ptr<RHITexture> D3D12Device::CreateDepthTexture(
         uint32 Width,
         uint32 Height,

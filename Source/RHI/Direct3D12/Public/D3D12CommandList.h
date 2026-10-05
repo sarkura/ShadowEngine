@@ -26,6 +26,7 @@ namespace ShadowEngine
             void SetPipeline(RHIPipeline& Pipeline) override;
             void SetVertexBuffer(RHIBuffer& Buffer) override;
             void SetIndexBuffer(RHIBuffer& Buffer) override;
+            void SetConstantBuffer(RHIBuffer& Buffer, uint32 Offset) override;
             void SetViewport(const RHIViewport& Viewport) override;
             void SetScissor(const RHIRect& Scissor) override;
             void Draw(uint32 VertexCount, uint32 FirstVertex = 0) override;

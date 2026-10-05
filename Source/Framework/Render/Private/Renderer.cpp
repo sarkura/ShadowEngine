@@ -2,12 +2,18 @@
 
 #include "Framework/Common/Public/Log.h"
 #include "Framework/RHI/Public/RHIDevice.h"
+#include "Framework/Scene/Public/Entity.h"
 #include "Framework/Shader/Public/ShaderManager.h"
 
 #include <cgltf.h>
 
+#include <glm/ext/matrix_clip_space.hpp>
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <span>
 #include <string>
 #include <vector>
@@ -20,6 +26,15 @@ namespace ShadowEngine
         constexpr char CubeMeshPath[] = "Assets/Mesh/Cube.glb";
         constexpr char VertexEntryPoint[] = "VertexMain";
         constexpr char PixelEntryPoint[] = "PixelMain";
+        constexpr uint32 ConstantAlignment = 256;
+
+        struct GpuObjectConstants
+        {
+            float ViewProjection[16];
+            float World[16];
+        };
+
+        static_assert(sizeof(GpuObjectConstants) <= ConstantAlignment);
 
         struct MeshVertex
         {
@@ -256,6 +271,7 @@ namespace ShadowEngine
         RHIDevice& InDevice,
         RHISwapChain& InSwapChain,
         ShaderManager& Shaders,
+        const Scene& InScene,
         const RHIColor& InClearColor,
         std::string* ErrorMessage)
     {
@@ -328,6 +344,14 @@ namespace ShadowEngine
 
         IndexCount = static_cast<uint32>(Mesh.Indices.size());
 
+        const uint32 EntityCount = static_cast<uint32>(InScene.GetEntities().size());
+        ConstantCapacity = EntityCount == 0 ? 1 : EntityCount;
+        ConstantBuffer = InDevice.CreateConstantBuffer(ConstantCapacity * ConstantAlignment, ErrorMessage);
+        if (ConstantBuffer == nullptr)
+        {
+            return false;
+        }
+
         constexpr RHIInputElement InputLayout[] = {
             {"POSITION", 0, 0, ERHIVertexFormat::Float32x3},
             {"COLOR", 0, 12, ERHIVertexFormat::Float32x3},
@@ -378,25 +402,55 @@ namespace ShadowEngine
         CommandList.reset();
         Pipeline.reset();
         DepthBuffer.reset();
+        ConstantBuffer.reset();
         IndexBuffer.reset();
         VertexBuffer.reset();
         PixelShader.reset();
         VertexShader.reset();
         IndexCount = 0;
+        ConstantCapacity = 0;
         SwapChain = nullptr;
         Device = nullptr;
     }
 
-    bool Renderer::RenderFrame()
+    bool Renderer::RenderFrame(const Scene& InScene)
     {
         if (Device == nullptr || SwapChain == nullptr || CommandList == nullptr || VertexBuffer == nullptr ||
-            IndexBuffer == nullptr || DepthBuffer == nullptr)
+            IndexBuffer == nullptr || ConstantBuffer == nullptr || DepthBuffer == nullptr)
         {
             return false;
         }
 
         const float Width = static_cast<float>(SwapChain->GetWidth());
         const float Height = static_cast<float>(SwapChain->GetHeight());
+        const float Aspect = Height > 0.0F ? Width / Height : 1.0F;
+        const glm::mat4 View = glm::lookAtRH(
+            glm::vec3(0.0F, 4.0F, 14.0F),
+            glm::vec3(0.0F, 0.0F, 0.0F),
+            glm::vec3(0.0F, 1.0F, 0.0F));
+        const glm::mat4 Projection = glm::perspectiveRH_ZO(glm::radians(45.0F), Aspect, 0.1F, 100.0F);
+        const glm::mat4 ViewProjection = Projection * View;
+
+        const std::deque<Entity>& Entities = InScene.GetEntities();
+        if (Entities.size() > ConstantCapacity)
+        {
+            Log::Error("Scene has more entities than the constant buffer can hold");
+            return false;
+        }
+
+        std::vector<uint8> Constants(Entities.size() * ConstantAlignment);
+        for (size_t Index = 0; Index < Entities.size(); ++Index)
+        {
+            GpuObjectConstants Slot{};
+            std::memcpy(Slot.ViewProjection, glm::value_ptr(ViewProjection), sizeof(Slot.ViewProjection));
+            Entities[Index].GetTransform().WriteWorldMatrix(Slot.World);
+            std::memcpy(Constants.data() + Index * ConstantAlignment, &Slot, sizeof(Slot));
+        }
+        if (!Constants.empty() && !ConstantBuffer->Update(0, Constants))
+        {
+            Log::Error("Failed to write scene constants");
+            return false;
+        }
 
         CommandList->Begin();
         CommandList->BeginRenderPass(SwapChain->GetCurrentBackBuffer(), DepthBuffer.get(), ClearColor);
@@ -409,7 +463,11 @@ namespace ShadowEngine
         CommandList->SetPipeline(*Pipeline);
         CommandList->SetVertexBuffer(*VertexBuffer);
         CommandList->SetIndexBuffer(*IndexBuffer);
-        CommandList->DrawIndexed(IndexCount);
+        for (uint32 Index = 0; Index < static_cast<uint32>(Entities.size()); ++Index)
+        {
+            CommandList->SetConstantBuffer(*ConstantBuffer, Index * ConstantAlignment);
+            CommandList->DrawIndexed(IndexCount);
+        }
         CommandList->EndRenderPass();
         CommandList->End();
 

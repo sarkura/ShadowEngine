@@ -111,6 +111,13 @@ namespace ShadowEngine
         CommandList->IASetIndexBuffer(&View);
     }
 
+    void D3D12CommandList::SetConstantBuffer(RHIBuffer& Buffer, uint32 Offset)
+    {
+        const D3D12_GPU_VIRTUAL_ADDRESS Address =
+            static_cast<D3D12Buffer&>(Buffer).GetGPUVirtualAddress() + Offset;
+        CommandList->SetGraphicsRootConstantBufferView(0, Address);
+    }
+
     void D3D12CommandList::SetViewport(const RHIViewport& Viewport)
     {
         const D3D12_VIEWPORT D3D12Viewport{

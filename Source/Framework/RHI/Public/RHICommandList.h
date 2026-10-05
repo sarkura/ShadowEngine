@@ -26,6 +26,7 @@ namespace ShadowEngine
             virtual void SetPipeline(RHIPipeline& Pipeline) = 0;
             virtual void SetVertexBuffer(RHIBuffer& Buffer) = 0;
             virtual void SetIndexBuffer(RHIBuffer& Buffer) = 0;
+            virtual void SetConstantBuffer(RHIBuffer& Buffer, uint32 Offset) = 0;
             virtual void SetViewport(const RHIViewport& Viewport) = 0;
             virtual void SetScissor(const RHIRect& Scissor) = 0;
             virtual void Draw(uint32 VertexCount, uint32 FirstVertex = 0) = 0;

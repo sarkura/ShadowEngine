@@ -201,6 +201,8 @@ namespace ShadowEngine
                     slang::SessionDesc SessionDesc{};
                     SessionDesc.targets = &Target;
                     SessionDesc.targetCount = 1;
+                    // GLM writes column-major matrices. Slang's default layout is row-major.
+                    SessionDesc.defaultMatrixLayoutMode = SLANG_MATRIX_LAYOUT_COLUMN_MAJOR;
                     SessionDesc.searchPaths = SearchPaths;
                     SessionDesc.searchPathCount = 1;
 

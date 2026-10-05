@@ -3,6 +3,7 @@
 #include "Framework/Common/Public/Log.h"
 #include "Framework/Config/Public/ConfigManager.h"
 #include "Framework/Engine/Public/EngineModules.h"
+#include "Framework/Scene/Public/Scene.h"
 
 namespace ShadowEngine
 {
@@ -24,6 +25,12 @@ namespace ShadowEngine
                 Result.A = Color[3];
             }
             return Result;
+        }
+
+        void AddCube(Scene& InScene, float X, float Y, float Z)
+        {
+            Entity& Cube = InScene.CreateEntity();
+            Cube.GetTransform().SetTranslation(X, Y, Z);
         }
     }
 
@@ -58,11 +65,18 @@ namespace ShadowEngine
         const EngineSetting::ViewportSetting Viewport =
             ConfigManager::Get().GetViewportSetting();
 
+        MainScene = std::make_unique<Scene>();
+        AddCube(*MainScene, -3.0F, 0.0F, 0.0F);
+        AddCube(*MainScene, 0.0F, 0.0F, 0.0F);
+        AddCube(*MainScene, 3.0F, 0.0F, 0.0F);
+        Log::Info("Scene created ({} entities)", MainScene->GetEntities().size());
+
         MainRenderer = std::make_unique<Renderer>();
         if (!MainRenderer->Initialize(
                 *Device,
                 *SwapChain,
                 *Shaders,
+                *MainScene,
                 ToClearColor(Viewport.BackgroundColor),
                 ErrorMessage))
         {
@@ -126,6 +140,7 @@ namespace ShadowEngine
         }
 
         MainRenderer.reset();
+        MainScene.reset();
         if (Shaders != nullptr)
         {
             Shaders->Finalize();
@@ -151,7 +166,7 @@ namespace ShadowEngine
             return;
         }
 
-        if (!MainRenderer->RenderFrame())
+        if (!MainRenderer->RenderFrame(*MainScene))
         {
             Log::Error("Frame presentation failed, stopping rendering");
             bInitialized = false;

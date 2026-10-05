@@ -7,6 +7,7 @@
 #include "Framework/RHI/Public/RHIShader.h"
 #include "Framework/RHI/Public/RHITexture.h"
 #include "Framework/RHI/Public/RHITypes.h"
+#include "Framework/Scene/Public/Scene.h"
 
 #include <memory>
 #include <string>
@@ -27,11 +28,12 @@ namespace ShadowEngine
                 RHIDevice& InDevice,
                 RHISwapChain& InSwapChain,
                 ShaderManager& Shaders,
+                const Scene& InScene,
                 const RHIColor& InClearColor,
                 std::string* ErrorMessage = nullptr);
             void Finalize();
 
-            bool RenderFrame();
+            bool RenderFrame(const Scene& InScene);
             bool Resize(uint32 Width, uint32 Height, std::string* ErrorMessage = nullptr);
 
         private:
@@ -45,7 +47,9 @@ namespace ShadowEngine
             std::unique_ptr<RHIPipeline> Pipeline;
             std::unique_ptr<RHIBuffer> VertexBuffer;
             std::unique_ptr<RHIBuffer> IndexBuffer;
+            std::unique_ptr<RHIBuffer> ConstantBuffer;
             std::unique_ptr<RHITexture> DepthBuffer;
             uint32 IndexCount = 0;
+            uint32 ConstantCapacity = 0;
     };
 }
