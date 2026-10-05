@@ -23,6 +23,8 @@ namespace ShadowEngine
         {
             float ForwardSpeed = 0.0F;
             float RightSpeed = 0.0F;
+            float UpSpeed = 0.0F;
+            float DownSpeed = 0.0F;
             float YawSpeed = 0.0F;
             float PitchSpeed = 0.0F;
         };

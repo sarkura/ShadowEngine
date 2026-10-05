@@ -15,7 +15,9 @@
     {
         "ForwardSpeed": 10,
         "RightSpeed": 10,
-        "YawSpeed": 10,
-        "PitchSpeed": 10
+        "UpSpeed": 10,
+        "DownSpeed": 10,
+        "YawSpeed": 5,
+        "PitchSpeed": 5
     }
 }

@@ -29,10 +29,12 @@ namespace ShadowEngine
             glm::cos(Pitch) * glm::cos(Yaw));
     }
 
-    void Camera::SetMoveSpeed(float InForwardSpeed, float InRightSpeed)
+    void Camera::SetMoveSpeed(float InForwardSpeed, float InRightSpeed, float InUpSpeed, float InDownSpeed)
     {
         ForwardSpeed = InForwardSpeed;
         RightSpeed = InRightSpeed;
+        UpSpeed = InUpSpeed;
+        DownSpeed = InDownSpeed;
     }
 
     void Camera::AddLook(float YawDelta, float PitchDelta)
@@ -41,7 +43,7 @@ namespace ShadowEngine
         Pitch = glm::clamp(Pitch + PitchDelta, MinPitch, MaxPitch);
     }
 
-    void Camera::Move(float DeltaTime, float Forward, float Right)
+    void Camera::Move(float DeltaTime, float Forward, float Right, float Up)
     {
         if (DeltaTime <= 0.0F)
         {
@@ -50,8 +52,10 @@ namespace ShadowEngine
 
         const glm::vec3 Face = ForwardDirection();
         const glm::vec3 Strafe = glm::normalize(glm::cross(Face, WorldUp));
+        const float VerticalSpeed = Up >= 0.0F ? UpSpeed : DownSpeed;
         Position += Face * Forward * ForwardSpeed * DeltaTime;
         Position += Strafe * Right * RightSpeed * DeltaTime;
+        Position += WorldUp * Up * VerticalSpeed * DeltaTime;
     }
 
     glm::mat4 Camera::ViewMatrix() const

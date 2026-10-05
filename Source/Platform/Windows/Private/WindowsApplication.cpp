@@ -262,7 +262,7 @@ namespace ShadowEngine
             ShowWindow(Overlay, SW_SHOWNOACTIVATE);
         }
 
-        Log::Info("Camera ready (WASD move, mouse look, U toggles FPS, Esc releases mouse)");
+        Log::Info("Camera ready (WASD move, Q up, E down, mouse look, U toggles FPS, Esc releases mouse)");
         return 0;
     }
 
@@ -303,6 +303,12 @@ namespace ShadowEngine
                 break;
             case 'D':
                 bKeyRight = bPressed;
+                break;
+            case 'Q':
+                bKeyUp = bPressed;
+                break;
+            case 'E':
+                bKeyDown = bPressed;
                 break;
             default:
                 break;
@@ -376,6 +382,8 @@ namespace ShadowEngine
         bKeyBack = false;
         bKeyLeft = false;
         bKeyRight = false;
+        bKeyUp = false;
+        bKeyDown = false;
     }
 
     void WindowsApplication::SampleMouseLook(float& Yaw, float& Pitch)
@@ -644,6 +652,7 @@ namespace ShadowEngine
         const float FrameTime = AdvanceTime();
         float Forward = 0.0F;
         float Right = 0.0F;
+        float Up = 0.0F;
         float Yaw = 0.0F;
         float Pitch = 0.0F;
         if (bKeyForward)
@@ -662,12 +671,20 @@ namespace ShadowEngine
         {
             Right -= 1.0F;
         }
+        if (bKeyUp)
+        {
+            Up += 1.0F;
+        }
+        if (bKeyDown)
+        {
+            Up -= 1.0F;
+        }
         if (bMouseCaptured)
         {
             SampleMouseLook(Yaw, Pitch);
         }
 
-        EngineInstance.SetCameraMotion(Forward, Right, Yaw, Pitch);
+        EngineInstance.SetCameraMotion(Forward, Right, Up, Yaw, Pitch);
         UpdateFpsOverlay(FrameTime);
         BaseApplication::Tick(FrameTime);
     }

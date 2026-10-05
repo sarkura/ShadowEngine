@@ -43,6 +43,8 @@ namespace ShadowEngine
             bool bKeyBack = false;
             bool bKeyLeft = false;
             bool bKeyRight = false;
+            bool bKeyUp = false;
+            bool bKeyDown = false;
             int64 TimeFrequency = 0;
             int64 TimeLast = 0;
             float FpsAccumulated = 0.0F;

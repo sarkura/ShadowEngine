@@ -484,6 +484,16 @@ namespace ShadowEngine
                 ErrorMessage) ||
             !ReadFloat(
                 *Movement,
+                "UpSpeed",
+                ParsedSetting.UpSpeed,
+                ErrorMessage) ||
+            !ReadFloat(
+                *Movement,
+                "DownSpeed",
+                ParsedSetting.DownSpeed,
+                ErrorMessage) ||
+            !ReadFloat(
+                *Movement,
                 "YawSpeed",
                 ParsedSetting.YawSpeed,
                 ErrorMessage) ||
@@ -511,6 +521,8 @@ namespace ShadowEngine
     {
         if (Setting.ForwardSpeed <= 0.0F ||
             Setting.RightSpeed <= 0.0F ||
+            Setting.UpSpeed <= 0.0F ||
+            Setting.DownSpeed <= 0.0F ||
             Setting.YawSpeed <= 0.0F ||
             Setting.PitchSpeed <= 0.0F)
         {

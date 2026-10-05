@@ -119,7 +119,11 @@ namespace ShadowEngine
 
         const EngineSetting::MovementSetting Movement =
             ConfigManager::Get().GetMovementSetting();
-        MainRenderer->SetCameraMoveSpeed(Movement.ForwardSpeed, Movement.RightSpeed);
+        MainRenderer->SetCameraMoveSpeed(
+            Movement.ForwardSpeed,
+            Movement.RightSpeed,
+            Movement.UpSpeed,
+            Movement.DownSpeed);
 
         bInitialized = true;
         Log::Info("Engine initialized");
@@ -199,10 +203,11 @@ namespace ShadowEngine
         bRenderingPaused = false;
     }
 
-    void Engine::SetCameraMotion(float Forward, float Right, float Yaw, float Pitch)
+    void Engine::SetCameraMotion(float Forward, float Right, float Up, float Yaw, float Pitch)
     {
         CameraForward = Forward;
         CameraRight = Right;
+        CameraUp = Up;
         CameraYaw = Yaw;
         CameraPitch = Pitch;
     }
@@ -213,14 +218,16 @@ namespace ShadowEngine
         {
             CameraForward = 0.0F;
             CameraRight = 0.0F;
+            CameraUp = 0.0F;
             CameraYaw = 0.0F;
             CameraPitch = 0.0F;
             return;
         }
 
-        MainRenderer->UpdateCamera(DeltaTime, CameraForward, CameraRight, CameraYaw, CameraPitch);
+        MainRenderer->UpdateCamera(DeltaTime, CameraForward, CameraRight, CameraUp, CameraYaw, CameraPitch);
         CameraForward = 0.0F;
         CameraRight = 0.0F;
+        CameraUp = 0.0F;
         CameraYaw = 0.0F;
         CameraPitch = 0.0F;
 

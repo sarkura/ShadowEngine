@@ -251,15 +251,25 @@ namespace ShadowEngine
         Device = nullptr;
     }
 
-    void Renderer::SetCameraMoveSpeed(float ForwardSpeed, float RightSpeed)
+    void Renderer::SetCameraMoveSpeed(
+        float ForwardSpeed,
+        float RightSpeed,
+        float UpSpeed,
+        float DownSpeed)
     {
-        ViewCamera.SetMoveSpeed(ForwardSpeed, RightSpeed);
+        ViewCamera.SetMoveSpeed(ForwardSpeed, RightSpeed, UpSpeed, DownSpeed);
     }
 
-    void Renderer::UpdateCamera(float DeltaTime, float Forward, float Right, float Yaw, float Pitch)
+    void Renderer::UpdateCamera(
+        float DeltaTime,
+        float Forward,
+        float Right,
+        float Up,
+        float Yaw,
+        float Pitch)
     {
         ViewCamera.AddLook(Yaw, Pitch);
-        ViewCamera.Move(DeltaTime, Forward, Right);
+        ViewCamera.Move(DeltaTime, Forward, Right, Up);
     }
 
     bool Renderer::RenderFrame(const Scene& InScene)
