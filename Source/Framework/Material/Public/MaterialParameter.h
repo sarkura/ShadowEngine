@@ -2,5 +2,7 @@
 
 namespace ShadowEngine
 {
-
+    struct MaterialParameter
+    {
+    };
 }

@@ -34,10 +34,20 @@ namespace ShadowEngine
             return false;
         }
 
+        SceneSetting::Setting LoadedScene;
+        if (!JsonConfigParser::LoadSceneSetting(
+                ConfigDirectory / "Scene.json",
+                LoadedScene,
+                ErrorMessage))
+        {
+            return false;
+        }
+
         const std::scoped_lock Lock(ConfigMutex);
         ConfigRoot = ConfigDirectory;
         Viewport = std::move(LoadedViewport);
         RHI = std::move(LoadedRHI);
+        Scene = std::move(LoadedScene);
         bInitialized = true;
         return true;
     }
@@ -69,6 +79,12 @@ namespace ShadowEngine
     {
         const std::scoped_lock Lock(ConfigMutex);
         return RHI;
+    }
+
+    SceneSetting::Setting ConfigManager::GetSceneSetting() const
+    {
+        const std::scoped_lock Lock(ConfigMutex);
+        return Scene;
     }
 
     bool ConfigManager::SetViewportSetting(

@@ -11,9 +11,11 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace ShadowEngine
 {
+    class MeshAsset;
     class RHIDevice;
     class RHISwapChain;
     class ShaderManager;
@@ -37,19 +39,27 @@ namespace ShadowEngine
             bool Resize(uint32 Width, uint32 Height, std::string* ErrorMessage = nullptr);
 
         private:
+            struct MeshBatch
+            {
+                const MeshAsset* Asset = nullptr;
+                std::unique_ptr<RHIShader> VertexShader;
+                std::unique_ptr<RHIShader> PixelShader;
+                std::unique_ptr<RHIBuffer> VertexBuffer;
+                std::unique_ptr<RHIBuffer> IndexBuffer;
+                std::unique_ptr<RHIPipeline> Pipeline;
+                uint32 IndexCount = 0;
+            };
+
+            bool UploadMesh(ShaderManager& Shaders, const MeshAsset& Mesh, std::string* ErrorMessage);
+
             RHIDevice* Device = nullptr;
             RHISwapChain* SwapChain = nullptr;
             RHIColor ClearColor;
 
             std::unique_ptr<RHICommandList> CommandList;
-            std::unique_ptr<RHIShader> VertexShader;
-            std::unique_ptr<RHIShader> PixelShader;
-            std::unique_ptr<RHIPipeline> Pipeline;
-            std::unique_ptr<RHIBuffer> VertexBuffer;
-            std::unique_ptr<RHIBuffer> IndexBuffer;
             std::unique_ptr<RHIBuffer> ConstantBuffer;
             std::unique_ptr<RHITexture> DepthBuffer;
-            uint32 IndexCount = 0;
+            std::vector<MeshBatch> MeshBatches;
             uint32 ConstantCapacity = 0;
     };
 }

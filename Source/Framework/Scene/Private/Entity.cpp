@@ -2,6 +2,16 @@
 
 namespace ShadowEngine
 {
+    void Entity::SetMesh(const MeshAsset* InMesh)
+    {
+        Mesh = InMesh;
+    }
+
+    const MeshAsset* Entity::GetMesh() const
+    {
+        return Mesh;
+    }
+
     Transform& Entity::GetTransform()
     {
         return LocalTransform;

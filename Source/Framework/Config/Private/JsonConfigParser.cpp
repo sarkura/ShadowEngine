@@ -243,6 +243,71 @@ namespace ShadowEngine
             Result = std::move(Color);
             return true;
         }
+
+        bool ReadVec3(
+            const rapidjson::Value& Object,
+            const char* Name,
+            std::vector<float>& Result,
+            std::string* ErrorMessage)
+        {
+            const rapidjson::Value* Value =
+                FindMember(Object, Name, ErrorMessage);
+            if (Value == nullptr)
+            {
+                return false;
+            }
+
+            if (!Value->IsArray() || Value->Size() != 3)
+            {
+                SetError(
+                    ErrorMessage,
+                    std::string("JSON member must contain 3 numbers: ") +
+                        Name);
+                return false;
+            }
+
+            std::vector<float> Vector;
+            Vector.reserve(3);
+            for (const rapidjson::Value& Component : Value->GetArray())
+            {
+                if (!Component.IsNumber())
+                {
+                    SetError(
+                        ErrorMessage,
+                        std::string("JSON vector contains a non-number: ") +
+                            Name);
+                    return false;
+                }
+
+                Vector.push_back(Component.GetFloat());
+            }
+
+            Result = std::move(Vector);
+            return true;
+        }
+
+        const rapidjson::Value* FindArray(
+            const rapidjson::Value& Object,
+            const char* Name,
+            std::string* ErrorMessage)
+        {
+            const rapidjson::Value* Value =
+                FindMember(Object, Name, ErrorMessage);
+            if (Value == nullptr)
+            {
+                return nullptr;
+            }
+
+            if (!Value->IsArray())
+            {
+                SetError(
+                    ErrorMessage,
+                    std::string("JSON member must be an array: ") + Name);
+                return nullptr;
+            }
+
+            return Value;
+        }
     }
 
     bool JsonConfigParser::LoadViewportSetting(
@@ -448,6 +513,140 @@ namespace ShadowEngine
                 ErrorMessage,
                 "BackBufferCount must be between 2 and 8");
             return false;
+        }
+
+        return true;
+    }
+
+    bool JsonConfigParser::LoadSceneSetting(
+        const std::filesystem::path& FilePath,
+        SceneSetting::Setting& Setting,
+        std::string* ErrorMessage)
+    {
+        rapidjson::Document Document;
+        if (!ParseJsonFile(FilePath, Document, ErrorMessage))
+        {
+            return false;
+        }
+
+        const rapidjson::Value* Meshes =
+            FindObject(Document, "Mesh", ErrorMessage);
+        if (Meshes == nullptr)
+        {
+            return false;
+        }
+
+        const rapidjson::Value* Lights =
+            FindArray(Document, "Light", ErrorMessage);
+        if (Lights == nullptr)
+        {
+            return false;
+        }
+
+        SceneSetting::Setting ParsedSetting;
+        for (auto Member = Meshes->MemberBegin(); Member != Meshes->MemberEnd(); ++Member)
+        {
+            const std::string MeshPath(Member->name.GetString(), Member->name.GetStringLength());
+            if (!Member->value.IsArray())
+            {
+                SetError(
+                    ErrorMessage,
+                    "Mesh instances must be an array: " + MeshPath);
+                return false;
+            }
+
+            SceneSetting::Mesh Mesh;
+            Mesh.Path = MeshPath;
+            Mesh.Instances.reserve(Member->value.Size());
+            for (const rapidjson::Value& Item : Member->value.GetArray())
+            {
+                if (!Item.IsObject())
+                {
+                    SetError(ErrorMessage, "Each mesh instance must be an object: " + MeshPath);
+                    return false;
+                }
+
+                SceneSetting::MeshInstance Instance;
+                const rapidjson::Value* TransformValue =
+                    FindObject(Item, "Transform", ErrorMessage);
+                if (TransformValue == nullptr ||
+                    !ReadVec3(*TransformValue, "Translation", Instance.Transform.Translation, ErrorMessage) ||
+                    !ReadVec3(*TransformValue, "Rotation", Instance.Transform.Rotation, ErrorMessage) ||
+                    !ReadVec3(*TransformValue, "Scale", Instance.Transform.Scale, ErrorMessage))
+                {
+                    return false;
+                }
+
+                Mesh.Instances.push_back(std::move(Instance));
+            }
+
+            ParsedSetting.Meshes.push_back(std::move(Mesh));
+        }
+
+        ParsedSetting.Lights.reserve(Lights->Size());
+        for (const rapidjson::Value& Item : Lights->GetArray())
+        {
+            if (!Item.IsObject())
+            {
+                SetError(ErrorMessage, "Each Light entry must be an object");
+                return false;
+            }
+
+            SceneSetting::Light Light;
+            if (!ReadVec3(Item, "Position", Light.Position, ErrorMessage))
+            {
+                return false;
+            }
+
+            ParsedSetting.Lights.push_back(std::move(Light));
+        }
+
+        if (!ValidateSceneSetting(ParsedSetting, ErrorMessage))
+        {
+            return false;
+        }
+
+        Setting = std::move(ParsedSetting);
+        return true;
+    }
+
+    bool JsonConfigParser::ValidateSceneSetting(
+        const SceneSetting::Setting& Setting,
+        std::string* ErrorMessage)
+    {
+        for (const SceneSetting::Mesh& Mesh : Setting.Meshes)
+        {
+            if (Mesh.Path.empty())
+            {
+                SetError(ErrorMessage, "Mesh path cannot be empty");
+                return false;
+            }
+
+            if (Mesh.Instances.empty())
+            {
+                SetError(ErrorMessage, "Mesh has no instances: " + Mesh.Path);
+                return false;
+            }
+
+            for (const SceneSetting::MeshInstance& Instance : Mesh.Instances)
+            {
+                if (Instance.Transform.Translation.size() != 3 ||
+                    Instance.Transform.Rotation.size() != 3 ||
+                    Instance.Transform.Scale.size() != 3)
+                {
+                    SetError(ErrorMessage, "Mesh Transform must contain translation, rotation, and scale: " + Mesh.Path);
+                    return false;
+                }
+            }
+        }
+
+        for (const SceneSetting::Light& Light : Setting.Lights)
+        {
+            if (Light.Position.size() != 3)
+            {
+                SetError(ErrorMessage, "Light Position must contain 3 numbers");
+                return false;
+            }
         }
 
         return true;

@@ -22,6 +22,7 @@ namespace ShadowEngine
             [[nodiscard]] bool IsInitialized() const;
             [[nodiscard]] EngineSetting::ViewportSetting GetViewportSetting() const;
             [[nodiscard]] RenderSetting::RHISetting GetRHISetting() const;
+            [[nodiscard]] SceneSetting::Setting GetSceneSetting() const;
 
             bool SetViewportSetting(
                 EngineSetting::ViewportSetting Setting,
@@ -39,6 +40,7 @@ namespace ShadowEngine
             std::filesystem::path ConfigRoot = "Config";
             EngineSetting::ViewportSetting Viewport;
             RenderSetting::RHISetting RHI;
+            SceneSetting::Setting Scene;
             bool bInitialized = false;
     };
 }

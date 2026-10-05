@@ -30,4 +30,36 @@ namespace ShadowEngine
             int BackBufferCount = 2;
         };
     }
+
+    namespace SceneSetting
+    {
+        struct Transform
+        {
+            std::vector<float> Translation;
+            std::vector<float> Rotation;
+            std::vector<float> Scale;
+        };
+
+        struct MeshInstance
+        {
+            Transform Transform;
+        };
+
+        struct Mesh
+        {
+            std::string Path;
+            std::vector<MeshInstance> Instances;
+        };
+
+        struct Light
+        {
+            std::vector<float> Position;
+        };
+
+        struct Setting
+        {
+            std::vector<Mesh> Meshes;
+            std::vector<Light> Lights;
+        };
+    }
 }

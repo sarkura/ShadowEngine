@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Framework/Asset/Public/AssetManager.h"
 #include "Framework/Common/Public/NonCopyable.h"
 #include "Framework/Common/Public/Types.h"
 #include "Framework/Render/Public/Renderer.h"
@@ -39,6 +40,7 @@ namespace ShadowEngine
             std::unique_ptr<RHIDevice> Device;
             std::unique_ptr<RHISwapChain> SwapChain;
             std::unique_ptr<ShaderManager> Shaders;
+            std::unique_ptr<AssetManager> Assets;
             std::unique_ptr<Scene> MainScene;
             std::unique_ptr<Renderer> MainRenderer;
             bool bInitialized = false;

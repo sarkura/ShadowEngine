@@ -1,5 +1,6 @@
 #include "Framework/Engine/Public/Engine.h"
 
+#include "Framework/Asset/Public/Asset.h"
 #include "Framework/Common/Public/Log.h"
 #include "Framework/Config/Public/ConfigManager.h"
 #include "Framework/Engine/Public/EngineModules.h"
@@ -27,10 +28,22 @@ namespace ShadowEngine
             return Result;
         }
 
-        void AddCube(Scene& InScene, float X, float Y, float Z)
+        void AddMesh(Scene& InScene, const MeshAsset& Mesh, const SceneSetting::Transform& InTransform)
         {
-            Entity& Cube = InScene.CreateEntity();
-            Cube.GetTransform().SetTranslation(X, Y, Z);
+            Entity& Object = InScene.CreateEntity();
+            Object.SetMesh(&Mesh);
+            Object.GetTransform().SetTranslation(
+                InTransform.Translation[0],
+                InTransform.Translation[1],
+                InTransform.Translation[2]);
+            Object.GetTransform().SetRotation(
+                InTransform.Rotation[0],
+                InTransform.Rotation[1],
+                InTransform.Rotation[2]);
+            Object.GetTransform().SetScale(
+                InTransform.Scale[0],
+                InTransform.Scale[1],
+                InTransform.Scale[2]);
         }
     }
 
@@ -65,11 +78,31 @@ namespace ShadowEngine
         const EngineSetting::ViewportSetting Viewport =
             ConfigManager::Get().GetViewportSetting();
 
+        Assets = std::make_unique<AssetManager>();
+
+        const SceneSetting::Setting SceneConfig = ConfigManager::Get().GetSceneSetting();
         MainScene = std::make_unique<Scene>();
-        AddCube(*MainScene, -3.0F, 0.0F, 0.0F);
-        AddCube(*MainScene, 0.0F, 0.0F, 0.0F);
-        AddCube(*MainScene, 3.0F, 0.0F, 0.0F);
-        Log::Info("Scene created ({} entities)", MainScene->GetEntities().size());
+        uint32 InstanceCount = 0;
+        for (const SceneSetting::Mesh& MeshObject : SceneConfig.Meshes)
+        {
+            const MeshAsset* Mesh = Assets->LoadMesh(MeshObject.Path, ErrorMessage);
+            if (Mesh == nullptr)
+            {
+                Finalize();
+                return false;
+            }
+
+            for (const SceneSetting::MeshInstance& Instance : MeshObject.Instances)
+            {
+                AddMesh(*MainScene, *Mesh, Instance.Transform);
+                ++InstanceCount;
+            }
+        }
+        Log::Info(
+            "Scene created ({} meshes, {} instances, {} lights)",
+            SceneConfig.Meshes.size(),
+            InstanceCount,
+            SceneConfig.Lights.size());
 
         MainRenderer = std::make_unique<Renderer>();
         if (!MainRenderer->Initialize(
@@ -141,6 +174,11 @@ namespace ShadowEngine
 
         MainRenderer.reset();
         MainScene.reset();
+        if (Assets != nullptr)
+        {
+            Assets->Finalize();
+            Assets.reset();
+        }
         if (Shaders != nullptr)
         {
             Shaders->Finalize();

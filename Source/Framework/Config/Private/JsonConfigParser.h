@@ -29,5 +29,14 @@ namespace ShadowEngine
             static bool ValidateRHISetting(
                 const RenderSetting::RHISetting& Setting,
                 std::string* ErrorMessage = nullptr);
+
+            static bool LoadSceneSetting(
+                const std::filesystem::path& FilePath,
+                SceneSetting::Setting& Setting,
+                std::string* ErrorMessage = nullptr);
+
+            static bool ValidateSceneSetting(
+                const SceneSetting::Setting& Setting,
+                std::string* ErrorMessage = nullptr);
     };
 }
