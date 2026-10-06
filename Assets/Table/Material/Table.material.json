@@ -1,6 +1,11 @@
 {
     "type": "Material",
-    "shader": "Debug/Table.slang",
+    "shader": "BlinnPhong/BlinnPhongVertex.slang",
 
-    "parameters": {}
+    "parameters":
+    {
+        "BaseColor": [0.75, 0.72, 0.68],
+        "Roughness": 0.8,
+        "SpecularColor": [0.3, 0.3, 0.3]
+    }
 }

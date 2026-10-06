@@ -63,7 +63,9 @@ namespace ShadowEngine
 
         struct Light
         {
-            std::vector<float> Position;
+            std::vector<float> Direction;
+            std::vector<float> Color;
+            float Intensity = 0.0F;
         };
 
         struct Setting

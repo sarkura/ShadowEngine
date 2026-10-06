@@ -18,10 +18,11 @@ namespace ShadowEngine
     struct MeshVertex
     {
         float Position[3];
+        float Normal[3];
         float Color[3];
     };
 
-    static_assert(sizeof(MeshVertex) == 24);
+    static_assert(sizeof(MeshVertex) == 36);
 
     struct MeshSection
     {

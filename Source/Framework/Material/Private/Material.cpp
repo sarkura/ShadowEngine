@@ -92,6 +92,65 @@ namespace ShadowEngine
 
             return true;
         }
+
+        bool ReadVec3(
+            const rapidjson::Value& Object,
+            const char* Name,
+            float Out[3],
+            const std::filesystem::path& FilePath,
+            std::string* ErrorMessage)
+        {
+            const auto Found = Object.FindMember(Name);
+            if (Found == Object.MemberEnd() || !Found->value.IsArray() || Found->value.Size() != 3)
+            {
+                SetErrorMessage(
+                    ErrorMessage,
+                    std::string(Name) + " must contain 3 numbers: " + FilePath.generic_string());
+                return false;
+            }
+
+            for (rapidjson::SizeType Index = 0; Index < 3; ++Index)
+            {
+                if (!Found->value[Index].IsNumber())
+                {
+                    SetErrorMessage(
+                        ErrorMessage,
+                        std::string(Name) + " must contain 3 numbers: " + FilePath.generic_string());
+                    return false;
+                }
+                Out[Index] = Found->value[Index].GetFloat();
+            }
+
+            return true;
+        }
+
+        bool ReadUnitFloat(
+            const rapidjson::Value& Object,
+            const char* Name,
+            float& Out,
+            const std::filesystem::path& FilePath,
+            std::string* ErrorMessage)
+        {
+            const auto Found = Object.FindMember(Name);
+            if (Found == Object.MemberEnd() || !Found->value.IsNumber())
+            {
+                SetErrorMessage(
+                    ErrorMessage,
+                    std::string(Name) + " must be a number: " + FilePath.generic_string());
+                return false;
+            }
+
+            Out = Found->value.GetFloat();
+            if (Out < 0.0F || Out > 1.0F)
+            {
+                SetErrorMessage(
+                    ErrorMessage,
+                    std::string(Name) + " must be between 0 and 1: " + FilePath.generic_string());
+                return false;
+            }
+
+            return true;
+        }
     }
 
     bool LoadMaterialDescription(
@@ -132,18 +191,38 @@ namespace ShadowEngine
             return false;
         }
 
-        if (Parameters.MemberCount() != 0)
+        const char* const ParameterMembers[] = {"BaseColor", "Roughness", "SpecularColor"};
+        for (auto Member = Parameters.MemberBegin(); Member != Parameters.MemberEnd(); ++Member)
         {
-            const auto Member = Parameters.MemberBegin();
-            SetErrorMessage(
-                ErrorMessage,
-                "Material parameter '" + std::string(Member->name.GetString()) +
-                    "' is unsupported: " + FilePath.generic_string());
+            bool bKnown = false;
+            for (const char* Name : ParameterMembers)
+            {
+                if (Member->name == Name)
+                {
+                    bKnown = true;
+                    break;
+                }
+            }
+            if (!bKnown)
+            {
+                SetErrorMessage(
+                    ErrorMessage,
+                    "Material parameter '" + std::string(Member->name.GetString()) +
+                        "' is unsupported: " + FilePath.generic_string());
+                return false;
+            }
+        }
+
+        MaterialParameter Parsed;
+        if (!ReadVec3(Parameters, "BaseColor", Parsed.BaseColor, FilePath, ErrorMessage) ||
+            !ReadUnitFloat(Parameters, "Roughness", Parsed.Roughness, FilePath, ErrorMessage) ||
+            !ReadVec3(Parameters, "SpecularColor", Parsed.SpecularColor, FilePath, ErrorMessage))
+        {
             return false;
         }
 
         Description.ShaderPath = Shader.GetString();
-        Description.Parameter = MaterialParameter{};
+        Description.Parameter = Parsed;
         return true;
     }
 

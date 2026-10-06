@@ -2,13 +2,13 @@
 
 #include "Framework/Common/Public/NonCopyable.h"
 #include "Framework/Render/Public/Camera.h"
+#include "Framework/Render/Public/RenderProxy.h"
 #include "Framework/RHI/Public/RHIBuffer.h"
 #include "Framework/RHI/Public/RHICommandList.h"
 #include "Framework/RHI/Public/RHIPipeline.h"
 #include "Framework/RHI/Public/RHIShader.h"
 #include "Framework/RHI/Public/RHITexture.h"
 #include "Framework/RHI/Public/RHITypes.h"
-#include "Framework/Scene/Public/Scene.h"
 
 #include <memory>
 #include <string>
@@ -31,12 +31,12 @@ namespace ShadowEngine
                 RHIDevice& InDevice,
                 RHISwapChain& InSwapChain,
                 ShaderManager& Shaders,
-                const Scene& InScene,
+                const RenderProxy& InProxy,
                 const RHIColor& InClearColor,
                 std::string* ErrorMessage = nullptr);
             void Finalize();
 
-            bool RenderFrame(const Scene& InScene);
+            bool RenderFrame(const RenderProxy& InProxy);
             bool Resize(uint32 Width, uint32 Height, std::string* ErrorMessage = nullptr);
             void UpdateCamera(float DeltaTime, float Forward, float Right, float Up, float Yaw, float Pitch);
             void SetCameraMoveSpeed(float ForwardSpeed, float RightSpeed, float UpSpeed, float DownSpeed);

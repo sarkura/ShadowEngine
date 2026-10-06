@@ -4,6 +4,8 @@
 #include "Framework/Common/Public/Log.h"
 #include "Framework/Config/Public/ConfigManager.h"
 #include "Framework/Engine/Public/EngineModules.h"
+#include "Framework/Render/Public/RenderProxy.h"
+#include "Framework/Scene/Public/Light.h"
 #include "Framework/Scene/Public/Scene.h"
 
 namespace ShadowEngine
@@ -104,12 +106,22 @@ namespace ShadowEngine
             InstanceCount,
             SceneConfig.Lights.size());
 
+        for (const SceneSetting::Light& LightConfig : SceneConfig.Lights)
+        {
+            DirectLight& Light = MainScene->CreateDirectLight();
+            Light.SetDirection(LightConfig.Direction[0], LightConfig.Direction[1], LightConfig.Direction[2]);
+            Light.SetColor(LightConfig.Color[0], LightConfig.Color[1], LightConfig.Color[2]);
+            Light.SetIntensity(LightConfig.Intensity);
+        }
+
+        RenderProxy Proxy;
+        MainScene->WriteRenderProxy(Proxy);
         MainRenderer = std::make_unique<Renderer>();
         if (!MainRenderer->Initialize(
                 *Device,
                 *SwapChain,
                 *Shaders,
-                *MainScene,
+                Proxy,
                 ToClearColor(Viewport.BackgroundColor),
                 ErrorMessage))
         {
@@ -231,7 +243,9 @@ namespace ShadowEngine
         CameraYaw = 0.0F;
         CameraPitch = 0.0F;
 
-        if (!MainRenderer->RenderFrame(*MainScene))
+        RenderProxy Proxy;
+        MainScene->WriteRenderProxy(Proxy);
+        if (!MainRenderer->RenderFrame(Proxy))
         {
             Log::Error("Frame presentation failed, stopping rendering");
             bInitialized = false;

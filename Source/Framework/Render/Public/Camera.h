@@ -14,6 +14,7 @@ namespace ShadowEngine
             void AddLook(float YawDelta, float PitchDelta);
             void Move(float DeltaTime, float Forward, float Right, float Up);
             [[nodiscard]] glm::mat4 ViewMatrix() const;
+            [[nodiscard]] glm::vec3 GetPosition() const;
 
         private:
             [[nodiscard]] glm::vec3 ForwardDirection() const;

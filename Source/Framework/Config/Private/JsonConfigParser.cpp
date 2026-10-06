@@ -681,7 +681,9 @@ namespace ShadowEngine
             }
 
             SceneSetting::Light Light;
-            if (!ReadVec3(Item, "Position", Light.Position, ErrorMessage))
+            if (!ReadVec3(Item, "Direction", Light.Direction, ErrorMessage) ||
+                !ReadColor(Item, "Color", Light.Color, ErrorMessage) ||
+                !ReadFloat(Item, "Intensity", Light.Intensity, ErrorMessage))
             {
                 return false;
             }
@@ -730,9 +732,31 @@ namespace ShadowEngine
 
         for (const SceneSetting::Light& Light : Setting.Lights)
         {
-            if (Light.Position.size() != 3)
+            if (Light.Direction.size() != 3)
             {
-                SetError(ErrorMessage, "Light Position must contain 3 numbers");
+                SetError(ErrorMessage, "Light Direction must contain 3 numbers");
+                return false;
+            }
+
+            const float Length =
+                Light.Direction[0] * Light.Direction[0] +
+                Light.Direction[1] * Light.Direction[1] +
+                Light.Direction[2] * Light.Direction[2];
+            if (Length <= 0.0F)
+            {
+                SetError(ErrorMessage, "Light Direction cannot be zero");
+                return false;
+            }
+
+            if (Light.Color.size() != 3 && Light.Color.size() != 4)
+            {
+                SetError(ErrorMessage, "Light Color must contain 3 or 4 components");
+                return false;
+            }
+
+            if (Light.Intensity < 0.0F)
+            {
+                SetError(ErrorMessage, "Light Intensity cannot be negative");
                 return false;
             }
         }

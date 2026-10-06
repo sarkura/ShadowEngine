@@ -163,7 +163,7 @@ namespace ShadowEngine
         Parameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
         Parameter.Descriptor.ShaderRegister = 0;
         Parameter.Descriptor.RegisterSpace = 0;
-        Parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+        Parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
         D3D12_ROOT_SIGNATURE_DESC Desc{};
         Desc.NumParameters = 1;

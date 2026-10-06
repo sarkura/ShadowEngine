@@ -6,6 +6,11 @@
 
 #include <cgltf.h>
 
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/mat3x3.hpp>
+#include <glm/mat4x4.hpp>
+#include <glm/geometric.hpp>
+
 #include <fstream>
 #include <iterator>
 #include <sstream>
@@ -71,6 +76,55 @@ namespace ShadowEngine
             Out[2] = Matrix[2] * In[0] + Matrix[6] * In[1] + Matrix[10] * In[2] + Matrix[14];
         }
 
+        void TransformNormal(const cgltf_float* Matrix, const float In[3], float Out[3])
+        {
+            const glm::mat4 World = glm::make_mat4(Matrix);
+            const glm::mat3 NormalMatrix = glm::transpose(glm::inverse(glm::mat3(World)));
+            const glm::vec3 Normal = glm::normalize(NormalMatrix * glm::vec3(In[0], In[1], In[2]));
+            Out[0] = Normal.x;
+            Out[1] = Normal.y;
+            Out[2] = Normal.z;
+        }
+
+        void BuildMissingNormals(std::vector<MeshVertex>& Vertices, const std::vector<uint32>& Indices, uint32 BaseVertex)
+        {
+            for (size_t Index = 0; Index + 2 < Indices.size(); Index += 3)
+            {
+                const uint32 Index0 = Indices[Index];
+                const uint32 Index1 = Indices[Index + 1];
+                const uint32 Index2 = Indices[Index + 2];
+                if (Index0 < BaseVertex || Index1 < BaseVertex || Index2 < BaseVertex)
+                {
+                    continue;
+                }
+
+                const glm::vec3 Position0(Vertices[Index0].Position[0], Vertices[Index0].Position[1], Vertices[Index0].Position[2]);
+                const glm::vec3 Position1(Vertices[Index1].Position[0], Vertices[Index1].Position[1], Vertices[Index1].Position[2]);
+                const glm::vec3 Position2(Vertices[Index2].Position[0], Vertices[Index2].Position[1], Vertices[Index2].Position[2]);
+                const glm::vec3 Face = glm::cross(Position1 - Position0, Position2 - Position0);
+                Vertices[Index0].Normal[0] += Face.x;
+                Vertices[Index0].Normal[1] += Face.y;
+                Vertices[Index0].Normal[2] += Face.z;
+                Vertices[Index1].Normal[0] += Face.x;
+                Vertices[Index1].Normal[1] += Face.y;
+                Vertices[Index1].Normal[2] += Face.z;
+                Vertices[Index2].Normal[0] += Face.x;
+                Vertices[Index2].Normal[1] += Face.y;
+                Vertices[Index2].Normal[2] += Face.z;
+            }
+
+            for (size_t VertexIndex = BaseVertex; VertexIndex < Vertices.size(); ++VertexIndex)
+            {
+                MeshVertex& Vertex = Vertices[VertexIndex];
+                const glm::vec3 Normal(Vertex.Normal[0], Vertex.Normal[1], Vertex.Normal[2]);
+                const float Length = glm::length(Normal);
+                const glm::vec3 Unit = Length > 0.0001F ? Normal / Length : glm::vec3(0.0F, 1.0F, 0.0F);
+                Vertex.Normal[0] = Unit.x;
+                Vertex.Normal[1] = Unit.y;
+                Vertex.Normal[2] = Unit.z;
+            }
+        }
+
         bool AppendPrimitive(
             const cgltf_primitive& Primitive,
             const cgltf_float* World,
@@ -86,12 +140,17 @@ namespace ShadowEngine
             }
 
             const cgltf_accessor* Positions = nullptr;
+            const cgltf_accessor* Normals = nullptr;
             for (cgltf_size AttributeIndex = 0; AttributeIndex < Primitive.attributes_count; ++AttributeIndex)
             {
                 const cgltf_attribute& Attribute = Primitive.attributes[AttributeIndex];
                 if (Attribute.type == cgltf_attribute_type_position)
                 {
                     Positions = Attribute.data;
+                }
+                else if (Attribute.type == cgltf_attribute_type_normal)
+                {
+                    Normals = Attribute.data;
                 }
             }
 
@@ -114,6 +173,16 @@ namespace ShadowEngine
 
                 MeshVertex Vertex{};
                 TransformPoint(World, Position, Vertex.Position);
+                if (Normals != nullptr && Normals->type == cgltf_type_vec3)
+                {
+                    float Normal[3] = {};
+                    if (cgltf_accessor_read_float(Normals, VertexIndex, Normal, 3) == 0)
+                    {
+                        SetErrorMessage(ErrorMessage, "Unable to read mesh normals: " + SourcePath);
+                        return false;
+                    }
+                    TransformNormal(World, Normal, Vertex.Normal);
+                }
                 Vertex.Color[0] = Vertex.Position[0] * 0.5F + 0.5F;
                 Vertex.Color[1] = Vertex.Position[1] * 0.5F + 0.5F;
                 Vertex.Color[2] = Vertex.Position[2] * 0.5F + 0.5F;
@@ -127,14 +196,20 @@ namespace ShadowEngine
                 {
                     Indices.push_back(BaseVertex + static_cast<uint32>(Index));
                 }
-                return true;
+            }
+            else
+            {
+                Indices.reserve(Indices.size() + Primitive.indices->count);
+                for (cgltf_size Index = 0; Index < Primitive.indices->count; ++Index)
+                {
+                    const cgltf_size VertexIndex = cgltf_accessor_read_index(Primitive.indices, Index);
+                    Indices.push_back(BaseVertex + static_cast<uint32>(VertexIndex));
+                }
             }
 
-            Indices.reserve(Indices.size() + Primitive.indices->count);
-            for (cgltf_size Index = 0; Index < Primitive.indices->count; ++Index)
+            if (Normals == nullptr)
             {
-                const cgltf_size VertexIndex = cgltf_accessor_read_index(Primitive.indices, Index);
-                Indices.push_back(BaseVertex + static_cast<uint32>(VertexIndex));
+                BuildMissingNormals(Vertices, Indices, BaseVertex);
             }
 
             return true;

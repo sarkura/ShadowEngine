@@ -4,7 +4,6 @@
 #include "Framework/Common/Public/Log.h"
 #include "Framework/Material/Public/MaterialInstance.h"
 #include "Framework/RHI/Public/RHIDevice.h"
-#include "Framework/Scene/Public/Entity.h"
 #include "Framework/Shader/Public/ShaderManager.h"
 
 #include <glm/ext/matrix_clip_space.hpp>
@@ -24,12 +23,19 @@ namespace ShadowEngine
     {
         constexpr char VertexEntryPoint[] = "VertexMain";
         constexpr char PixelEntryPoint[] = "PixelMain";
-        constexpr uint32 ConstantAlignment = 256;
+        constexpr uint32 ConstantAlignment = 512;
 
         struct GpuObjectConstants
         {
             float ViewProjection[16];
             float World[16];
+            float NormalMatrix[16];
+            float CameraPosition[4];
+            float LightDirection[4];
+            float LightColor[4];
+            float BaseColor[4];
+            float SpecularColor[4];
+            float Roughness[4];
         };
 
         static_assert(sizeof(GpuObjectConstants) <= ConstantAlignment);
@@ -49,7 +55,7 @@ namespace ShadowEngine
         RHIDevice& InDevice,
         RHISwapChain& InSwapChain,
         ShaderManager& Shaders,
-        const Scene& InScene,
+        const RenderProxy& InProxy,
         const RHIColor& InClearColor,
         std::string* ErrorMessage)
     {
@@ -58,9 +64,9 @@ namespace ShadowEngine
         ClearColor = InClearColor;
 
         std::vector<const MeshAsset*> UniqueMeshes;
-        for (const Entity& Item : InScene.GetEntities())
+        for (const MeshRenderProxy& Proxy : InProxy.Meshes)
         {
-            const MeshAsset* Mesh = Item.GetMesh();
+            const MeshAsset* Mesh = Proxy.Mesh;
             if (Mesh == nullptr)
             {
                 continue;
@@ -95,8 +101,15 @@ namespace ShadowEngine
             }
         }
 
-        const uint32 EntityCount = static_cast<uint32>(InScene.GetEntities().size());
-        ConstantCapacity = EntityCount == 0 ? 1 : EntityCount;
+        uint32 DrawCount = 0;
+        for (const MeshRenderProxy& Proxy : InProxy.Meshes)
+        {
+            if (Proxy.Mesh != nullptr)
+            {
+                DrawCount += static_cast<uint32>(Proxy.Mesh->GetSections().size());
+            }
+        }
+        ConstantCapacity = DrawCount == 0 ? 1 : DrawCount;
         ConstantBuffer = InDevice.CreateConstantBuffer(ConstantCapacity * ConstantAlignment, ErrorMessage);
         if (ConstantBuffer == nullptr)
         {
@@ -218,7 +231,8 @@ namespace ShadowEngine
 
             constexpr RHIInputElement InputLayout[] = {
                 {"POSITION", 0, 0, ERHIVertexFormat::Float32x3},
-                {"COLOR", 0, 12, ERHIVertexFormat::Float32x3},
+                {"NORMAL", 0, 12, ERHIVertexFormat::Float32x3},
+                {"COLOR", 0, 24, ERHIVertexFormat::Float32x3},
             };
 
             RHIGraphicsPipelineDesc PipelineDesc;
@@ -272,7 +286,7 @@ namespace ShadowEngine
         ViewCamera.Move(DeltaTime, Forward, Right, Up);
     }
 
-    bool Renderer::RenderFrame(const Scene& InScene)
+    bool Renderer::RenderFrame(const RenderProxy& InProxy)
     {
         if (Device == nullptr || SwapChain == nullptr || CommandList == nullptr || ConstantBuffer == nullptr ||
             DepthBuffer == nullptr || MeshBatches.empty())
@@ -286,44 +300,106 @@ namespace ShadowEngine
         const glm::mat4 View = ViewCamera.ViewMatrix();
         const glm::mat4 Projection = glm::perspectiveRH_ZO(glm::radians(45.0F), Aspect, 0.1F, 100.0F);
         const glm::mat4 ViewProjection = Projection * View;
+        const glm::vec3 CameraPosition = ViewCamera.GetPosition();
 
-        const std::deque<Entity>& Entities = InScene.GetEntities();
-        if (Entities.size() > ConstantCapacity)
+        if (InProxy.Meshes.size() > ConstantCapacity)
         {
-            Log::Error("Scene has more entities than the constant buffer can hold");
+            Log::Error("Scene has more objects than the constant buffer can hold");
             return false;
         }
 
-        std::vector<uint8> Constants(Entities.size() * ConstantAlignment);
-        for (size_t Index = 0; Index < Entities.size(); ++Index)
+        struct Draw
         {
+            const MeshBatch* Batch = nullptr;
+            const MeshRenderProxy* Proxy = nullptr;
+            const MaterialParameter* Parameter = nullptr;
+        };
+
+        std::vector<Draw> Draws;
+        for (const MeshRenderProxy& Proxy : InProxy.Meshes)
+        {
+            if (Proxy.Mesh == nullptr)
+            {
+                Log::Error("Render proxy has no mesh");
+                return false;
+            }
+
+            std::vector<const MeshBatch*> SectionBatches;
+            for (const MeshBatch& Batch : MeshBatches)
+            {
+                if (Batch.Asset == Proxy.Mesh)
+                {
+                    SectionBatches.push_back(&Batch);
+                }
+            }
+
+            const std::vector<MeshSection>& Sections = Proxy.Mesh->GetSections();
+            if (SectionBatches.size() != Sections.size())
+            {
+                Log::Error("Render proxy mesh was not uploaded");
+                return false;
+            }
+
+            for (size_t SectionIndex = 0; SectionIndex < Sections.size(); ++SectionIndex)
+            {
+                const MaterialInstance* Material = Sections[SectionIndex].Material;
+                if (Material == nullptr)
+                {
+                    Log::Error("Render proxy section has no material");
+                    return false;
+                }
+
+                Draw Item;
+                Item.Batch = SectionBatches[SectionIndex];
+                Item.Proxy = &Proxy;
+                Item.Parameter = &Material->GetParameter();
+                Draws.push_back(Item);
+            }
+        }
+
+        if (Draws.size() > ConstantCapacity)
+        {
+            Log::Error("Scene has more objects than the constant buffer can hold");
+            return false;
+        }
+
+        DirectLightRenderProxy Light{};
+        if (!InProxy.DirectLights.empty())
+        {
+            Light = InProxy.DirectLights.front();
+        }
+
+        std::vector<uint8> Constants(Draws.size() * ConstantAlignment);
+        for (size_t Index = 0; Index < Draws.size(); ++Index)
+        {
+            const MaterialParameter& Parameter = *Draws[Index].Parameter;
             GpuObjectConstants Slot{};
             std::memcpy(Slot.ViewProjection, glm::value_ptr(ViewProjection), sizeof(Slot.ViewProjection));
-            Entities[Index].GetTransform().WriteWorldMatrix(Slot.World);
+            std::memcpy(Slot.World, Draws[Index].Proxy->World, sizeof(Slot.World));
+            std::memcpy(Slot.NormalMatrix, Draws[Index].Proxy->NormalMatrix, sizeof(Slot.NormalMatrix));
+            Slot.CameraPosition[0] = CameraPosition.x;
+            Slot.CameraPosition[1] = CameraPosition.y;
+            Slot.CameraPosition[2] = CameraPosition.z;
+            Slot.LightDirection[0] = Light.Direction[0];
+            Slot.LightDirection[1] = Light.Direction[1];
+            Slot.LightDirection[2] = Light.Direction[2];
+            Slot.LightColor[0] = Light.Color[0];
+            Slot.LightColor[1] = Light.Color[1];
+            Slot.LightColor[2] = Light.Color[2];
+            Slot.LightColor[3] = Light.Intensity;
+            Slot.BaseColor[0] = Parameter.BaseColor[0];
+            Slot.BaseColor[1] = Parameter.BaseColor[1];
+            Slot.BaseColor[2] = Parameter.BaseColor[2];
+            Slot.SpecularColor[0] = Parameter.SpecularColor[0];
+            Slot.SpecularColor[1] = Parameter.SpecularColor[1];
+            Slot.SpecularColor[2] = Parameter.SpecularColor[2];
+            Slot.Roughness[0] = Parameter.Roughness;
             std::memcpy(Constants.data() + Index * ConstantAlignment, &Slot, sizeof(Slot));
         }
         if (!Constants.empty() && !ConstantBuffer->Update(0, Constants))
         {
             Log::Error("Failed to write scene constants");
             return false;
-        }
-
-        for (const Entity& Item : Entities)
-        {
-            bool bFound = false;
-            for (const MeshBatch& Batch : MeshBatches)
-            {
-                if (Batch.Asset == Item.GetMesh())
-                {
-                    bFound = true;
-                    break;
-                }
-            }
-            if (!bFound)
-            {
-                Log::Error("Entity mesh was not uploaded");
-                return false;
-            }
         }
 
         CommandList->Begin();
@@ -334,22 +410,14 @@ namespace ShadowEngine
             0,
             static_cast<int32>(SwapChain->GetWidth()),
             static_cast<int32>(SwapChain->GetHeight())});
-        for (uint32 Index = 0; Index < static_cast<uint32>(Entities.size()); ++Index)
+        for (uint32 Index = 0; Index < static_cast<uint32>(Draws.size()); ++Index)
         {
-            const MeshAsset* Mesh = Entities[Index].GetMesh();
-            for (const MeshBatch& Batch : MeshBatches)
-            {
-                if (Batch.Asset != Mesh)
-                {
-                    continue;
-                }
-
-                CommandList->SetPipeline(*Batch.Pipeline);
-                CommandList->SetVertexBuffer(*Batch.VertexBuffer);
-                CommandList->SetIndexBuffer(*Batch.IndexBuffer);
-                CommandList->SetConstantBuffer(*ConstantBuffer, Index * ConstantAlignment);
-                CommandList->DrawIndexed(Batch.IndexCount);
-            }
+            const MeshBatch& Batch = *Draws[Index].Batch;
+            CommandList->SetPipeline(*Batch.Pipeline);
+            CommandList->SetVertexBuffer(*Batch.VertexBuffer);
+            CommandList->SetIndexBuffer(*Batch.IndexBuffer);
+            CommandList->SetConstantBuffer(*ConstantBuffer, Index * ConstantAlignment);
+            CommandList->DrawIndexed(Batch.IndexCount);
         }
         CommandList->EndRenderPass();
         CommandList->End();

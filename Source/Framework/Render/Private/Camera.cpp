@@ -63,4 +63,9 @@ namespace ShadowEngine
         const glm::vec3 Face = ForwardDirection();
         return glm::lookAtRH(Position, Position + Face, WorldUp);
     }
+
+    glm::vec3 Camera::GetPosition() const
+    {
+        return Position;
+    }
 }
