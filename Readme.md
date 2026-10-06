@@ -19,9 +19,10 @@ main                     registers the D3D12 RHI and the Slang shader compiler
  -> Engine               creates the RHI device selected in Renderer.json, then the swap chain
  -> ShaderManager        loads slang-compiler.dll
  -> AssetManager         loads each Scene.json mesh: .asset.json, its .material.json files, then the glTF source
- -> Scene                one entity per instance, each with its own transform
- -> Renderer             uploads one GPU batch per material slot, then the constant buffer and the depth buffer
- -> every frame          move the camera, write world matrices, draw each entity, present
+ -> Scene                one entity per instance, plus directional lights from Scene.json
+ -> Renderer             the scene writes a render proxy; the renderer uploads one GPU batch per material slot, then a 512-byte constant slot per draw and the depth buffer
+ -> every frame          move the camera, write the proxy, draw each material slot, present
+                         shaders are compiled from Shaders/ on this launch and kept in memory
                          the FPS number is drawn with Win32 GDI, outside the swap chain
 ```
 
@@ -56,11 +57,14 @@ The engine reads `Config/` relative to the working directory, so run it from the
 ## Layout
 
 ```text
-Assets/                  Mesh and material descriptions, plus glTF sources
-  Mesh/                  .asset.json and .glb
-  Material/              .material.json
+Assets/                  One folder per object
+  Cube/Mesh/             .asset.json and .glb
+  Cube/Material/         .material.json
 Config/                  Runtime configuration
-Shaders/                 Slang shader sources
+Shaders/                 Slang shader sources, compiled at runtime
+  Common/                Per-object data, vertex layout, Blinn-Phong surface parameters and constant buffer
+  Material/              Surface evaluation
+  BlinnPhong/            Blinn-Phong vertex and fragment lighting
 Source/
   Interface/             Contracts shared by every module
   Framework/             Backend-agnostic engine core
@@ -109,11 +113,11 @@ Contains everything that does not depend on a graphics API, a shader compiler, o
 - `Config` owns runtime settings. See [Config](#config).
 - `Engine` is the composition root. `EngineModules` is the registry where backends and the shader compiler register factories at startup, so `Framework` never names a concrete implementation. `Engine` creates the device, swap chain, shader manager, asset manager, scene and renderer. Each frame it updates the camera and ticks the renderer.
 - `Asset` loads mesh descriptions and tracks the resulting mesh assets in a registry. `Asset` is only a scene model. A `.asset.json` names the glTF source and one or more material slots. Each slot matches a glTF material index and becomes one mesh section.
-- `Scene` holds entities and transforms. `Scene.json` groups instances under a mesh description path. Each instance has translation, rotation and scale. Light entries are parsed and are not spawned.
-- `Material` describes a shader and its parameters. `Material` does not inherit `Asset`. A `.material.json` names the shader under `Shaders/` and holds a `parameters` object. Each mesh section keeps a `MaterialInstance`.
-- `Render` owns the renderer, the fly camera, render passes, and the render queue. `Renderer` uploads one batch per material slot, writes a 256-byte constant slot per entity, and draws with depth. Render passes and the render queue are still empty.
+- `Scene` holds entities, transforms, and directional lights. `Scene.json` groups instances under a mesh description path. Each instance has translation, rotation and scale. Each light has a direction, color, and intensity. The direction is the direction rays travel. `Scene::WriteRenderProxy` copies meshes and lights into a `RenderProxy` for the renderer.
+- `Material` describes a shader and its parameters. `Material` does not inherit `Asset`. A `.material.json` names the shader under `Shaders/` and holds `BaseColor`, `Roughness`, and `SpecularColor`. Each mesh section keeps a `MaterialInstance`.
+- `Render` owns the renderer, the fly camera, render passes, and the render queue. `Renderer` reads the render proxy, uploads one batch per material slot, writes a 512-byte constant slot per draw, and shades with the first directional light. Render passes and the render queue are still empty.
 - `RHI` declares the device, adapter, swap chain, command list, fence, texture, shader, pipeline, and buffer abstractions that backends implement. Vertex, index and constant buffers are in use. Sampler and descriptor abstractions are still empty.
-- `Shader` holds shader objects, reflection data, and the shader manager. It declares `IShaderCompiler` but does not compile shaders itself. `ShaderManager` asks the device which bytecode format it needs, compiles through `IShaderCompiler`, and creates the RHI shader.
+- `Shader` holds shader objects, reflection data, and the shader manager. It declares `IShaderCompiler` but does not compile shaders itself. `ShaderManager` asks the device which bytecode format it needs, compiles through `IShaderCompiler`, and creates the RHI shader. Compilation happens on every launch. The DXIL stays in memory for that process.
 - `UI` is still empty. The FPS number is drawn by `WindowsPlatform` with GDI.
 
 `BaseApplication` loads configuration before the selected platform continues initialization.
@@ -142,7 +146,7 @@ When `DebugLayer` is enabled, the backend enables the D3D12 debug layer and forw
 
 ### ShaderCompiler
 
-Compiles Slang shaders from `Shaders/`. It uses only the Slang headers and loads `slang-compiler.dll` at runtime. The engine therefore has no link-time dependency on Slang, and it can start without the Slang DLLs when shaders are precompiled.
+Compiles Slang shaders from `Shaders/` when a mesh is uploaded. It uses only the Slang headers and loads `slang-compiler.dll` at runtime, so the engine has no link-time dependency on Slang. There is no shader cache: each launch reads the `.slang` sources again, and the bytecode is not written to disk. The current material shader is `BlinnPhong/BlinnPhongVertex.slang`. It includes the fragment entry. `Shaders/Common` declares per-object data, the vertex layout, and the Blinn-Phong surface parameters. `Shaders/Material/BlinnPhongMaterial.slang` turns those parameters into a `BlinnPhongMaterialSample`. `Shaders/BlinnPhong` evaluates the lighting.
 
 The module implements `IShaderCompiler` and registers it with `RegisterSlangShaderCompiler()`. It resolves `slang_createGlobalSession` from the library and reaches everything else through Slang's COM interfaces. Each compile loads the module named after the file, finds the entry point for the requested stage, links it, and returns the bytecode. Slang diagnostics are included in the error message or logged as warnings.
 
@@ -161,7 +165,7 @@ Both modules supply the global application object consumed by Launch. Launch doe
 
 `WindowsApplication` uses the viewport configuration for the initial window client size and passes the window to the engine. Each tick it processes window messages first, measures the frame time, and renders only while the window is open. It forwards `WM_SIZE` to the engine and renders a frame for each one, so the image stays correct while the window is dragged. It ends the main loop when the window closes, and it releases the engine before destroying the window. `EmptyApplication` reports `Platform Unsupported` and then quits.
 
-The camera is a fly camera. It starts at `(0, 4, 14)`, looking at the origin. **W** and **S** move along the view, **A** and **D** strafe, and the mouse changes yaw and pitch. The cursor is captured when the window opens. **Esc** releases it, and a click in the window captures it again. **U** shows or hides the FPS number in the top-left corner. That number is drawn with `DrawText` into a layered window, so it stays above the flip-model swap chain.
+The camera is a fly camera. It starts at `(0, 4, 14)`, looking at the origin. **W** and **S** move along the view, **A** and **D** strafe, **Q** moves up along world Y, and **E** moves down. The mouse changes yaw and pitch. Speeds come from `MovementSetting` in `Engine.json`. The cursor is captured when the window opens. **Esc** releases it, and a click in the window captures it again. **U** shows or hides the FPS number in the top-left corner. That number is drawn with `DrawText` into a layered window, so it stays above the flip-model swap chain.
 
 ### Launch
 
@@ -173,9 +177,9 @@ Owns the process entry point. It initializes the application, ticks it until it 
 
 | File | Contents |
 | --- | --- |
-| `Engine.json` | `ViewportSetting`: resolution, aspect ratio, field of view, clip planes, background color, and clear mode |
+| `Engine.json` | `ViewportSetting`: resolution, aspect ratio, field of view, clip planes, background color, and clear mode. `MovementSetting`: forward, right, up, down, yaw, and pitch speeds |
 | `Renderer.json` | `RHISetting`: backend name (`D3D12`), VSync, debug layer, and back buffer count (2 to 8) |
-| `Scene.json` | Scene meshes and lights. Each mesh key is an `.asset.json` path. Each instance stores translation, rotation in radians as pitch, yaw and roll, and scale |
+| `Scene.json` | Scene meshes and directional lights. Each mesh key is an `.asset.json` path. Each instance stores translation, rotation in radians as pitch, yaw and roll, and scale. Each light stores direction, color, and intensity |
 
 `JsonConfigParser` reads these files and validates them before they enter `ConfigManager`. `ConfigManager` is the single store for settings. Later changes, including changes from a UI, go through it rather than through another copy of the settings.
 
