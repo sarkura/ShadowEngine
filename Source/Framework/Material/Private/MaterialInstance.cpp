@@ -4,28 +4,19 @@
 
 namespace ShadowEngine
 {
-    MaterialInstance::MaterialInstance(
-        const Material& InMaterial,
-        std::filesystem::path InDescriptionPath,
-        MaterialParameter InParameter)
-        : Parent(&InMaterial)
-        , DescriptionPath(std::move(InDescriptionPath))
-        , Parameter(std::move(InParameter))
+    MaterialInstance::MaterialInstance(MaterialHandle InBaseMaterial, MaterialParameterBlock InParameters)
+        : BaseMaterial(InBaseMaterial)
+        , Parameters(std::move(InParameters))
     {
     }
 
-    const Material& MaterialInstance::GetMaterial() const
+    MaterialHandle MaterialInstance::GetBaseMaterial() const
     {
-        return *Parent;
+        return BaseMaterial;
     }
 
-    const std::filesystem::path& MaterialInstance::GetDescriptionPath() const
+    const MaterialParameterBlock& MaterialInstance::GetParameters() const
     {
-        return DescriptionPath;
-    }
-
-    const MaterialParameter& MaterialInstance::GetParameter() const
-    {
-        return Parameter;
+        return Parameters;
     }
 }

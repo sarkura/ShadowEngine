@@ -2,6 +2,7 @@
 
 #include "Framework/Common/Public/Log.h"
 #include "RHI/Direct3D12/Public/D3D12Buffer.h"
+#include "RHI/Direct3D12/Public/D3D12Descriptor.h"
 #include "RHI/Direct3D12/Public/D3D12Pipeline.h"
 #include "RHI/Direct3D12/Public/D3D12Texture.h"
 
@@ -116,6 +117,15 @@ namespace ShadowEngine
         const D3D12_GPU_VIRTUAL_ADDRESS Address =
             static_cast<D3D12Buffer&>(Buffer).GetGPUVirtualAddress() + Offset;
         CommandList->SetGraphicsRootConstantBufferView(0, Address);
+    }
+
+    void D3D12CommandList::SetMaterialBinding(RHIMaterialBinding& Binding)
+    {
+        auto& MaterialBinding = static_cast<D3D12MaterialBinding&>(Binding);
+        ID3D12DescriptorHeap* Heaps[] = {MaterialBinding.GetSrvHeap(), MaterialBinding.GetSamplerHeap()};
+        CommandList->SetDescriptorHeaps(2, Heaps);
+        CommandList->SetGraphicsRootDescriptorTable(1, MaterialBinding.GetSrvGpu());
+        CommandList->SetGraphicsRootDescriptorTable(2, MaterialBinding.GetSamplerGpu());
     }
 
     void D3D12CommandList::SetViewport(const RHIViewport& Viewport)

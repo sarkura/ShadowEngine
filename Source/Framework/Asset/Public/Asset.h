@@ -4,31 +4,14 @@
 #include "Framework/Common/Public/Types.h"
 
 #include <filesystem>
-#include <vector>
 
 namespace ShadowEngine
 {
-    class MaterialInstance;
-
     enum class EAssetType : uint8
     {
         Mesh,
-    };
-
-    struct MeshVertex
-    {
-        float Position[3];
-        float Normal[3];
-        float Color[3];
-    };
-
-    static_assert(sizeof(MeshVertex) == 36);
-
-    struct MeshSection
-    {
-        std::vector<MeshVertex> Vertices;
-        std::vector<uint32> Indices;
-        const MaterialInstance* Material = nullptr;
+        Texture,
+        Material,
     };
 
     class Asset : public NonCopyable
@@ -45,16 +28,5 @@ namespace ShadowEngine
         private:
             EAssetType Type;
             std::filesystem::path Path;
-    };
-
-    class MeshAsset final : public Asset
-    {
-        public:
-            MeshAsset(std::filesystem::path InPath, std::vector<MeshSection> InSections);
-
-            [[nodiscard]] const std::vector<MeshSection>& GetSections() const;
-
-        private:
-            std::vector<MeshSection> Sections;
     };
 }

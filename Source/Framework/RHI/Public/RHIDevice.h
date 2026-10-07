@@ -6,6 +6,8 @@
 #include "Framework/RHI/Public/RHICommandList.h"
 #include "Framework/RHI/Public/RHIDefinitions.h"
 #include "Framework/RHI/Public/RHIPipeline.h"
+#include "Framework/RHI/Public/RHIDescriptor.h"
+#include "Framework/RHI/Public/RHISampler.h"
 #include "Framework/RHI/Public/RHIShader.h"
 #include "Framework/RHI/Public/RHISwapChain.h"
 #include "Framework/RHI/Public/RHITexture.h"
@@ -56,6 +58,17 @@ namespace ShadowEngine
             virtual std::unique_ptr<RHITexture> CreateDepthTexture(
                 uint32 Width,
                 uint32 Height,
+                std::string* ErrorMessage = nullptr) = 0;
+
+            virtual std::unique_ptr<RHITexture> CreateTexture(
+                const RHITextureDesc& Desc,
+                std::string* ErrorMessage = nullptr) = 0;
+
+            virtual std::unique_ptr<RHISampler> CreateSampler(
+                std::string* ErrorMessage = nullptr) = 0;
+
+            virtual std::unique_ptr<RHIMaterialBinding> CreateMaterialBinding(
+                const RHIMaterialBindingDesc& Desc,
                 std::string* ErrorMessage = nullptr) = 0;
 
             virtual std::unique_ptr<RHICommandList> CreateCommandList(

@@ -1,32 +1,21 @@
 #pragma once
 
 #include "Framework/Common/Public/NonCopyable.h"
-#include "Framework/Material/Public/MaterialParameter.h"
-
-#include <filesystem>
-#include <string>
+#include "Framework/Material/Public/MaterialParameterLayout.h"
+#include "Framework/Shader/Public/ShaderHandle.h"
 
 namespace ShadowEngine
 {
-    struct MaterialDescription
-    {
-        std::filesystem::path ShaderPath;
-        MaterialParameter Parameter;
-    };
-
-    [[nodiscard]] bool LoadMaterialDescription(
-        const std::filesystem::path& FilePath,
-        MaterialDescription& Description,
-        std::string* ErrorMessage = nullptr);
-
     class Material final : public NonCopyable
     {
         public:
-            explicit Material(std::filesystem::path InShaderPath);
+            Material(ShaderHandle InShader, MaterialParameterLayout InLayout);
 
-            [[nodiscard]] const std::filesystem::path& GetShaderPath() const;
+            [[nodiscard]] const ShaderHandle& GetShader() const;
+            [[nodiscard]] const MaterialParameterLayout& GetLayout() const;
 
         private:
-            std::filesystem::path ShaderPath;
+            ShaderHandle Shader;
+            MaterialParameterLayout Layout;
     };
 }

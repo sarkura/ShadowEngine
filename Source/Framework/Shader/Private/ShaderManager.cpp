@@ -43,11 +43,77 @@ namespace ShadowEngine
 
     void ShaderManager::Finalize()
     {
+        Records.clear();
         if (Compiler != nullptr)
         {
             Compiler->Finalize();
             Compiler.reset();
         }
+    }
+
+    ShaderHandle ShaderManager::Register(const std::filesystem::path& RelativePath)
+    {
+        const std::string Key = RelativePath.generic_string();
+        for (uint32 Index = 0; Index < Records.size(); ++Index)
+        {
+            if (Records[Index].Path.generic_string() == Key)
+            {
+                ShaderHandle Handle;
+                Handle.Index = Index;
+                return Handle;
+            }
+        }
+
+        ShaderRecord Record;
+        Record.Path = RelativePath;
+        Records.push_back(std::move(Record));
+        ShaderHandle Handle;
+        Handle.Index = static_cast<uint32>(Records.size() - 1);
+        return Handle;
+    }
+
+    bool ShaderManager::LoadShaders(RHIDevice& Device, ShaderHandle Handle, std::string* ErrorMessage)
+    {
+        if (!Handle.IsValid() || Handle.Index >= Records.size())
+        {
+            SetErrorMessage(ErrorMessage, "Shader handle is invalid");
+            return false;
+        }
+
+        ShaderRecord& Record = Records[Handle.Index];
+        if (Record.VertexShader != nullptr && Record.PixelShader != nullptr)
+        {
+            return true;
+        }
+
+        Record.VertexShader = LoadShader(Device, Record.Path, "VertexMain", ERHIShaderStage::Vertex, ErrorMessage);
+        if (Record.VertexShader == nullptr)
+        {
+            return false;
+        }
+
+        Record.PixelShader = LoadShader(Device, Record.Path, "PixelMain", ERHIShaderStage::Pixel, ErrorMessage);
+        return Record.PixelShader != nullptr;
+    }
+
+    RHIShader* ShaderManager::GetVertexShader(ShaderHandle Handle) const
+    {
+        if (!Handle.IsValid() || Handle.Index >= Records.size())
+        {
+            return nullptr;
+        }
+
+        return Records[Handle.Index].VertexShader.get();
+    }
+
+    RHIShader* ShaderManager::GetPixelShader(ShaderHandle Handle) const
+    {
+        if (!Handle.IsValid() || Handle.Index >= Records.size())
+        {
+            return nullptr;
+        }
+
+        return Records[Handle.Index].PixelShader.get();
     }
 
     std::unique_ptr<RHIShader> ShaderManager::LoadShader(

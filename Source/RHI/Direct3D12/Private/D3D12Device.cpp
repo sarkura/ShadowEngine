@@ -3,7 +3,9 @@
 #include "Framework/Common/Public/Log.h"
 #include "RHI/Direct3D12/Public/D3D12Buffer.h"
 #include "RHI/Direct3D12/Public/D3D12CommandList.h"
+#include "RHI/Direct3D12/Public/D3D12Descriptor.h"
 #include "RHI/Direct3D12/Public/D3D12Pipeline.h"
+#include "RHI/Direct3D12/Public/D3D12Sampler.h"
 #include "RHI/Direct3D12/Public/D3D12Shader.h"
 #include "RHI/Direct3D12/Public/D3D12Texture.h"
 #include "RHI/Direct3D12/Public/D3D12SwapChain.h"
@@ -222,6 +224,48 @@ namespace ShadowEngine
         std::string* ErrorMessage)
     {
         return D3D12Texture::CreateDepth(Device.Get(), Width, Height, ErrorMessage);
+    }
+
+    std::unique_ptr<RHITexture> D3D12Device::CreateTexture(
+        const RHITextureDesc& Desc,
+        std::string* ErrorMessage)
+    {
+        if (Fence == nullptr)
+        {
+            SetErrorMessage(ErrorMessage, "Texture upload requires an initialized device");
+            return nullptr;
+        }
+
+        return D3D12Texture::CreateSampled(Device.Get(), Queue.Get(), *Fence, Desc, ErrorMessage);
+    }
+
+    std::unique_ptr<RHISampler> D3D12Device::CreateSampler(std::string* ErrorMessage)
+    {
+        return D3D12Sampler::Create(Device.Get(), ErrorMessage);
+    }
+
+    std::unique_ptr<RHIMaterialBinding> D3D12Device::CreateMaterialBinding(
+        const RHIMaterialBindingDesc& Desc,
+        std::string* ErrorMessage)
+    {
+        if (Desc.BaseColor == nullptr || Desc.Roughness == nullptr || Desc.Sampler == nullptr)
+        {
+            SetErrorMessage(ErrorMessage, "Material binding requires a base color texture, a roughness texture, and a sampler");
+            return nullptr;
+        }
+
+        auto Binding = std::make_unique<D3D12MaterialBinding>();
+        if (!Binding->Initialize(
+                Device.Get(),
+                static_cast<D3D12Texture&>(*Desc.BaseColor),
+                static_cast<D3D12Texture&>(*Desc.Roughness),
+                static_cast<D3D12Sampler&>(*Desc.Sampler),
+                ErrorMessage))
+        {
+            return nullptr;
+        }
+
+        return Binding;
     }
 
     std::unique_ptr<RHICommandList> D3D12Device::CreateCommandList(std::string* ErrorMessage)

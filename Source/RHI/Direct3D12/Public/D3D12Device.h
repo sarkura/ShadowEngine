@@ -54,6 +54,17 @@ namespace ShadowEngine
                 uint32 Height,
                 std::string* ErrorMessage = nullptr) override;
 
+            std::unique_ptr<RHITexture> CreateTexture(
+                const RHITextureDesc& Desc,
+                std::string* ErrorMessage = nullptr) override;
+
+            std::unique_ptr<RHISampler> CreateSampler(
+                std::string* ErrorMessage = nullptr) override;
+
+            std::unique_ptr<RHIMaterialBinding> CreateMaterialBinding(
+                const RHIMaterialBindingDesc& Desc,
+                std::string* ErrorMessage = nullptr) override;
+
             std::unique_ptr<RHICommandList> CreateCommandList(
                 std::string* ErrorMessage = nullptr) override;
 

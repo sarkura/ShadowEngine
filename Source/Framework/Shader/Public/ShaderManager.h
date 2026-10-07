@@ -3,11 +3,13 @@
 #include "Framework/Common/Public/NonCopyable.h"
 #include "Framework/RHI/Public/RHIShader.h"
 #include "Framework/Shader/Public/IShaderCompiler.h"
+#include "Framework/Shader/Public/ShaderHandle.h"
 
 #include <filesystem>
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace ShadowEngine
 {
@@ -25,15 +27,33 @@ namespace ShadowEngine
                 std::string* ErrorMessage = nullptr);
             void Finalize();
 
+            [[nodiscard]] ShaderHandle Register(const std::filesystem::path& RelativePath);
+
+            bool LoadShaders(
+                RHIDevice& Device,
+                ShaderHandle Handle,
+                std::string* ErrorMessage = nullptr);
+
+            [[nodiscard]] RHIShader* GetVertexShader(ShaderHandle Handle) const;
+            [[nodiscard]] RHIShader* GetPixelShader(ShaderHandle Handle) const;
+
+        private:
             std::unique_ptr<RHIShader> LoadShader(
                 RHIDevice& Device,
                 const std::filesystem::path& RelativePath,
                 std::string_view EntryPoint,
                 ERHIShaderStage Stage,
-                std::string* ErrorMessage = nullptr);
+                std::string* ErrorMessage);
 
-        private:
+            struct ShaderRecord
+            {
+                std::filesystem::path Path;
+                std::unique_ptr<RHIShader> VertexShader;
+                std::unique_ptr<RHIShader> PixelShader;
+            };
+
             std::unique_ptr<IShaderCompiler> Compiler;
             std::filesystem::path ShaderDirectory;
+            std::vector<ShaderRecord> Records;
     };
 }

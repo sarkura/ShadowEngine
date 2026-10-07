@@ -9,7 +9,6 @@ VertexOutput VertexMain(VertexInput Input)
     Output.WorldPosition = WorldPosition.xyz;
     Output.WorldNormal = mul((float3x3)PerObject.NormalMatrix, Input.Normal);
     Output.Color = Input.Color;
+    Output.TexCoord = Input.TexCoord;
     return Output;
 }
-
-#include "BlinnPhongFragment.slang"

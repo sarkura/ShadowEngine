@@ -1,5 +1,9 @@
 #include "Framework/Asset/Public/AssetRegistry.h"
 
+#include "Framework/Asset/Public/MaterialAsset.h"
+#include "Framework/Asset/Public/MeshAsset.h"
+#include "Framework/Asset/Public/TextureAsset.h"
+
 namespace ShadowEngine
 {
     bool AssetRegistry::Register(std::unique_ptr<Asset> InAsset)
@@ -44,5 +48,27 @@ namespace ShadowEngine
         }
 
         return static_cast<const MeshAsset*>(Found);
+    }
+
+    const TextureAsset* AssetRegistry::FindTexture(const std::filesystem::path& Path) const
+    {
+        const Asset* Found = Find(Path);
+        if (Found == nullptr || Found->GetType() != EAssetType::Texture)
+        {
+            return nullptr;
+        }
+
+        return static_cast<const TextureAsset*>(Found);
+    }
+
+    const MaterialAsset* AssetRegistry::FindMaterial(const std::filesystem::path& Path) const
+    {
+        const Asset* Found = Find(Path);
+        if (Found == nullptr || Found->GetType() != EAssetType::Material)
+        {
+            return nullptr;
+        }
+
+        return static_cast<const MaterialAsset*>(Found);
     }
 }

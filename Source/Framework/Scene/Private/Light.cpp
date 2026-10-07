@@ -32,14 +32,22 @@ namespace ShadowEngine
         Intensity = InIntensity;
     }
 
-    void DirectLight::Write(DirectLightRenderProxy& Out) const
+    void DirectLight::GetDirection(float Out[3]) const
     {
-        Out.Direction[0] = DirectionX;
-        Out.Direction[1] = DirectionY;
-        Out.Direction[2] = DirectionZ;
-        Out.Color[0] = ColorR;
-        Out.Color[1] = ColorG;
-        Out.Color[2] = ColorB;
-        Out.Intensity = Intensity;
+        Out[0] = DirectionX;
+        Out[1] = DirectionY;
+        Out[2] = DirectionZ;
+    }
+
+    void DirectLight::GetColor(float Out[3]) const
+    {
+        Out[0] = ColorR;
+        Out[1] = ColorG;
+        Out[2] = ColorB;
+    }
+
+    float DirectLight::GetIntensity() const
+    {
+        return Intensity;
     }
 }

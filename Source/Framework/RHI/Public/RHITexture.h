@@ -12,6 +12,7 @@ namespace ShadowEngine
 
             [[nodiscard]] virtual uint32 GetWidth() const = 0;
             [[nodiscard]] virtual uint32 GetHeight() const = 0;
+            [[nodiscard]] virtual uint32 GetMipCount() const = 0;
             [[nodiscard]] virtual ERHIFormat GetFormat() const = 0;
     };
 }

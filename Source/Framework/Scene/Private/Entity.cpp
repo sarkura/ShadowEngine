@@ -1,15 +1,23 @@
 #include "Framework/Scene/Public/Entity.h"
 
+#include <utility>
+
 namespace ShadowEngine
 {
-    void Entity::SetMesh(const MeshAsset* InMesh)
+    void Entity::SetMesh(MeshHandle InMesh, std::vector<MaterialInstanceHandle> InMaterials)
     {
         Mesh = InMesh;
+        Materials = std::move(InMaterials);
     }
 
-    const MeshAsset* Entity::GetMesh() const
+    MeshHandle Entity::GetMesh() const
     {
         return Mesh;
+    }
+
+    const std::vector<MaterialInstanceHandle>& Entity::GetMaterials() const
+    {
+        return Materials;
     }
 
     Transform& Entity::GetTransform()

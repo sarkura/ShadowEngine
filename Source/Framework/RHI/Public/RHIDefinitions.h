@@ -7,7 +7,9 @@
 
 namespace ShadowEngine
 {
+    class RHISampler;
     class RHIShader;
+    class RHITexture;
 
     struct RHIDeviceDesc
     {
@@ -35,6 +37,27 @@ namespace ShadowEngine
     {
         uint32 Stride = 0;
         std::span<const uint8> Data;
+    };
+
+    struct RHITextureMipDesc
+    {
+        uint32 Width = 0;
+        uint32 Height = 0;
+        const uint8* Pixels = nullptr;
+        uint32 Size = 0;
+    };
+
+    struct RHITextureDesc
+    {
+        ERHIFormat Format = ERHIFormat::R8G8B8A8_UNorm;
+        std::span<const RHITextureMipDesc> Mips;
+    };
+
+    struct RHIMaterialBindingDesc
+    {
+        RHITexture* BaseColor = nullptr;
+        RHITexture* Roughness = nullptr;
+        RHISampler* Sampler = nullptr;
     };
 
     struct RHIInputElement

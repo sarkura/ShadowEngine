@@ -1,8 +1,15 @@
 #include "Framework/Asset/Public/AssetManager.h"
 
+#include "Framework/Asset/Public/MaterialAsset.h"
+#include "Framework/Asset/Public/TextureAsset.h"
 #include "Framework/Common/Public/Log.h"
+#include "Framework/Config/Public/DescriptionParser.h"
+#include "Framework/Shader/Public/ShaderManager.h"
 #include "Framework/Material/Public/Material.h"
 #include "Framework/Material/Public/MaterialInstance.h"
+#include "Framework/Material/Public/MaterialParameter.h"
+
+#include <stb_image.h>
 
 #include <cgltf.h>
 
@@ -11,15 +18,9 @@
 #include <glm/mat4x4.hpp>
 #include <glm/geometric.hpp>
 
-#include <fstream>
-#include <iterator>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
-
-#include <rapidjson/document.h>
-#include <rapidjson/error/en.h>
 
 namespace ShadowEngine
 {
@@ -131,6 +132,7 @@ namespace ShadowEngine
             const std::string& SourcePath,
             std::vector<MeshVertex>& Vertices,
             std::vector<uint32>& Indices,
+            bool bRequireTexCoord,
             std::string* ErrorMessage)
         {
             if (Primitive.type != cgltf_primitive_type_triangles)
@@ -141,6 +143,7 @@ namespace ShadowEngine
 
             const cgltf_accessor* Positions = nullptr;
             const cgltf_accessor* Normals = nullptr;
+            const cgltf_accessor* TexCoords = nullptr;
             for (cgltf_size AttributeIndex = 0; AttributeIndex < Primitive.attributes_count; ++AttributeIndex)
             {
                 const cgltf_attribute& Attribute = Primitive.attributes[AttributeIndex];
@@ -152,11 +155,21 @@ namespace ShadowEngine
                 {
                     Normals = Attribute.data;
                 }
+                else if (Attribute.type == cgltf_attribute_type_texcoord && Attribute.index == 0)
+                {
+                    TexCoords = Attribute.data;
+                }
             }
 
             if (Positions == nullptr || Positions->type != cgltf_type_vec3)
             {
                 SetErrorMessage(ErrorMessage, "Mesh is missing positions: " + SourcePath);
+                return false;
+            }
+
+            if (bRequireTexCoord && (TexCoords == nullptr || TexCoords->type != cgltf_type_vec2))
+            {
+                SetErrorMessage(ErrorMessage, "Mesh is missing texture coordinates: " + SourcePath);
                 return false;
             }
 
@@ -186,6 +199,17 @@ namespace ShadowEngine
                 Vertex.Color[0] = Vertex.Position[0] * 0.5F + 0.5F;
                 Vertex.Color[1] = Vertex.Position[1] * 0.5F + 0.5F;
                 Vertex.Color[2] = Vertex.Position[2] * 0.5F + 0.5F;
+                if (TexCoords != nullptr && TexCoords->type == cgltf_type_vec2)
+                {
+                    float TexCoord[2] = {};
+                    if (cgltf_accessor_read_float(TexCoords, VertexIndex, TexCoord, 2) == 0)
+                    {
+                        SetErrorMessage(ErrorMessage, "Unable to read mesh texture coordinates: " + SourcePath);
+                        return false;
+                    }
+                    Vertex.TexCoord[0] = TexCoord[0];
+                    Vertex.TexCoord[1] = TexCoord[1];
+                }
                 Vertices.push_back(Vertex);
             }
 
@@ -219,7 +243,8 @@ namespace ShadowEngine
         {
             uint32 Slot = 0;
             std::string MaterialPath;
-            const MaterialInstance* Material = nullptr;
+            MaterialInstanceHandle Material;
+            bool bRequireTexCoord = false;
             std::vector<MeshVertex> Vertices;
             std::vector<uint32> Indices;
         };
@@ -290,7 +315,14 @@ namespace ShadowEngine
                         return false;
                     }
 
-                    if (!AppendPrimitive(Primitive, World, SourcePath, Block->Vertices, Block->Indices, ErrorMessage))
+                    if (!AppendPrimitive(
+                            Primitive,
+                            World,
+                            SourcePath,
+                            Block->Vertices,
+                            Block->Indices,
+                            Block->bRequireTexCoord,
+                            ErrorMessage))
                     {
                         return false;
                     }
@@ -308,173 +340,6 @@ namespace ShadowEngine
             return true;
         }
 
-        bool ReadJsonObject(
-            const std::filesystem::path& FilePath,
-            const char* Kind,
-            rapidjson::Document& Document,
-            std::string* ErrorMessage)
-        {
-            std::ifstream File(FilePath, std::ios::binary);
-            if (!File)
-            {
-                SetErrorMessage(ErrorMessage, std::string("Unable to open ") + Kind + ": " + FilePath.generic_string());
-                return false;
-            }
-
-            const std::string Json{
-                std::istreambuf_iterator<char>(File),
-                std::istreambuf_iterator<char>()};
-
-            Document.Parse(Json.data(), Json.size());
-            if (Document.HasParseError())
-            {
-                std::ostringstream Message;
-                Message << "Invalid JSON in " << FilePath.generic_string()
-                        << " at offset " << Document.GetErrorOffset() << ": "
-                        << rapidjson::GetParseError_En(Document.GetParseError());
-                SetErrorMessage(ErrorMessage, Message.str());
-                return false;
-            }
-
-            if (!Document.IsObject())
-            {
-                SetErrorMessage(
-                    ErrorMessage,
-                    std::string(Kind) + " must be an object: " + FilePath.generic_string());
-                return false;
-            }
-
-            return true;
-        }
-
-        bool RequireMembers(
-            const rapidjson::Value& Object,
-            const std::filesystem::path& FilePath,
-            const char* Kind,
-            const char* const* Names,
-            size_t NameCount,
-            std::string* ErrorMessage)
-        {
-            for (auto Member = Object.MemberBegin(); Member != Object.MemberEnd(); ++Member)
-            {
-                bool bKnown = false;
-                for (size_t Index = 0; Index < NameCount; ++Index)
-                {
-                    if (Member->name == Names[Index])
-                    {
-                        bKnown = true;
-                        break;
-                    }
-                }
-                if (!bKnown)
-                {
-                    SetErrorMessage(
-                        ErrorMessage,
-                        std::string(Kind) + " has unsupported member '" + Member->name.GetString() +
-                            "': " + FilePath.generic_string());
-                    return false;
-                }
-            }
-
-            for (size_t Index = 0; Index < NameCount; ++Index)
-            {
-                if (!Object.HasMember(Names[Index]))
-                {
-                    SetErrorMessage(
-                        ErrorMessage,
-                        std::string(Kind) + " is missing '" + Names[Index] + "': " + FilePath.generic_string());
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        bool ReadMeshDescription(
-            const std::filesystem::path& FilePath,
-            std::filesystem::path& SourcePath,
-            std::vector<MeshBlock>& Blocks,
-            std::string* ErrorMessage)
-        {
-            rapidjson::Document Document;
-            if (!ReadJsonObject(FilePath, "Mesh description", Document, ErrorMessage))
-            {
-                return false;
-            }
-
-            const char* const Members[] = {"type", "source", "materials"};
-            if (!RequireMembers(Document, FilePath, "Mesh description", Members, 3, ErrorMessage))
-            {
-                return false;
-            }
-
-            const rapidjson::Value& Type = Document["type"];
-            if (!Type.IsString() || std::string(Type.GetString()) != "Mesh")
-            {
-                SetErrorMessage(ErrorMessage, "Mesh description type must be Mesh: " + FilePath.generic_string());
-                return false;
-            }
-
-            const rapidjson::Value& Source = Document["source"];
-            if (!Source.IsString() || Source.GetStringLength() == 0)
-            {
-                SetErrorMessage(ErrorMessage, "Mesh description source must be a path: " + FilePath.generic_string());
-                return false;
-            }
-
-            const rapidjson::Value& Materials = Document["materials"];
-            if (!Materials.IsArray() || Materials.Empty())
-            {
-                SetErrorMessage(ErrorMessage, "Mesh description materials must be a non-empty array: " + FilePath.generic_string());
-                return false;
-            }
-
-            const char* const SlotMembers[] = {"slot", "material"};
-            Blocks.clear();
-            Blocks.reserve(Materials.Size());
-            for (rapidjson::SizeType Index = 0; Index < Materials.Size(); ++Index)
-            {
-                const rapidjson::Value& Entry = Materials[Index];
-                if (!Entry.IsObject())
-                {
-                    SetErrorMessage(ErrorMessage, "Mesh material entry must be an object: " + FilePath.generic_string());
-                    return false;
-                }
-
-                if (!RequireMembers(Entry, FilePath, "Mesh material entry", SlotMembers, 2, ErrorMessage))
-                {
-                    return false;
-                }
-
-                const rapidjson::Value& Slot = Entry["slot"];
-                const rapidjson::Value& Material = Entry["material"];
-                if (!Slot.IsUint())
-                {
-                    SetErrorMessage(ErrorMessage, "Mesh material slot must be an unsigned integer: " + FilePath.generic_string());
-                    return false;
-                }
-                if (!Material.IsString() || Material.GetStringLength() == 0)
-                {
-                    SetErrorMessage(ErrorMessage, "Mesh material path is empty: " + FilePath.generic_string());
-                    return false;
-                }
-                if (FindBlock(Blocks, Slot.GetUint()) != nullptr)
-                {
-                    SetErrorMessage(
-                        ErrorMessage,
-                        "Mesh material slot " + std::to_string(Slot.GetUint()) + " is duplicated: " + FilePath.generic_string());
-                    return false;
-                }
-
-                MeshBlock Block;
-                Block.Slot = Slot.GetUint();
-                Block.MaterialPath = Material.GetString();
-                Blocks.push_back(std::move(Block));
-            }
-
-            SourcePath = Source.GetString();
-            return true;
-        }
     }
 
     AssetManager::~AssetManager()
@@ -482,43 +347,76 @@ namespace ShadowEngine
         Finalize();
     }
 
-    void AssetManager::Finalize()
+    void AssetManager::SetShaderManager(ShaderManager& InShaders)
     {
-        Registry.Clear();
-        MaterialInstances.clear();
-        Materials.clear();
+        Shaders = &InShaders;
     }
 
-    const MeshAsset* AssetManager::LoadMesh(
+    void AssetManager::Finalize()
+    {
+        MaterialInstances.clear();
+        Materials.clear();
+        Textures.clear();
+        Meshes.clear();
+        LinearSampler = {};
+        Registry.Clear();
+    }
+
+    MeshHandle AssetManager::LoadMesh(
         const std::filesystem::path& Path,
         std::string* ErrorMessage)
     {
         if (Path.empty())
         {
             SetErrorMessage(ErrorMessage, "Mesh path is empty");
-            return nullptr;
+            return {};
         }
 
         if (const MeshAsset* Existing = Registry.FindMesh(Path))
         {
-            return Existing;
+            for (uint32 Index = 0; Index < Meshes.size(); ++Index)
+            {
+                if (Meshes[Index] == Existing)
+                {
+                    MeshHandle Handle;
+                    Handle.Index = Index;
+                    return Handle;
+                }
+            }
+
+            SetErrorMessage(ErrorMessage, "Mesh is registered without a handle: " + Path.generic_string());
+            return {};
         }
 
         const std::string DescriptionPath = Path.generic_string();
-        std::filesystem::path SourceFile;
-        std::vector<MeshBlock> Blocks;
-        if (!ReadMeshDescription(Path, SourceFile, Blocks, ErrorMessage))
+        MeshDescription Description;
+        if (!DescriptionParser::LoadMeshDescription(Path, Description, ErrorMessage))
         {
-            return nullptr;
+            return {};
+        }
+
+        std::filesystem::path SourceFile = Description.Source;
+        std::vector<MeshBlock> Blocks;
+        Blocks.reserve(Description.Materials.size());
+        for (const MeshMaterialBinding& Binding : Description.Materials)
+        {
+            MeshBlock Block;
+            Block.Slot = Binding.Slot;
+            Block.MaterialPath = Binding.Material;
+            Blocks.push_back(std::move(Block));
         }
 
         for (MeshBlock& Block : Blocks)
         {
             Block.Material = LoadMaterialInstance(Block.MaterialPath, ErrorMessage);
-            if (Block.Material == nullptr)
+            if (!Block.Material.IsValid())
             {
-                return nullptr;
+                return {};
             }
+
+            const MaterialInstance* Instance = ResolveMaterialInstance(Block.Material);
+            Block.bRequireTexCoord =
+                Instance != nullptr && MaterialParameter::GetTextureBinding(Instance->GetParameters()).HasTextures();
         }
 
         const std::string SourcePath = SourceFile.generic_string();
@@ -530,7 +428,7 @@ namespace ShadowEngine
             SetErrorMessage(
                 ErrorMessage,
                 std::string("Unable to parse mesh ") + SourcePath + ": " + ToString(Result));
-            return nullptr;
+            return {};
         }
 
         Result = cgltf_load_buffers(&Options, File.Data, SourcePath.c_str());
@@ -539,7 +437,7 @@ namespace ShadowEngine
             SetErrorMessage(
                 ErrorMessage,
                 std::string("Unable to load mesh buffers ") + SourcePath + ": " + ToString(Result));
-            return nullptr;
+            return {};
         }
 
         Result = cgltf_validate(File.Data);
@@ -548,7 +446,7 @@ namespace ShadowEngine
             SetErrorMessage(
                 ErrorMessage,
                 std::string("Mesh is invalid ") + SourcePath + ": " + ToString(Result));
-            return nullptr;
+            return {};
         }
 
         const cgltf_scene* MeshScene = File.Data->scene;
@@ -559,14 +457,14 @@ namespace ShadowEngine
         if (MeshScene == nullptr)
         {
             SetErrorMessage(ErrorMessage, std::string("Mesh has no scene: ") + SourcePath);
-            return nullptr;
+            return {};
         }
 
         for (cgltf_size NodeIndex = 0; NodeIndex < MeshScene->nodes_count; ++NodeIndex)
         {
             if (!AppendNode(MeshScene->nodes[NodeIndex], *File.Data, SourcePath, Blocks, ErrorMessage))
             {
-                return nullptr;
+                return {};
             }
         }
 
@@ -581,7 +479,7 @@ namespace ShadowEngine
                 SetErrorMessage(
                     ErrorMessage,
                     "Mesh material slot " + std::to_string(Block.Slot) + " has no triangles: " + SourcePath);
-                return nullptr;
+                return {};
             }
 
             VertexCount += Block.Vertices.size();
@@ -598,9 +496,10 @@ namespace ShadowEngine
         if (!Registry.Register(std::move(Mesh)))
         {
             SetErrorMessage(ErrorMessage, "Unable to register mesh: " + DescriptionPath);
-            return nullptr;
+            return {};
         }
 
+        Meshes.push_back(Loaded);
         Log::Info(
             "Loaded mesh {} from {} ({} sections, {} vertices, {} indices)",
             DescriptionPath,
@@ -608,53 +507,224 @@ namespace ShadowEngine
             Loaded->GetSections().size(),
             VertexCount,
             IndexCount);
-        return Loaded;
+        MeshHandle Handle;
+        Handle.Index = static_cast<uint32>(Meshes.size() - 1);
+        return Handle;
     }
 
-    const MaterialInstance* AssetManager::LoadMaterialInstance(
+    MaterialInstanceHandle AssetManager::LoadMaterialInstance(
         const std::filesystem::path& DescriptionPath,
         std::string* ErrorMessage)
     {
         if (DescriptionPath.empty())
         {
             SetErrorMessage(ErrorMessage, "Material description path is empty");
-            return nullptr;
+            return {};
         }
 
-        const std::string DescriptionKey = DescriptionPath.generic_string();
-        for (const std::unique_ptr<MaterialInstance>& Existing : MaterialInstances)
+        if (const MaterialAsset* Existing = Registry.FindMaterial(DescriptionPath))
         {
-            if (Existing->GetDescriptionPath().generic_string() == DescriptionKey)
+            for (uint32 Index = 0; Index < MaterialInstances.size(); ++Index)
             {
-                return Existing.get();
+                if (MaterialInstances[Index]->GetBaseMaterial().Index == Existing->GetHandle().Index)
+                {
+                    MaterialInstanceHandle Handle;
+                    Handle.Index = Index;
+                    return Handle;
+                }
             }
         }
 
         MaterialDescription Description;
-        if (!LoadMaterialDescription(DescriptionPath, Description, ErrorMessage))
+        if (!DescriptionParser::LoadMaterialDescription(DescriptionPath, Description, ErrorMessage))
+        {
+            return {};
+        }
+
+        MaterialParameterLayout Layout;
+        MaterialParameterBlock Parameters;
+        if (!MaterialParameter::BuildLayout(Description, Layout, ErrorMessage) ||
+            !MaterialParameter::BuildBlock(Description, Parameters, ErrorMessage))
+        {
+            return {};
+        }
+
+        if (!Description.BaseColorTexture.empty())
+        {
+            const TextureAssetHandle BaseColorTexture = LoadTexture(Description.BaseColorTexture, ErrorMessage);
+            const TextureAssetHandle RoughnessTexture = LoadTexture(Description.RoughnessTexture, ErrorMessage);
+            if (!BaseColorTexture.IsValid() || !RoughnessTexture.IsValid())
+            {
+                return {};
+            }
+
+            MaterialParameter::SetTextures(Parameters, BaseColorTexture, RoughnessTexture, DefaultSampler());
+        }
+
+        MaterialHandle BaseMaterial;
+        if (const MaterialAsset* Existing = Registry.FindMaterial(DescriptionPath))
+        {
+            BaseMaterial = Existing->GetHandle();
+        }
+        else
+        {
+            if (Shaders == nullptr)
+            {
+                SetErrorMessage(ErrorMessage, "Shader manager is not set");
+                return {};
+            }
+
+            const ShaderHandle Shader = Shaders->Register(Description.Shader);
+            if (!Shader.IsValid())
+            {
+                SetErrorMessage(ErrorMessage, "Unable to register shader: " + Description.Shader);
+                return {};
+            }
+
+            BaseMaterial.Index = static_cast<uint32>(Materials.size());
+            auto Owned = std::make_unique<Material>(Shader, std::move(Layout));
+            Materials.push_back(Owned.get());
+            auto Asset = std::make_unique<MaterialAsset>(
+                DescriptionPath,
+                std::move(Owned),
+                BaseMaterial);
+            if (!Registry.Register(std::move(Asset)))
+            {
+                Materials.pop_back();
+                SetErrorMessage(ErrorMessage, "Unable to register material: " + DescriptionPath.generic_string());
+                return {};
+            }
+        }
+
+        MaterialInstances.push_back(
+            std::make_unique<MaterialInstance>(BaseMaterial, std::move(Parameters)));
+        MaterialInstanceHandle Handle;
+        Handle.Index = static_cast<uint32>(MaterialInstances.size() - 1);
+        return Handle;
+    }
+
+    SamplerHandle AssetManager::DefaultSampler()
+    {
+        if (!LinearSampler.IsValid())
+        {
+            LinearSampler.Index = 0;
+        }
+
+        return LinearSampler;
+    }
+
+    TextureAssetHandle AssetManager::LoadTexture(
+        const std::filesystem::path& Path,
+        std::string* ErrorMessage)
+    {
+        if (Path.empty())
+        {
+            SetErrorMessage(ErrorMessage, "Texture path is empty");
+            return {};
+        }
+
+        if (const TextureAsset* Existing = Registry.FindTexture(Path))
+        {
+            for (uint32 Index = 0; Index < Textures.size(); ++Index)
+            {
+                if (Textures[Index] == Existing)
+                {
+                    TextureAssetHandle Handle;
+                    Handle.Index = Index;
+                    return Handle;
+                }
+            }
+
+            SetErrorMessage(ErrorMessage, "Texture is registered without a handle: " + Path.generic_string());
+            return {};
+        }
+
+        int Width = 0;
+        int Height = 0;
+        int Channels = 0;
+        stbi_uc* Pixels = stbi_load(Path.generic_string().c_str(), &Width, &Height, &Channels, 4);
+        if (Pixels == nullptr)
+        {
+            const char* Reason = stbi_failure_reason();
+            SetErrorMessage(
+                ErrorMessage,
+                "Unable to load texture " + Path.generic_string() + ": " + (Reason != nullptr ? Reason : "unknown error"));
+            return {};
+        }
+
+        const size_t ByteCount = static_cast<size_t>(Width) * static_cast<size_t>(Height) * 4;
+        std::vector<uint8> Rgba(Pixels, Pixels + ByteCount);
+        stbi_image_free(Pixels);
+
+        std::unique_ptr<TextureAsset> Texture = TextureAsset::Create(
+            Path,
+            static_cast<uint32>(Width),
+            static_cast<uint32>(Height),
+            std::move(Rgba),
+            ErrorMessage);
+        if (Texture == nullptr)
+        {
+            return {};
+        }
+
+        const uint32 MipCount = static_cast<uint32>(Texture->GetMips().size());
+        const TextureAsset* Loaded = Texture.get();
+        if (!Registry.Register(std::move(Texture)))
+        {
+            SetErrorMessage(ErrorMessage, "Unable to register texture: " + Path.generic_string());
+            return {};
+        }
+
+        Textures.push_back(Loaded);
+        Log::Info(
+            "Loaded texture {} ({}x{}, {} mips)",
+            Path.generic_string(),
+            Width,
+            Height,
+            MipCount);
+        TextureAssetHandle Handle;
+        Handle.Index = static_cast<uint32>(Textures.size() - 1);
+        return Handle;
+    }
+
+    const MeshAsset* AssetManager::ResolveMesh(MeshHandle Handle) const
+    {
+        if (!Handle.IsValid() || Handle.Index >= Meshes.size())
         {
             return nullptr;
         }
 
-        const std::string ShaderKey = Description.ShaderPath.generic_string();
-        const Material* Parent = nullptr;
-        for (const std::unique_ptr<Material>& Existing : Materials)
+        return Meshes[Handle.Index];
+    }
+
+    const TextureAsset* AssetManager::ResolveTexture(TextureAssetHandle Handle) const
+    {
+        if (!Handle.IsValid() || Handle.Index >= Textures.size())
         {
-            if (Existing->GetShaderPath().generic_string() == ShaderKey)
-            {
-                Parent = Existing.get();
-                break;
-            }
-        }
-        if (Parent == nullptr)
-        {
-            Materials.push_back(std::make_unique<Material>(Description.ShaderPath));
-            Parent = Materials.back().get();
+            return nullptr;
         }
 
-        MaterialInstances.push_back(
-            std::make_unique<MaterialInstance>(*Parent, DescriptionPath, std::move(Description.Parameter)));
-        return MaterialInstances.back().get();
+        return Textures[Handle.Index];
+    }
+
+    const Material* AssetManager::ResolveMaterial(MaterialHandle Handle) const
+    {
+        if (!Handle.IsValid() || Handle.Index >= Materials.size())
+        {
+            return nullptr;
+        }
+
+        return Materials[Handle.Index];
+    }
+
+    const MaterialInstance* AssetManager::ResolveMaterialInstance(MaterialInstanceHandle Handle) const
+    {
+        if (!Handle.IsValid() || Handle.Index >= MaterialInstances.size())
+        {
+            return nullptr;
+        }
+
+        return MaterialInstances[Handle.Index].get();
     }
 
     const AssetRegistry& AssetManager::GetRegistry() const

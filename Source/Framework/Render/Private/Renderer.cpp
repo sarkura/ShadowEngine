@@ -1,8 +1,12 @@
 #include "Framework/Render/Public/Renderer.h"
 
-#include "Framework/Asset/Public/Asset.h"
+#include "Framework/Asset/Public/AssetManager.h"
+#include "Framework/Asset/Public/MeshAsset.h"
+#include "Framework/Asset/Public/TextureAsset.h"
 #include "Framework/Common/Public/Log.h"
+#include "Framework/Material/Public/Material.h"
 #include "Framework/Material/Public/MaterialInstance.h"
+#include "Framework/Material/Public/MaterialParameter.h"
 #include "Framework/RHI/Public/RHIDevice.h"
 #include "Framework/Shader/Public/ShaderManager.h"
 
@@ -21,8 +25,6 @@ namespace ShadowEngine
 {
     namespace
     {
-        constexpr char VertexEntryPoint[] = "VertexMain";
-        constexpr char PixelEntryPoint[] = "PixelMain";
         constexpr uint32 ConstantAlignment = 512;
 
         struct GpuObjectConstants
@@ -33,9 +35,7 @@ namespace ShadowEngine
             float CameraPosition[4];
             float LightDirection[4];
             float LightColor[4];
-            float BaseColor[4];
-            float SpecularColor[4];
-            float Roughness[4];
+            MaterialParameter::SurfaceConstants Surface;
         };
 
         static_assert(sizeof(GpuObjectConstants) <= ConstantAlignment);
@@ -55,27 +55,29 @@ namespace ShadowEngine
         RHIDevice& InDevice,
         RHISwapChain& InSwapChain,
         ShaderManager& Shaders,
-        const RenderProxy& InProxy,
+        AssetManager& InAssets,
+        const Scene& InScene,
         const RHIColor& InClearColor,
         std::string* ErrorMessage)
     {
         Device = &InDevice;
         SwapChain = &InSwapChain;
+        Assets = &InAssets;
         ClearColor = InClearColor;
+        Sync(InScene);
 
-        std::vector<const MeshAsset*> UniqueMeshes;
-        for (const MeshRenderProxy& Proxy : InProxy.Meshes)
+        std::vector<MeshHandle> UniqueMeshes;
+        for (const MeshRenderProxy& Proxy : SceneProxy.Meshes)
         {
-            const MeshAsset* Mesh = Proxy.Mesh;
-            if (Mesh == nullptr)
+            if (!Proxy.Mesh.IsValid())
             {
                 continue;
             }
 
             bool bUploaded = false;
-            for (const MeshAsset* Existing : UniqueMeshes)
+            for (const MeshHandle& Existing : UniqueMeshes)
             {
-                if (Existing == Mesh)
+                if (Existing.Index == Proxy.Mesh.Index)
                 {
                     bUploaded = true;
                     break;
@@ -83,7 +85,7 @@ namespace ShadowEngine
             }
             if (!bUploaded)
             {
-                UniqueMeshes.push_back(Mesh);
+                UniqueMeshes.push_back(Proxy.Mesh);
             }
         }
 
@@ -93,20 +95,21 @@ namespace ShadowEngine
             return false;
         }
 
-        for (const MeshAsset* Mesh : UniqueMeshes)
+        for (const MeshHandle& Mesh : UniqueMeshes)
         {
-            if (!UploadMesh(Shaders, *Mesh, ErrorMessage))
+            if (!UploadMesh(Shaders, Mesh, ErrorMessage))
             {
                 return false;
             }
         }
 
         uint32 DrawCount = 0;
-        for (const MeshRenderProxy& Proxy : InProxy.Meshes)
+        for (const MeshRenderProxy& Proxy : SceneProxy.Meshes)
         {
-            if (Proxy.Mesh != nullptr)
+            const MeshAsset* Mesh = Assets->ResolveMesh(Proxy.Mesh);
+            if (Mesh != nullptr)
             {
-                DrawCount += static_cast<uint32>(Proxy.Mesh->GetSections().size());
+                DrawCount += static_cast<uint32>(Mesh->GetSections().size());
             }
         }
         ConstantCapacity = DrawCount == 0 ? 1 : DrawCount;
@@ -143,8 +146,16 @@ namespace ShadowEngine
         return true;
     }
 
-    bool Renderer::UploadMesh(ShaderManager& Shaders, const MeshAsset& Mesh, std::string* ErrorMessage)
+    bool Renderer::UploadMesh(ShaderManager& Shaders, MeshHandle Handle, std::string* ErrorMessage)
     {
+        const MeshAsset* Found = Assets->ResolveMesh(Handle);
+        if (Found == nullptr)
+        {
+            SetErrorMessage(ErrorMessage, "Mesh handle is invalid");
+            return false;
+        }
+
+        const MeshAsset& Mesh = *Found;
         if (Mesh.GetSections().empty())
         {
             SetErrorMessage(ErrorMessage, "Mesh has no sections: " + Mesh.GetPath().generic_string());
@@ -153,10 +164,16 @@ namespace ShadowEngine
 
         for (const MeshSection& Section : Mesh.GetSections())
         {
-            const MaterialInstance* Material = Section.Material;
+            const MaterialInstance* Instance = Assets->ResolveMaterialInstance(Section.Material);
+            const Material* Material = Instance == nullptr ? nullptr : Assets->ResolveMaterial(Instance->GetBaseMaterial());
             if (Material == nullptr)
             {
                 SetErrorMessage(ErrorMessage, "Mesh section has no material: " + Mesh.GetPath().generic_string());
+                return false;
+            }
+
+            if (!Shaders.LoadShaders(*Device, Material->GetShader(), ErrorMessage))
+            {
                 return false;
             }
 
@@ -169,26 +186,12 @@ namespace ShadowEngine
             }
 
             MeshBatch Batch;
-            Batch.Asset = &Mesh;
-            Batch.VertexShader = Shaders.LoadShader(
-                *Device,
-                Material->GetMaterial().GetShaderPath(),
-                VertexEntryPoint,
-                ERHIShaderStage::Vertex,
-                ErrorMessage);
-            if (Batch.VertexShader == nullptr)
+            Batch.Mesh = Handle;
+            Batch.VertexShader = Shaders.GetVertexShader(Material->GetShader());
+            Batch.PixelShader = Shaders.GetPixelShader(Material->GetShader());
+            if (Batch.VertexShader == nullptr || Batch.PixelShader == nullptr)
             {
-                return false;
-            }
-
-            Batch.PixelShader = Shaders.LoadShader(
-                *Device,
-                Material->GetMaterial().GetShaderPath(),
-                PixelEntryPoint,
-                ERHIShaderStage::Pixel,
-                ErrorMessage);
-            if (Batch.PixelShader == nullptr)
-            {
+                SetErrorMessage(ErrorMessage, "Material shader is not loaded: " + Mesh.GetPath().generic_string());
                 return false;
             }
 
@@ -233,11 +236,12 @@ namespace ShadowEngine
                 {"POSITION", 0, 0, ERHIVertexFormat::Float32x3},
                 {"NORMAL", 0, 12, ERHIVertexFormat::Float32x3},
                 {"COLOR", 0, 24, ERHIVertexFormat::Float32x3},
+                {"TEXCOORD", 0, 36, ERHIVertexFormat::Float32x2},
             };
 
             RHIGraphicsPipelineDesc PipelineDesc;
-            PipelineDesc.VertexShader = Batch.VertexShader.get();
-            PipelineDesc.PixelShader = Batch.PixelShader.get();
+            PipelineDesc.VertexShader = Batch.VertexShader;
+            PipelineDesc.PixelShader = Batch.PixelShader;
             PipelineDesc.RenderTargetFormat = SwapChain->GetFormat();
             PipelineDesc.Topology = ERHIPrimitiveTopology::TriangleList;
             PipelineDesc.InputLayout = InputLayout;
@@ -248,16 +252,112 @@ namespace ShadowEngine
                 return false;
             }
 
+            const MaterialParameter::TextureBinding Textures = MaterialParameter::GetTextureBinding(Instance->GetParameters());
+            if (!Textures.IsValid())
+            {
+                SetErrorMessage(ErrorMessage, "Material textures must include BaseColor and Roughness: " + Mesh.GetPath().generic_string());
+                return false;
+            }
+
+            if (Textures.HasTextures())
+            {
+                RHITexture* BaseColor = UploadTexture(Textures.BaseColor, ErrorMessage);
+                RHITexture* Roughness = UploadTexture(Textures.Roughness, ErrorMessage);
+                RHISampler* Sampler = UploadSampler(Textures.Sampler, ErrorMessage);
+                if (BaseColor == nullptr || Roughness == nullptr || Sampler == nullptr)
+                {
+                    return false;
+                }
+
+                RHIMaterialBindingDesc BindingDesc;
+                BindingDesc.BaseColor = BaseColor;
+                BindingDesc.Roughness = Roughness;
+                BindingDesc.Sampler = Sampler;
+                Batch.MaterialBinding = Device->CreateMaterialBinding(BindingDesc, ErrorMessage);
+                if (Batch.MaterialBinding == nullptr)
+                {
+                    return false;
+                }
+            }
+
             MeshBatches.push_back(std::move(Batch));
         }
 
         return true;
     }
 
+    RHITexture* Renderer::UploadTexture(TextureAssetHandle Handle, std::string* ErrorMessage)
+    {
+        const TextureAsset* Asset = Assets->ResolveTexture(Handle);
+        if (Asset == nullptr)
+        {
+            SetErrorMessage(ErrorMessage, "Texture handle is invalid");
+            return nullptr;
+        }
+
+        const auto Found = GpuTextures.find(Handle.Index);
+        if (Found != GpuTextures.end())
+        {
+            return Found->second.get();
+        }
+
+        std::vector<RHITextureMipDesc> Mips;
+        Mips.reserve(Asset->GetMips().size());
+        for (const TextureAsset::Mip& Mip : Asset->GetMips())
+        {
+            RHITextureMipDesc Desc;
+            Desc.Width = Mip.Width;
+            Desc.Height = Mip.Height;
+            Desc.Pixels = Mip.Pixels.data();
+            Desc.Size = static_cast<uint32>(Mip.Pixels.size());
+            Mips.push_back(Desc);
+        }
+
+        RHITextureDesc TextureDesc;
+        TextureDesc.Format = ERHIFormat::R8G8B8A8_UNorm;
+        TextureDesc.Mips = Mips;
+        std::unique_ptr<RHITexture> Texture = Device->CreateTexture(TextureDesc, ErrorMessage);
+        if (Texture == nullptr)
+        {
+            return nullptr;
+        }
+
+        RHITexture* Loaded = Texture.get();
+        GpuTextures.emplace(Handle.Index, std::move(Texture));
+        return Loaded;
+    }
+
+    RHISampler* Renderer::UploadSampler(SamplerHandle Handle, std::string* ErrorMessage)
+    {
+        if (!Handle.IsValid())
+        {
+            SetErrorMessage(ErrorMessage, "Sampler handle is invalid");
+            return nullptr;
+        }
+
+        const auto Found = GpuSamplers.find(Handle.Index);
+        if (Found != GpuSamplers.end())
+        {
+            return Found->second.get();
+        }
+
+        std::unique_ptr<RHISampler> Sampler = Device->CreateSampler(ErrorMessage);
+        if (Sampler == nullptr)
+        {
+            return nullptr;
+        }
+
+        RHISampler* Loaded = Sampler.get();
+        GpuSamplers.emplace(Handle.Index, std::move(Sampler));
+        return Loaded;
+    }
+
     void Renderer::Finalize()
     {
         CommandList.reset();
         MeshBatches.clear();
+        GpuSamplers.clear();
+        GpuTextures.clear();
         DepthBuffer.reset();
         ConstantBuffer.reset();
         ConstantCapacity = 0;
@@ -286,7 +386,12 @@ namespace ShadowEngine
         ViewCamera.Move(DeltaTime, Forward, Right, Up);
     }
 
-    bool Renderer::RenderFrame(const RenderProxy& InProxy)
+    void Renderer::Sync(const Scene& InScene)
+    {
+        SyncRenderProxy(InScene, SceneProxy);
+    }
+
+    bool Renderer::RenderFrame()
     {
         if (Device == nullptr || SwapChain == nullptr || CommandList == nullptr || ConstantBuffer == nullptr ||
             DepthBuffer == nullptr || MeshBatches.empty())
@@ -302,7 +407,7 @@ namespace ShadowEngine
         const glm::mat4 ViewProjection = Projection * View;
         const glm::vec3 CameraPosition = ViewCamera.GetPosition();
 
-        if (InProxy.Meshes.size() > ConstantCapacity)
+        if (SceneProxy.Meshes.size() > ConstantCapacity)
         {
             Log::Error("Scene has more objects than the constant buffer can hold");
             return false;
@@ -312,13 +417,14 @@ namespace ShadowEngine
         {
             const MeshBatch* Batch = nullptr;
             const MeshRenderProxy* Proxy = nullptr;
-            const MaterialParameter* Parameter = nullptr;
+            MaterialInstanceHandle Material;
         };
 
         std::vector<Draw> Draws;
-        for (const MeshRenderProxy& Proxy : InProxy.Meshes)
+        for (const MeshRenderProxy& Proxy : SceneProxy.Meshes)
         {
-            if (Proxy.Mesh == nullptr)
+            const MeshAsset* Mesh = Assets->ResolveMesh(Proxy.Mesh);
+            if (Mesh == nullptr)
             {
                 Log::Error("Render proxy has no mesh");
                 return false;
@@ -327,14 +433,14 @@ namespace ShadowEngine
             std::vector<const MeshBatch*> SectionBatches;
             for (const MeshBatch& Batch : MeshBatches)
             {
-                if (Batch.Asset == Proxy.Mesh)
+                if (Batch.Mesh.Index == Proxy.Mesh.Index)
                 {
                     SectionBatches.push_back(&Batch);
                 }
             }
 
-            const std::vector<MeshSection>& Sections = Proxy.Mesh->GetSections();
-            if (SectionBatches.size() != Sections.size())
+            const std::vector<MeshSection>& Sections = Mesh->GetSections();
+            if (SectionBatches.size() != Sections.size() || Proxy.Materials.size() != Sections.size())
             {
                 Log::Error("Render proxy mesh was not uploaded");
                 return false;
@@ -342,8 +448,7 @@ namespace ShadowEngine
 
             for (size_t SectionIndex = 0; SectionIndex < Sections.size(); ++SectionIndex)
             {
-                const MaterialInstance* Material = Sections[SectionIndex].Material;
-                if (Material == nullptr)
+                if (!Proxy.Materials[SectionIndex].IsValid())
                 {
                     Log::Error("Render proxy section has no material");
                     return false;
@@ -352,7 +457,7 @@ namespace ShadowEngine
                 Draw Item;
                 Item.Batch = SectionBatches[SectionIndex];
                 Item.Proxy = &Proxy;
-                Item.Parameter = &Material->GetParameter();
+                Item.Material = Proxy.Materials[SectionIndex];
                 Draws.push_back(Item);
             }
         }
@@ -364,15 +469,22 @@ namespace ShadowEngine
         }
 
         DirectLightRenderProxy Light{};
-        if (!InProxy.DirectLights.empty())
+        if (!SceneProxy.DirectLights.empty())
         {
-            Light = InProxy.DirectLights.front();
+            Light = SceneProxy.DirectLights.front();
         }
 
         std::vector<uint8> Constants(Draws.size() * ConstantAlignment);
         for (size_t Index = 0; Index < Draws.size(); ++Index)
         {
-            const MaterialParameter& Parameter = *Draws[Index].Parameter;
+            const MaterialInstance* Instance = Assets->ResolveMaterialInstance(Draws[Index].Material);
+            if (Instance == nullptr)
+            {
+                Log::Error("Render proxy material is missing");
+                return false;
+            }
+
+            const MaterialParameterBlock& Parameter = Instance->GetParameters();
             GpuObjectConstants Slot{};
             std::memcpy(Slot.ViewProjection, glm::value_ptr(ViewProjection), sizeof(Slot.ViewProjection));
             std::memcpy(Slot.World, Draws[Index].Proxy->World, sizeof(Slot.World));
@@ -387,13 +499,7 @@ namespace ShadowEngine
             Slot.LightColor[1] = Light.Color[1];
             Slot.LightColor[2] = Light.Color[2];
             Slot.LightColor[3] = Light.Intensity;
-            Slot.BaseColor[0] = Parameter.BaseColor[0];
-            Slot.BaseColor[1] = Parameter.BaseColor[1];
-            Slot.BaseColor[2] = Parameter.BaseColor[2];
-            Slot.SpecularColor[0] = Parameter.SpecularColor[0];
-            Slot.SpecularColor[1] = Parameter.SpecularColor[1];
-            Slot.SpecularColor[2] = Parameter.SpecularColor[2];
-            Slot.Roughness[0] = Parameter.Roughness;
+            MaterialParameter::WriteSurfaceConstants(Parameter, Slot.Surface);
             std::memcpy(Constants.data() + Index * ConstantAlignment, &Slot, sizeof(Slot));
         }
         if (!Constants.empty() && !ConstantBuffer->Update(0, Constants))
@@ -417,6 +523,10 @@ namespace ShadowEngine
             CommandList->SetVertexBuffer(*Batch.VertexBuffer);
             CommandList->SetIndexBuffer(*Batch.IndexBuffer);
             CommandList->SetConstantBuffer(*ConstantBuffer, Index * ConstantAlignment);
+            if (Batch.MaterialBinding != nullptr)
+            {
+                CommandList->SetMaterialBinding(*Batch.MaterialBinding);
+            }
             CommandList->DrawIndexed(Batch.IndexCount);
         }
         CommandList->EndRenderPass();

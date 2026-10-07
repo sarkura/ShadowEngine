@@ -1,11 +1,13 @@
 {
     "type": "Material",
-    "shader": "BlinnPhong/BlinnPhongVertex.slang",
+    "shader": "Material/TableBlinnPhongMaterial.slang",
 
     "parameters":
     {
-        "BaseColor": [0.75, 0.72, 0.68],
-        "Roughness": 0.8,
-        "SpecularColor": [0.3, 0.3, 0.3]
+        "BaseColor": [1, 1, 1],
+        "Roughness": 1.0,
+        "SpecularColor": [0.3, 0.3, 0.3],
+        "BaseColorTexture": "Assets/Table/Texture/Basecolor.png",
+        "RoughnessTexture": "Assets/Table/Texture/Roughness.png"
     }
 }

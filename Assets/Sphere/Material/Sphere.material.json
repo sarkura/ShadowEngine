@@ -1,6 +1,6 @@
 {
     "type": "Material",
-    "shader": "BlinnPhong/BlinnPhongVertex.slang",
+    "shader": "Material/BlinnPhongMaterial.slang",
 
     "parameters":
     {

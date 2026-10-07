@@ -1,12 +1,15 @@
 #include "Framework/Engine/Public/Engine.h"
 
-#include "Framework/Asset/Public/Asset.h"
+#include "Framework/Asset/Public/MeshAsset.h"
 #include "Framework/Common/Public/Log.h"
 #include "Framework/Config/Public/ConfigManager.h"
 #include "Framework/Engine/Public/EngineModules.h"
-#include "Framework/Render/Public/RenderProxy.h"
+#include "Framework/Render/Public/Renderer.h"
 #include "Framework/Scene/Public/Light.h"
 #include "Framework/Scene/Public/Scene.h"
+
+#include <utility>
+#include <vector>
 
 namespace ShadowEngine
 {
@@ -30,10 +33,21 @@ namespace ShadowEngine
             return Result;
         }
 
-        void AddMesh(Scene& InScene, const MeshAsset& Mesh, const SceneSetting::Transform& InTransform)
+        void AddMesh(
+            Scene& InScene,
+            MeshHandle Handle,
+            const MeshAsset& Mesh,
+            const SceneSetting::Transform& InTransform)
         {
+            std::vector<MaterialInstanceHandle> Materials;
+            Materials.reserve(Mesh.GetSections().size());
+            for (const MeshSection& Section : Mesh.GetSections())
+            {
+                Materials.push_back(Section.Material);
+            }
+
             Entity& Object = InScene.CreateEntity();
-            Object.SetMesh(&Mesh);
+            Object.SetMesh(Handle, std::move(Materials));
             Object.GetTransform().SetTranslation(
                 InTransform.Translation[0],
                 InTransform.Translation[1],
@@ -81,14 +95,16 @@ namespace ShadowEngine
             ConfigManager::Get().GetViewportSetting();
 
         Assets = std::make_unique<AssetManager>();
+        Assets->SetShaderManager(*Shaders);
 
         const SceneSetting::Setting SceneConfig = ConfigManager::Get().GetSceneSetting();
         MainScene = std::make_unique<Scene>();
         uint32 InstanceCount = 0;
         for (const SceneSetting::Mesh& MeshObject : SceneConfig.Meshes)
         {
-            const MeshAsset* Mesh = Assets->LoadMesh(MeshObject.Path, ErrorMessage);
-            if (Mesh == nullptr)
+            const MeshHandle Mesh = Assets->LoadMesh(MeshObject.Path, ErrorMessage);
+            const MeshAsset* Asset = Assets->ResolveMesh(Mesh);
+            if (!Mesh.IsValid() || Asset == nullptr)
             {
                 Finalize();
                 return false;
@@ -96,7 +112,7 @@ namespace ShadowEngine
 
             for (const SceneSetting::MeshInstance& Instance : MeshObject.Instances)
             {
-                AddMesh(*MainScene, *Mesh, Instance.Transform);
+                AddMesh(*MainScene, Mesh, *Asset, Instance.Transform);
                 ++InstanceCount;
             }
         }
@@ -114,14 +130,13 @@ namespace ShadowEngine
             Light.SetIntensity(LightConfig.Intensity);
         }
 
-        RenderProxy Proxy;
-        MainScene->WriteRenderProxy(Proxy);
         MainRenderer = std::make_unique<Renderer>();
         if (!MainRenderer->Initialize(
                 *Device,
                 *SwapChain,
                 *Shaders,
-                Proxy,
+                *Assets,
+                *MainScene,
                 ToClearColor(Viewport.BackgroundColor),
                 ErrorMessage))
         {
@@ -243,9 +258,8 @@ namespace ShadowEngine
         CameraYaw = 0.0F;
         CameraPitch = 0.0F;
 
-        RenderProxy Proxy;
-        MainScene->WriteRenderProxy(Proxy);
-        if (!MainRenderer->RenderFrame(Proxy))
+        MainRenderer->Sync(*MainScene);
+        if (!MainRenderer->RenderFrame())
         {
             Log::Error("Frame presentation failed, stopping rendering");
             bInitialized = false;

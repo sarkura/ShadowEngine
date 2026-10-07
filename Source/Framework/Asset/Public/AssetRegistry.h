@@ -9,6 +9,10 @@
 
 namespace ShadowEngine
 {
+    class MaterialAsset;
+    class MeshAsset;
+    class TextureAsset;
+
     class AssetRegistry final : public NonCopyable
     {
         public:
@@ -17,6 +21,8 @@ namespace ShadowEngine
 
             [[nodiscard]] const Asset* Find(const std::filesystem::path& Path) const;
             [[nodiscard]] const MeshAsset* FindMesh(const std::filesystem::path& Path) const;
+            [[nodiscard]] const TextureAsset* FindTexture(const std::filesystem::path& Path) const;
+            [[nodiscard]] const MaterialAsset* FindMaterial(const std::filesystem::path& Path) const;
 
         private:
             std::unordered_map<std::string, std::unique_ptr<Asset>> Assets;

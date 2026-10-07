@@ -5,6 +5,7 @@ struct VertexInput
     float3 Position : POSITION;
     float3 Normal : NORMAL;
     float3 Color : COLOR0;
+    float2 TexCoord : TEXCOORD0;
 };
 
 struct VertexOutput
@@ -13,4 +14,5 @@ struct VertexOutput
     float3 WorldPosition : TEXCOORD0;
     float3 WorldNormal : TEXCOORD1;
     float3 Color : COLOR0;
+    float2 TexCoord : TEXCOORD2;
 };

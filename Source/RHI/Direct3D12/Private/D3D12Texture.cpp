@@ -1,8 +1,11 @@
 #include "RHI/Direct3D12/Public/D3D12Texture.h"
 
 #include "Framework/Common/Public/Log.h"
+#include "RHI/Direct3D12/Public/D3D12Fence.h"
 
+#include <cstring>
 #include <utility>
+#include <vector>
 
 namespace ShadowEngine
 {
@@ -14,11 +17,13 @@ namespace ShadowEngine
         D3D12_RESOURCE_STATES InitialState,
         D3D12_CPU_DESCRIPTOR_HANDLE InRenderTargetView,
         D3D12_CPU_DESCRIPTOR_HANDLE InDepthStencilView,
-        ComPtr<ID3D12DescriptorHeap> InDescriptorHeap)
+        ComPtr<ID3D12DescriptorHeap> InDescriptorHeap,
+        uint32 InMipCount)
         : Resource(std::move(InResource))
         , DescriptorHeap(std::move(InDescriptorHeap))
         , Width(InWidth)
         , Height(InHeight)
+        , MipCount(InMipCount == 0 ? 1 : InMipCount)
         , Format(InFormat)
         , State(InitialState)
         , RenderTargetView(InRenderTargetView)
@@ -103,6 +108,183 @@ namespace ShadowEngine
             std::move(Heap));
     }
 
+    std::unique_ptr<D3D12Texture> D3D12Texture::CreateSampled(
+        ID3D12Device* Device,
+        ID3D12CommandQueue* Queue,
+        D3D12Fence& Fence,
+        const RHITextureDesc& Desc,
+        std::string* ErrorMessage)
+    {
+        if (Desc.Mips.empty() || Desc.Format != ERHIFormat::R8G8B8A8_UNorm)
+        {
+            SetErrorMessage(ErrorMessage, "Sampled texture requires RGBA8 mip data");
+            return nullptr;
+        }
+
+        const uint32 MipCount = static_cast<uint32>(Desc.Mips.size());
+        D3D12_HEAP_PROPERTIES DefaultHeap{};
+        DefaultHeap.Type = D3D12_HEAP_TYPE_DEFAULT;
+        DefaultHeap.CreationNodeMask = 1;
+        DefaultHeap.VisibleNodeMask = 1;
+
+        D3D12_RESOURCE_DESC ResourceDesc{};
+        ResourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        ResourceDesc.Width = Desc.Mips[0].Width;
+        ResourceDesc.Height = Desc.Mips[0].Height;
+        ResourceDesc.DepthOrArraySize = 1;
+        ResourceDesc.MipLevels = static_cast<UINT16>(MipCount);
+        ResourceDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        ResourceDesc.SampleDesc.Count = 1;
+        ResourceDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+
+        ComPtr<ID3D12Resource> Resource;
+        HRESULT Result = Device->CreateCommittedResource(
+            &DefaultHeap,
+            D3D12_HEAP_FLAG_NONE,
+            &ResourceDesc,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            nullptr,
+            IID_PPV_ARGS(Resource.GetAddressOf()));
+        if (FAILED(Result))
+        {
+            SetErrorMessage(ErrorMessage, "CreateCommittedResource failed for the sampled texture: " + FormatHResult(Result));
+            return nullptr;
+        }
+
+        std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> Layouts(MipCount);
+        std::vector<UINT> Rows(MipCount);
+        std::vector<UINT64> RowSizes(MipCount);
+        UINT64 TotalSize = 0;
+        Device->GetCopyableFootprints(
+            &ResourceDesc,
+            0,
+            MipCount,
+            0,
+            Layouts.data(),
+            Rows.data(),
+            RowSizes.data(),
+            &TotalSize);
+
+        D3D12_HEAP_PROPERTIES UploadHeap{};
+        UploadHeap.Type = D3D12_HEAP_TYPE_UPLOAD;
+        UploadHeap.CreationNodeMask = 1;
+        UploadHeap.VisibleNodeMask = 1;
+
+        D3D12_RESOURCE_DESC UploadDesc{};
+        UploadDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+        UploadDesc.Width = TotalSize;
+        UploadDesc.Height = 1;
+        UploadDesc.DepthOrArraySize = 1;
+        UploadDesc.MipLevels = 1;
+        UploadDesc.Format = DXGI_FORMAT_UNKNOWN;
+        UploadDesc.SampleDesc.Count = 1;
+        UploadDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+        ComPtr<ID3D12Resource> Upload;
+        Result = Device->CreateCommittedResource(
+            &UploadHeap,
+            D3D12_HEAP_FLAG_NONE,
+            &UploadDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(Upload.GetAddressOf()));
+        if (FAILED(Result))
+        {
+            SetErrorMessage(ErrorMessage, "CreateCommittedResource failed for the texture upload: " + FormatHResult(Result));
+            return nullptr;
+        }
+
+        uint8* Mapped = nullptr;
+        Result = Upload->Map(0, nullptr, reinterpret_cast<void**>(&Mapped));
+        if (FAILED(Result) || Mapped == nullptr)
+        {
+            SetErrorMessage(ErrorMessage, "Map failed for the texture upload: " + FormatHResult(Result));
+            return nullptr;
+        }
+
+        for (uint32 MipIndex = 0; MipIndex < MipCount; ++MipIndex)
+        {
+            const RHITextureMipDesc& Mip = Desc.Mips[MipIndex];
+            const uint32 SourcePitch = Mip.Width * 4;
+            if (Mip.Pixels == nullptr || Mip.Size < SourcePitch * Mip.Height)
+            {
+                Upload->Unmap(0, nullptr);
+                SetErrorMessage(ErrorMessage, "Texture mip is smaller than its dimensions");
+                return nullptr;
+            }
+
+            for (UINT Row = 0; Row < Rows[MipIndex]; ++Row)
+            {
+                std::memcpy(
+                    Mapped + Layouts[MipIndex].Offset + static_cast<UINT64>(Row) * Layouts[MipIndex].Footprint.RowPitch,
+                    Mip.Pixels + static_cast<size_t>(Row) * SourcePitch,
+                    SourcePitch);
+            }
+        }
+        Upload->Unmap(0, nullptr);
+
+        ComPtr<ID3D12CommandAllocator> Allocator;
+        ComPtr<ID3D12GraphicsCommandList> CommandList;
+        Result = Device->CreateCommandAllocator(
+            D3D12_COMMAND_LIST_TYPE_DIRECT,
+            IID_PPV_ARGS(Allocator.GetAddressOf()));
+        if (FAILED(Result))
+        {
+            SetErrorMessage(ErrorMessage, "CreateCommandAllocator failed for the texture upload: " + FormatHResult(Result));
+            return nullptr;
+        }
+
+        Result = Device->CreateCommandList(
+            0,
+            D3D12_COMMAND_LIST_TYPE_DIRECT,
+            Allocator.Get(),
+            nullptr,
+            IID_PPV_ARGS(CommandList.GetAddressOf()));
+        if (FAILED(Result))
+        {
+            SetErrorMessage(ErrorMessage, "CreateCommandList failed for the texture upload: " + FormatHResult(Result));
+            return nullptr;
+        }
+
+        for (uint32 MipIndex = 0; MipIndex < MipCount; ++MipIndex)
+        {
+            D3D12_TEXTURE_COPY_LOCATION Destination{};
+            Destination.pResource = Resource.Get();
+            Destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            Destination.SubresourceIndex = MipIndex;
+
+            D3D12_TEXTURE_COPY_LOCATION Source{};
+            Source.pResource = Upload.Get();
+            Source.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+            Source.PlacedFootprint = Layouts[MipIndex];
+            CommandList->CopyTextureRegion(&Destination, 0, 0, 0, &Source, nullptr);
+        }
+
+        D3D12_RESOURCE_BARRIER Barrier{};
+        Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        Barrier.Transition.pResource = Resource.Get();
+        Barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+        Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        CommandList->ResourceBarrier(1, &Barrier);
+        CommandList->Close();
+
+        ID3D12CommandList* Lists[] = {CommandList.Get()};
+        Queue->ExecuteCommandLists(1, Lists);
+        Fence.Wait(Fence.Signal(Queue));
+
+        return std::make_unique<D3D12Texture>(
+            std::move(Resource),
+            Desc.Mips[0].Width,
+            Desc.Mips[0].Height,
+            Desc.Format,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+            D3D12_CPU_DESCRIPTOR_HANDLE{},
+            D3D12_CPU_DESCRIPTOR_HANDLE{},
+            ComPtr<ID3D12DescriptorHeap>{},
+            MipCount);
+    }
+
     uint32 D3D12Texture::GetWidth() const
     {
         return Width;
@@ -111,6 +293,11 @@ namespace ShadowEngine
     uint32 D3D12Texture::GetHeight() const
     {
         return Height;
+    }
+
+    uint32 D3D12Texture::GetMipCount() const
+    {
+        return MipCount;
     }
 
     ERHIFormat D3D12Texture::GetFormat() const

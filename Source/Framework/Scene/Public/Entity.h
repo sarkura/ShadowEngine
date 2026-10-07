@@ -1,22 +1,26 @@
 #pragma once
 
+#include "Framework/Asset/Public/AssetHandle.h"
+#include "Framework/Material/Public/MaterialHandle.h"
 #include "Framework/Scene/Public/Transform.h"
+
+#include <vector>
 
 namespace ShadowEngine
 {
-    class MeshAsset;
-
     class Entity final
     {
         public:
-            void SetMesh(const MeshAsset* InMesh);
+            void SetMesh(MeshHandle InMesh, std::vector<MaterialInstanceHandle> InMaterials);
 
-            [[nodiscard]] const MeshAsset* GetMesh() const;
+            [[nodiscard]] MeshHandle GetMesh() const;
+            [[nodiscard]] const std::vector<MaterialInstanceHandle>& GetMaterials() const;
             [[nodiscard]] Transform& GetTransform();
             [[nodiscard]] const Transform& GetTransform() const;
 
         private:
-            const MeshAsset* Mesh = nullptr;
+            MeshHandle Mesh;
+            std::vector<MaterialInstanceHandle> Materials;
             Transform LocalTransform;
     };
 }

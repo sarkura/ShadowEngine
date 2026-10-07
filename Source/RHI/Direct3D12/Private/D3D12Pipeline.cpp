@@ -83,6 +83,8 @@ namespace ShadowEngine
         {
             switch (Format)
             {
+                case ERHIVertexFormat::Float32x2:
+                    return DXGI_FORMAT_R32G32_FLOAT;
                 case ERHIVertexFormat::Float32x3:
                     return DXGI_FORMAT_R32G32B32_FLOAT;
             }
@@ -159,15 +161,37 @@ namespace ShadowEngine
 
     bool D3D12Pipeline::CreateRootSignature(ID3D12Device* Device, std::string* ErrorMessage)
     {
-        D3D12_ROOT_PARAMETER Parameter{};
-        Parameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        Parameter.Descriptor.ShaderRegister = 0;
-        Parameter.Descriptor.RegisterSpace = 0;
-        Parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        D3D12_DESCRIPTOR_RANGE SrvRange{};
+        SrvRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        SrvRange.NumDescriptors = 2;
+        SrvRange.BaseShaderRegister = 0;
+        SrvRange.RegisterSpace = 0;
+        SrvRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+        D3D12_DESCRIPTOR_RANGE SamplerRange{};
+        SamplerRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER;
+        SamplerRange.NumDescriptors = 1;
+        SamplerRange.BaseShaderRegister = 0;
+        SamplerRange.RegisterSpace = 0;
+        SamplerRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+        D3D12_ROOT_PARAMETER Parameters[3]{};
+        Parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        Parameters[0].Descriptor.ShaderRegister = 0;
+        Parameters[0].Descriptor.RegisterSpace = 0;
+        Parameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        Parameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        Parameters[1].DescriptorTable.NumDescriptorRanges = 1;
+        Parameters[1].DescriptorTable.pDescriptorRanges = &SrvRange;
+        Parameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        Parameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        Parameters[2].DescriptorTable.NumDescriptorRanges = 1;
+        Parameters[2].DescriptorTable.pDescriptorRanges = &SamplerRange;
+        Parameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
         D3D12_ROOT_SIGNATURE_DESC Desc{};
-        Desc.NumParameters = 1;
-        Desc.pParameters = &Parameter;
+        Desc.NumParameters = 3;
+        Desc.pParameters = Parameters;
         Desc.NumStaticSamplers = 0;
         Desc.pStaticSamplers = nullptr;
         Desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;

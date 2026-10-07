@@ -31,6 +31,7 @@ namespace ShadowEngine
 
     enum class ERHIVertexFormat : uint8
     {
+        Float32x2,
         Float32x3
     };
 

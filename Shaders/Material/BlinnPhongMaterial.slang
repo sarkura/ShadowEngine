@@ -1,6 +1,4 @@
-#pragma once
-
-#include "../Common/BlinnPhongConstants.slang"
+#include "../BlinnPhong/BlinnPhongVertex.slang"
 
 struct BlinnPhongMaterialSample
 {
@@ -17,3 +15,5 @@ BlinnPhongMaterialSample EvaluateMaterial(VertexOutput Input)
     Sample.SpecularColor = BlinnPhongSurface.SpecularColor.rgb;
     return Sample;
 }
+
+#include "../BlinnPhong/BlinnPhongFragment.slang"

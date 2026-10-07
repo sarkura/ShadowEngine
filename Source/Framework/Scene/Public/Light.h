@@ -1,7 +1,5 @@
 #pragma once
 
-#include "Framework/Render/Public/RenderProxy.h"
-
 namespace ShadowEngine
 {
     class DirectLight final
@@ -11,7 +9,9 @@ namespace ShadowEngine
             void SetColor(float R, float G, float B);
             void SetIntensity(float Intensity);
 
-            void Write(DirectLightRenderProxy& Out) const;
+            void GetDirection(float Out[3]) const;
+            void GetColor(float Out[3]) const;
+            [[nodiscard]] float GetIntensity() const;
 
         private:
             float DirectionX = 0.0F;

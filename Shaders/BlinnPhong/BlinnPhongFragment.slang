@@ -1,5 +1,4 @@
 #include "../Common/BlinnPhongConstants.slang"
-#include "../Material/BlinnPhongMaterial.slang"
 
 [shader("fragment")]
 float4 PixelMain(VertexOutput Input) : SV_Target

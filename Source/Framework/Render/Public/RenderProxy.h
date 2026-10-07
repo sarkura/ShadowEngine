@@ -1,16 +1,20 @@
 #pragma once
 
+#include "Framework/Asset/Public/AssetHandle.h"
+#include "Framework/Material/Public/MaterialHandle.h"
+
 #include <vector>
 
 namespace ShadowEngine
 {
-    class MeshAsset;
+    class Scene;
 
     struct MeshRenderProxy
     {
-        const MeshAsset* Mesh = nullptr;
+        MeshHandle Mesh;
         float World[16] = {};
         float NormalMatrix[16] = {};
+        std::vector<MaterialInstanceHandle> Materials;
     };
 
     struct DirectLightRenderProxy
@@ -25,4 +29,6 @@ namespace ShadowEngine
         std::vector<MeshRenderProxy> Meshes;
         std::vector<DirectLightRenderProxy> DirectLights;
     };
+
+    void SyncRenderProxy(const Scene& InScene, RenderProxy& Out);
 }
