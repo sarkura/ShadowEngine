@@ -14,7 +14,7 @@ namespace ShadowEngine
     using Microsoft::WRL::ComPtr;
 
     inline constexpr D3D_FEATURE_LEVEL D3D12MinimumFeatureLevel = D3D_FEATURE_LEVEL_12_0;
-    inline constexpr D3D_SHADER_MODEL D3D12MinimumShaderModel = D3D_SHADER_MODEL_6_0;
+    inline constexpr D3D_SHADER_MODEL D3D12MinimumShaderModel = static_cast<D3D_SHADER_MODEL>(0x68);
 
     inline std::string FormatHResult(HRESULT Result)
     {

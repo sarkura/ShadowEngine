@@ -541,24 +541,43 @@ namespace ShadowEngine
             return {};
         }
 
+        const MaterialRendererBinding* Surface = nullptr;
+        for (const MaterialRendererBinding& Binding : Description.Bindings)
+        {
+            if (!Binding.bHasParameters)
+            {
+                continue;
+            }
+
+            if (Surface != nullptr)
+            {
+                SetErrorMessage(ErrorMessage, "Material has more than one parameter block: " + DescriptionPath.generic_string());
+                return {};
+            }
+
+            Surface = &Binding;
+        }
+
         MaterialParameterLayout Layout;
         MaterialParameterBlock Parameters;
-        if (!MaterialParameter::BuildLayout(Description, Layout, ErrorMessage) ||
-            !MaterialParameter::BuildBlock(Description, Parameters, ErrorMessage))
+        if (Surface != nullptr &&
+            (!MaterialParameter::BuildLayout(*Surface, Layout, ErrorMessage) ||
+             !MaterialParameter::BuildBlock(*Surface, Parameters, ErrorMessage)))
         {
             return {};
         }
 
-        if (!Description.BaseColorTexture.empty())
+        if (Surface != nullptr && !Surface->BaseColorTexture.empty())
         {
-            const TextureAssetHandle BaseColorTexture = LoadTexture(Description.BaseColorTexture, ErrorMessage);
-            const TextureAssetHandle RoughnessTexture = LoadTexture(Description.RoughnessTexture, ErrorMessage);
-            if (!BaseColorTexture.IsValid() || !RoughnessTexture.IsValid())
+            const TextureAssetHandle BaseColorTexture = LoadTexture(Surface->BaseColorTexture, ErrorMessage);
+            const TextureAssetHandle RoughnessTexture = LoadTexture(Surface->RoughnessTexture, ErrorMessage);
+            const TextureAssetHandle NormalTexture = LoadTexture(Surface->NormalTexture, ErrorMessage);
+            if (!BaseColorTexture.IsValid() || !RoughnessTexture.IsValid() || !NormalTexture.IsValid())
             {
                 return {};
             }
 
-            MaterialParameter::SetTextures(Parameters, BaseColorTexture, RoughnessTexture, DefaultSampler());
+            MaterialParameter::SetTextures(Parameters, BaseColorTexture, RoughnessTexture, NormalTexture, DefaultSampler());
         }
 
         MaterialHandle BaseMaterial;
@@ -574,15 +593,28 @@ namespace ShadowEngine
                 return {};
             }
 
-            const ShaderHandle Shader = Shaders->Register(Description.Shader);
-            if (!Shader.IsValid())
+            std::vector<MaterialShaderBinding> ShaderBindings;
+            ShaderBindings.reserve(Description.Bindings.size());
+            for (const MaterialRendererBinding& Binding : Description.Bindings)
             {
-                SetErrorMessage(ErrorMessage, "Unable to register shader: " + Description.Shader);
-                return {};
+                const ShaderHandle Shader = Shaders->Register(
+                    Binding.VertexShader,
+                    Binding.PixelShader,
+                    Binding.MaterialShader);
+                if (!Shader.IsValid())
+                {
+                    SetErrorMessage(ErrorMessage, "Unable to register shader: " + Binding.VertexShader);
+                    return {};
+                }
+
+                MaterialShaderBinding ShaderBinding;
+                ShaderBinding.Renderer = Binding.Renderer;
+                ShaderBinding.Shader = Shader;
+                ShaderBindings.push_back(std::move(ShaderBinding));
             }
 
             BaseMaterial.Index = static_cast<uint32>(Materials.size());
-            auto Owned = std::make_unique<Material>(Shader, std::move(Layout));
+            auto Owned = std::make_unique<Material>(std::move(ShaderBindings), std::move(Layout));
             Materials.push_back(Owned.get());
             auto Asset = std::make_unique<MaterialAsset>(
                 DescriptionPath,

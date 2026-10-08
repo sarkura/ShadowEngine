@@ -3,10 +3,191 @@
 #include "Framework/Common/Public/Log.h"
 #include "Framework/Config/Private/JsonDocument.h"
 
+#include <string>
 #include <utility>
 
 namespace ShadowEngine
 {
+    namespace
+    {
+        bool ReadRendererBinding(
+            const rapidjson::Value& Object,
+            const std::filesystem::path& FilePath,
+            const char* RendererName,
+            MaterialRendererBinding& Binding,
+            std::string* ErrorMessage)
+        {
+            const char* const Members[] = {"Vertex", "Fragment", "Material", "Parameters"};
+            if (!RequireMembers(Object, FilePath, RendererName, Members, 4, ErrorMessage))
+            {
+                return false;
+            }
+
+            const rapidjson::Value& VertexShader = Object["Vertex"];
+            if (!VertexShader.IsString() || VertexShader.GetStringLength() == 0)
+            {
+                SetErrorMessage(ErrorMessage, std::string(RendererName) + " Vertex must be a path: " + FilePath.generic_string());
+                return false;
+            }
+
+            const rapidjson::Value& PixelShader = Object["Fragment"];
+            if (!PixelShader.IsString() || PixelShader.GetStringLength() == 0)
+            {
+                SetErrorMessage(ErrorMessage, std::string(RendererName) + " Fragment must be a path: " + FilePath.generic_string());
+                return false;
+            }
+
+            const rapidjson::Value& MaterialShader = Object["Material"];
+            if (!MaterialShader.IsString() || MaterialShader.GetStringLength() == 0)
+            {
+                SetErrorMessage(ErrorMessage, std::string(RendererName) + " Material must be a path: " + FilePath.generic_string());
+                return false;
+            }
+
+            const rapidjson::Value& Parameters = Object["Parameters"];
+            if (!Parameters.IsObject())
+            {
+                SetErrorMessage(ErrorMessage, std::string(RendererName) + " Parameters must be an object: " + FilePath.generic_string());
+                return false;
+            }
+
+            Binding.Renderer = RendererName;
+            Binding.VertexShader = VertexShader.GetString();
+            Binding.PixelShader = PixelShader.GetString();
+            Binding.MaterialShader = MaterialShader.GetString();
+            if (Parameters.MemberCount() == 0)
+            {
+                return true;
+            }
+
+            const char* const RequiredParameters[] = {"BaseColor", "Roughness", "SpecularColor"};
+            const char* const ParameterMembers[] = {
+                "BaseColor",
+                "Roughness",
+                "SpecularColor",
+                "BaseColorTexture",
+                "RoughnessTexture",
+                "NormalTexture",
+            };
+            for (auto Member = Parameters.MemberBegin(); Member != Parameters.MemberEnd(); ++Member)
+            {
+                bool bKnown = false;
+                for (const char* Name : ParameterMembers)
+                {
+                    if (Member->name == Name)
+                    {
+                        bKnown = true;
+                        break;
+                    }
+                }
+                if (!bKnown)
+                {
+                    SetErrorMessage(
+                        ErrorMessage,
+                        "Material parameter '" + std::string(Member->name.GetString()) +
+                            "' is unsupported: " + FilePath.generic_string());
+                    return false;
+                }
+            }
+
+            for (const char* Name : RequiredParameters)
+            {
+                if (!Parameters.HasMember(Name))
+                {
+                    SetErrorMessage(
+                        ErrorMessage,
+                        std::string(Name) + " must be present: " + FilePath.generic_string());
+                    return false;
+                }
+            }
+
+            const auto ReadVec3 = [&](const char* Name, std::vector<float>& Out) -> bool
+            {
+                const auto Found = Parameters.FindMember(Name);
+                if (Found == Parameters.MemberEnd() || !Found->value.IsArray() || Found->value.Size() != 3)
+                {
+                    SetErrorMessage(ErrorMessage, std::string(Name) + " must contain 3 numbers: " + FilePath.generic_string());
+                    return false;
+                }
+
+                Out.resize(3);
+                for (rapidjson::SizeType Index = 0; Index < 3; ++Index)
+                {
+                    if (!Found->value[Index].IsNumber())
+                    {
+                        SetErrorMessage(
+                            ErrorMessage,
+                            std::string(Name) + " must contain 3 numbers: " + FilePath.generic_string());
+                        return false;
+                    }
+                    Out[Index] = Found->value[Index].GetFloat();
+                }
+
+                return true;
+            };
+
+            const auto ReadUnitFloat = [&](const char* Name, float& Out) -> bool
+            {
+                const auto Found = Parameters.FindMember(Name);
+                if (Found == Parameters.MemberEnd() || !Found->value.IsNumber())
+                {
+                    SetErrorMessage(ErrorMessage, std::string(Name) + " must be a number: " + FilePath.generic_string());
+                    return false;
+                }
+
+                Out = Found->value.GetFloat();
+                if (Out < 0.0F || Out > 1.0F)
+                {
+                    SetErrorMessage(ErrorMessage, std::string(Name) + " must be between 0 and 1: " + FilePath.generic_string());
+                    return false;
+                }
+
+                return true;
+            };
+
+            const auto ReadOptionalPath = [&](const char* Name, std::string& Out) -> bool
+            {
+                const auto Found = Parameters.FindMember(Name);
+                if (Found == Parameters.MemberEnd())
+                {
+                    Out.clear();
+                    return true;
+                }
+
+                if (!Found->value.IsString() || Found->value.GetStringLength() == 0)
+                {
+                    SetErrorMessage(ErrorMessage, std::string(Name) + " must be a path: " + FilePath.generic_string());
+                    return false;
+                }
+
+                Out.assign(Found->value.GetString(), Found->value.GetStringLength());
+                return true;
+            };
+
+            if (!ReadVec3("BaseColor", Binding.BaseColor) ||
+                !ReadUnitFloat("Roughness", Binding.Roughness) ||
+                !ReadVec3("SpecularColor", Binding.SpecularColor) ||
+                !ReadOptionalPath("BaseColorTexture", Binding.BaseColorTexture) ||
+                !ReadOptionalPath("RoughnessTexture", Binding.RoughnessTexture) ||
+                !ReadOptionalPath("NormalTexture", Binding.NormalTexture))
+            {
+                return false;
+            }
+
+            if (Binding.BaseColorTexture.empty() != Binding.RoughnessTexture.empty() ||
+                Binding.BaseColorTexture.empty() != Binding.NormalTexture.empty())
+            {
+                SetErrorMessage(
+                    ErrorMessage,
+                    "BaseColorTexture, RoughnessTexture, and NormalTexture must be set together: " + FilePath.generic_string());
+                return false;
+            }
+
+            Binding.bHasParameters = true;
+            return true;
+        }
+    }
+
     bool DescriptionParser::LoadMeshDescription(
         const std::filesystem::path& FilePath,
         MeshDescription& Description,
@@ -113,45 +294,30 @@ namespace ShadowEngine
             return false;
         }
 
-        const char* const Members[] = {"type", "shader", "parameters"};
-        if (!RequireMembers(Document, FilePath, "Material description", Members, 3, ErrorMessage))
+        if (!Document.HasMember("Type"))
         {
+            SetErrorMessage(ErrorMessage, "Material description is missing 'Type': " + FilePath.generic_string());
             return false;
         }
 
-        const rapidjson::Value& Type = Document["type"];
+        const rapidjson::Value& Type = Document["Type"];
         if (!Type.IsString() || std::string(Type.GetString()) != "Material")
         {
-            SetErrorMessage(ErrorMessage, "Material description type must be Material: " + FilePath.generic_string());
+            SetErrorMessage(ErrorMessage, "Material description Type must be Material: " + FilePath.generic_string());
             return false;
         }
 
-        const rapidjson::Value& Shader = Document["shader"];
-        if (!Shader.IsString() || Shader.GetStringLength() == 0)
+        const char* const RendererNames[] = {"BlinnPhongRenderer", "DebugRenderer"};
+        MaterialDescription Parsed;
+        for (auto Member = Document.MemberBegin(); Member != Document.MemberEnd(); ++Member)
         {
-            SetErrorMessage(ErrorMessage, "Material description shader must be a path: " + FilePath.generic_string());
-            return false;
-        }
+            if (Member->name == "Type")
+            {
+                continue;
+            }
 
-        const rapidjson::Value& Parameters = Document["parameters"];
-        if (!Parameters.IsObject())
-        {
-            SetErrorMessage(ErrorMessage, "Material parameters must be an object: " + FilePath.generic_string());
-            return false;
-        }
-
-        const char* const RequiredParameters[] = {"BaseColor", "Roughness", "SpecularColor"};
-        const char* const ParameterMembers[] = {
-            "BaseColor",
-            "Roughness",
-            "SpecularColor",
-            "BaseColorTexture",
-            "RoughnessTexture",
-        };
-        for (auto Member = Parameters.MemberBegin(); Member != Parameters.MemberEnd(); ++Member)
-        {
             bool bKnown = false;
-            for (const char* Name : ParameterMembers)
+            for (const char* Name : RendererNames)
             {
                 if (Member->name == Name)
                 {
@@ -163,105 +329,34 @@ namespace ShadowEngine
             {
                 SetErrorMessage(
                     ErrorMessage,
-                    "Material parameter '" + std::string(Member->name.GetString()) +
-                        "' is unsupported: " + FilePath.generic_string());
+                    "Material description has unsupported member '" + std::string(Member->name.GetString()) +
+                        "': " + FilePath.generic_string());
                 return false;
             }
-        }
 
-        for (const char* Name : RequiredParameters)
-        {
-            if (!Parameters.HasMember(Name))
+            if (!Member->value.IsObject())
             {
                 SetErrorMessage(
                     ErrorMessage,
-                    std::string(Name) + " must be present: " + FilePath.generic_string());
+                    std::string(Member->name.GetString()) + " must be an object: " + FilePath.generic_string());
                 return false;
             }
+
+            MaterialRendererBinding Binding;
+            if (!ReadRendererBinding(Member->value, FilePath, Member->name.GetString(), Binding, ErrorMessage))
+            {
+                return false;
+            }
+
+            Parsed.Bindings.push_back(std::move(Binding));
         }
 
-        const auto ReadVec3 = [&](const char* Name, std::vector<float>& Out) -> bool
+        if (Parsed.Bindings.empty())
         {
-            const auto Found = Parameters.FindMember(Name);
-            if (Found == Parameters.MemberEnd() || !Found->value.IsArray() || Found->value.Size() != 3)
-            {
-                SetErrorMessage(ErrorMessage, std::string(Name) + " must contain 3 numbers: " + FilePath.generic_string());
-                return false;
-            }
-
-            Out.resize(3);
-            for (rapidjson::SizeType Index = 0; Index < 3; ++Index)
-            {
-                if (!Found->value[Index].IsNumber())
-                {
-                    SetErrorMessage(
-                        ErrorMessage,
-                        std::string(Name) + " must contain 3 numbers: " + FilePath.generic_string());
-                    return false;
-                }
-                Out[Index] = Found->value[Index].GetFloat();
-            }
-
-            return true;
-        };
-
-        const auto ReadUnitFloat = [&](const char* Name, float& Out) -> bool
-        {
-            const auto Found = Parameters.FindMember(Name);
-            if (Found == Parameters.MemberEnd() || !Found->value.IsNumber())
-            {
-                SetErrorMessage(ErrorMessage, std::string(Name) + " must be a number: " + FilePath.generic_string());
-                return false;
-            }
-
-            Out = Found->value.GetFloat();
-            if (Out < 0.0F || Out > 1.0F)
-            {
-                SetErrorMessage(ErrorMessage, std::string(Name) + " must be between 0 and 1: " + FilePath.generic_string());
-                return false;
-            }
-
-            return true;
-        };
-
-        const auto ReadOptionalPath = [&](const char* Name, std::string& Out) -> bool
-        {
-            const auto Found = Parameters.FindMember(Name);
-            if (Found == Parameters.MemberEnd())
-            {
-                Out.clear();
-                return true;
-            }
-
-            if (!Found->value.IsString() || Found->value.GetStringLength() == 0)
-            {
-                SetErrorMessage(ErrorMessage, std::string(Name) + " must be a path: " + FilePath.generic_string());
-                return false;
-            }
-
-            Out.assign(Found->value.GetString(), Found->value.GetStringLength());
-            return true;
-        };
-
-        MaterialDescription Parsed;
-        if (!ReadVec3("BaseColor", Parsed.BaseColor) ||
-            !ReadUnitFloat("Roughness", Parsed.Roughness) ||
-            !ReadVec3("SpecularColor", Parsed.SpecularColor) ||
-            !ReadOptionalPath("BaseColorTexture", Parsed.BaseColorTexture) ||
-            !ReadOptionalPath("RoughnessTexture", Parsed.RoughnessTexture))
-        {
+            SetErrorMessage(ErrorMessage, "Material description has no renderer binding: " + FilePath.generic_string());
             return false;
         }
 
-        if (Parsed.BaseColorTexture.empty() != Parsed.RoughnessTexture.empty())
-        {
-            SetErrorMessage(
-                ErrorMessage,
-                "BaseColorTexture and RoughnessTexture must be set together: " + FilePath.generic_string());
-            return false;
-        }
-
-        Parsed.Shader = Shader.GetString();
         Description = std::move(Parsed);
         return true;
     }

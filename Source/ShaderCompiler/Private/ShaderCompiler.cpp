@@ -8,6 +8,7 @@
 #include <slang-com-ptr.h>
 
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <string>
 
@@ -21,6 +22,41 @@ namespace ShadowEngine
 {
     namespace
     {
+        class ShaderSourceBlob final : public ISlangBlob
+        {
+            public:
+                explicit ShaderSourceBlob(std::string InSource)
+                    : Source(std::move(InSource))
+                {
+                }
+
+                ISlangUnknown* getInterface(SlangUUID const& Id)
+                {
+                    if (Id == ISlangUnknown::getTypeGuid() || Id == ISlangBlob::getTypeGuid())
+                    {
+                        return static_cast<ISlangBlob*>(this);
+                    }
+
+                    return nullptr;
+                }
+
+                SLANG_IUNKNOWN_ALL
+
+                void const* SLANG_MCALL getBufferPointer() SLANG_OVERRIDE
+                {
+                    return Source.data();
+                }
+
+                size_t SLANG_MCALL getBufferSize() SLANG_OVERRIDE
+                {
+                    return Source.size();
+                }
+
+            private:
+                uint32_t m_refCount = 1;
+                std::string Source;
+        };
+
         using CreateGlobalSessionFunction = SlangResult (*)(SlangInt, slang::IGlobalSession**);
 
         constexpr char CreateGlobalSessionSymbol[] = "slang_createGlobalSession";
@@ -101,7 +137,7 @@ namespace ShadowEngine
                 case ERHIShaderFormat::DXBC:
                     return "sm_5_1";
                 case ERHIShaderFormat::DXIL:
-                    return "sm_6_0";
+                    return "sm_6_8";
                 case ERHIShaderFormat::SPIRV:
                     return "spirv_1_5";
             }
@@ -215,7 +251,31 @@ namespace ShadowEngine
 
                     Slang::ComPtr<slang::IBlob> Diagnostics;
                     const std::string ModuleName = Request.SourcePath.stem().string();
-                    slang::IModule* Module = Session->loadModule(ModuleName.c_str(), Diagnostics.writeRef());
+                    slang::IModule* Module = nullptr;
+                    if (Request.ImplementationPath.empty())
+                    {
+                        Module = Session->loadModule(ModuleName.c_str(), Diagnostics.writeRef());
+                    }
+                    else
+                    {
+                        const std::filesystem::path Implementation =
+                            std::filesystem::absolute(Request.ImplementationPath);
+                        const std::filesystem::path Fragment = std::filesystem::absolute(Request.SourcePath);
+                        const std::string Source =
+                            "#include \"" + Implementation.generic_string() + "\"\n#include \"" +
+                            Fragment.generic_string() + "\"\n";
+                        Slang::ComPtr<ISlangBlob> SourceBlob;
+                        SourceBlob.attach(new ShaderSourceBlob(Source));
+
+                        const std::string ModulePath =
+                            (Fragment.parent_path() / (Implementation.stem().string() + "+" + Fragment.filename().string()))
+                                .generic_string();
+                        Module = Session->loadModuleFromSource(
+                            ModuleName.c_str(),
+                            ModulePath.c_str(),
+                            SourceBlob,
+                            Diagnostics.writeRef());
+                    }
                     if (Module == nullptr)
                     {
                         return Fail(ErrorMessage, "Unable to load shader module " + Label, Diagnostics);

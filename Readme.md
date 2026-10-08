@@ -18,11 +18,11 @@ main                     registers the D3D12 RHI and the Slang shader compiler
  -> WindowsApplication   loads Config/, creates the Win32 window
  -> Engine               creates the RHI device selected in Renderer.json, then the swap chain
  -> ShaderManager        loads slang-compiler.dll
- -> AssetManager         loads each Scene.json mesh through DescriptionParser, then the glTF source, material parameters, and any textures
+ -> AssetManager         loads each Scene.json mesh through DescriptionParser, then the glTF source, per-renderer material bindings, and any textures
  -> Scene                one entity per instance, holding a MeshHandle and material-instance handles, plus directional lights
- -> Renderer             syncs a render proxy from that scene state, resolves the handles, uploads one GPU batch per material slot, then a 512-byte constant slot per draw and the depth buffer
- -> every frame          move the camera, sync the proxy from the scene, draw each material slot, present
-                         shaders are compiled from Shaders/ on this launch and kept in memory; one slang path compiles once
+ -> Renderer             Renderer.json selects BlinnPhongRenderer or DebugRenderer. The base syncs a render proxy, resolves the handles, and uploads one GPU batch per material slot that binds the active renderer. Each draw gets a 512-byte constant slot, then the depth buffer
+ -> every frame          move the camera, sync the proxy from the scene, skip slots with no binding for the active renderer, draw the rest, present
+                         shaders are compiled from Shaders/ on this launch and kept in memory. Register deduplicates the vertex, fragment, and material paths together
                          the FPS number is drawn with Win32 GDI, outside the swap chain
 ```
 
@@ -63,9 +63,10 @@ Assets/                  One folder per object
   Table/Texture/         PNG textures; mips are generated in memory at load
 Config/                  Runtime configuration
 Shaders/                 Slang shader sources, compiled at runtime
-  Common/                Per-object data, vertex layout, Blinn-Phong surface parameters and constant buffer
-  Material/              Surface evaluation
-  BlinnPhong/            Blinn-Phong vertex and fragment lighting
+  Common/                Per-object data, vertex layout, descriptor-heap helpers, Blinn-Phong constants
+  Material/              EvaluateMaterial for each surface
+  BlinnPhong/            Blinn-Phong vertex and fragment entry points
+  DebugRenderer/         Debug vertex and fragment entry points
 Source/
   Interface/             Contracts shared by every module
   Framework/             Backend-agnostic engine core
@@ -113,12 +114,12 @@ Contains everything that does not depend on a graphics API, a shader compiler, o
 - `Common` provides `BaseApplication` and its default lifecycle, plus logging, shared types, and `NonCopyable`. `ThirdPartyImpl.cpp` is the single translation unit that compiles the stb and cgltf implementations.
 - `Config` owns runtime settings. See [Config](#config).
 - `Engine` is the composition root. `EngineModules` is the registry where backends and the shader compiler register factories at startup, so `Framework` never names a concrete implementation. `Engine` creates the device, swap chain, shader manager, asset manager, scene and renderer. It does not parse description files or pack material parameters. Each frame it updates the camera, asks the renderer to sync the proxy from the scene, and ticks the renderer.
-- `Asset` loads descriptions through `DescriptionParser`, then loads the glTF source and any textures. A `.asset.json` names the glTF source and one or more material slots. Each slot becomes one mesh section. Textures generate their mip chain in memory at load. Assets are exposed as `MeshHandle`, `TextureAssetHandle`, and `SamplerHandle`. `Asset` calls `MaterialParameter` to build a layout and parameter block, and `ShaderManager::Register` to obtain a `ShaderHandle`. It does not decide what material fields mean, and it does not compile shaders.
+- `Asset` loads descriptions through `DescriptionParser`, then loads the glTF source and any textures. A `.asset.json` names the glTF source and one or more material slots. Each slot becomes one mesh section. A `.material.json` has `Type` and one object per renderer (`BlinnPhongRenderer`, `DebugRenderer`). Each object names `Vertex`, `Fragment`, `Material`, and `Parameters`. Textures generate their mip chain in memory at load. Assets are exposed as `MeshHandle`, `TextureAssetHandle`, and `SamplerHandle`. `Asset` calls `MaterialParameter` to build a layout and parameter block from the binding that has parameters, and `ShaderManager::Register` once per renderer binding. It does not decide what material fields mean, and it does not compile shaders.
 - `Scene` holds entities, transforms, and directional lights. An entity stores a `MeshHandle` and the `MaterialInstanceHandle` of each material slot. `Scene.json` groups instances under a mesh description path. Each instance has translation, rotation and scale. Each light has a direction, color, and intensity. The direction is the direction rays travel. The scene exposes this state and does not build a render proxy, load assets, or draw.
-- `Material` owns what a material is. `Material` holds a `ShaderHandle` and a `MaterialParameterLayout`. `MaterialInstance` holds a `BaseMaterial` and a `MaterialParameterBlock`. `BaseMaterial` is a `MaterialHandle` and points at the shader and parameter layout. Texture parameters in the block are `TextureAssetHandle` values, and the sampler is a `SamplerHandle`. `MaterialParameter` builds the layout and block from a parsed description, writes surface constants, and reports the texture slots and sampler handle. `MaterialAsset` owns the `Material`. This module does not parse JSON, compile shaders, or upload GPU resources.
-- `Render` owns the renderer, the fly camera, and the render proxy. `Renderer::Sync` reads entities, material-instance handles, and lights from the scene and rebuilds the proxy. The proxy carries a `MeshHandle` and material-instance handles. `Renderer` resolves those handles, asks `MaterialParameter` for surface constants and texture bindings, asks `ShaderManager` for compiled shaders, and uploads one batch per material slot. It writes a 512-byte constant slot per draw and shades with the first directional light. It does not parse JSON or interpret material field names on its own. Render passes and the render queue are still empty.
-- `RHI` declares the device, adapter, swap chain, command list, fence, texture, sampler, shader, pipeline, descriptor, and buffer abstractions that backends implement. Vertex, index and constant buffers, sampled textures, samplers addressed by `SamplerHandle`, and a material binding are in use.
-- `Shader` holds shader handles and the shader manager. It declares `IShaderCompiler` but does not know about materials. `ShaderManager::Register` deduplicates a slang path. `LoadShaders` compiles `VertexMain` and `PixelMain` through `IShaderCompiler` and keeps the bytecode in memory. The same path compiles once per launch. There is no shader cache on disk.
+- `Material` owns what a material is. `Material` stores one `ShaderHandle` per renderer name and one `MaterialParameterLayout`. `MaterialInstance` holds a `BaseMaterial` and a `MaterialParameterBlock`. `BaseMaterial` is a `MaterialHandle` and points at those shaders and the parameter layout. Texture parameters in the block are `TextureAssetHandle` values, and the sampler is a `SamplerHandle`. `MaterialParameter` builds the layout and block from a parsed binding, writes surface constants, and reports the texture slots and sampler handle. `MaterialAsset` owns the `Material`. This module does not parse JSON, compile shaders, or upload GPU resources.
+- `Render` owns the renderer base, `BlinnPhongRenderer`, `DebugRenderer`, the fly camera, and the render proxy. `Renderer::Sync` reads entities, material-instance handles, and lights from the scene and rebuilds the proxy. The proxy carries a `MeshHandle` and material-instance handles. The base resolves those handles and uploads one batch per material slot that has a shader for the active renderer. `CollectDraws` skips the rest. `BlinnPhongRenderer::RenderFrame` writes lighting, surface constants, and descriptor indices, and shades with the first directional light. `DebugRenderer::RenderFrame` writes the view, world, and normal matrices and draws world normals as color. Sampled textures and samplers are allocated into shader-visible descriptor heaps that the shader indexes directly. Each draw uses a 512-byte constant slot. It does not parse JSON or interpret material field names on its own. Render passes and the render queue are still empty.
+- `RHI` declares the device, adapter, swap chain, command list, fence, texture, sampler, shader, pipeline, descriptor, and buffer abstractions that backends implement. Vertex, index and constant buffers, sampled textures, and samplers addressed by descriptor indices are in use.
+- `Shader` holds shader handles and the shader manager. It declares `IShaderCompiler` but does not know about materials. `ShaderManager::Register` deduplicates the vertex, fragment, and material paths as one key. `LoadShaders` compiles `VertexMain` from the vertex file. The pixel compile includes the material file and then the fragment file, then looks up `PixelMain`. Bytecode stays in memory. There is no shader cache on disk.
 - `UI` is still empty. The FPS number is drawn by `WindowsPlatform` with GDI.
 
 `BaseApplication` loads configuration before the selected platform continues initialization.
@@ -129,13 +130,13 @@ Each backend is a separate static library. It implements `Framework/RHI` and own
 
 | Module | Host | Links | Status |
 | --- | --- | --- | --- |
-| `RHID3D12` | Windows | `d3d12`, `dxgi`, `dxguid`, `ImGuiDX12` | Device, swap chain, command list, fence, pipeline, vertex, index and constant buffers, sampled textures, sampler, material binding, depth, render target clear and present |
+| `RHID3D12` | Windows | `d3d12`, `dxgi`, `dxguid`, `ImGuiDX12` | Device, swap chain, command list, fence, pipeline, vertex, index and constant buffers, sampled textures, directly indexed descriptor heaps, depth, render target clear and present |
 | `RHIVulkan` | Every host | Nothing yet | Empty implementation, not registered, no Vulkan SDK required |
 
-Each backend exposes one registration function, such as `RegisterD3D12RHI()`, which `main` calls before the application starts. The D3D12 backend requires feature level 12_0 and Shader Model 6.0. It picks the high-performance hardware adapter that supports feature level 12_0, then checks the driver's shader model. If either requirement fails, the engine logs the reason and the process exits. The backend consumes DXIL bytecode:
+Each backend exposes one registration function, such as `RegisterD3D12RHI()`, which `main` calls before the application starts. The D3D12 backend requires feature level 12_0 and Shader Model 6.8. The executable exports `D3D12SDKVersion` (`619`) and `D3D12SDKPath` (`.\D3D12\`) from `Source/Launch/D3D12/Private/D3D12Agility.cpp`, so the loader uses the Agility SDK runtime copied to `build/bin/D3D12/` (`D3D12Core.dll` and `d3d12SDKLayers.dll`) instead of the inbox `d3d12.dll`. It picks the high-performance hardware adapter that supports feature level 12_0, then checks the shader model. If either requirement fails, the engine logs the reason and the process exits. Sampled textures and samplers live in two shader-visible descriptor heaps. The root signature is a single `b0` constant buffer, with `CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED` and `SAMPLER_HEAP_DIRECTLY_INDEXED`. The descriptor heaps are set before that root signature. A draw indexes the heaps from the constant buffer. The backend consumes DXIL bytecode:
 
 ```text
-.slang -> Slang -> DXIL (SM 6.0) -> D3D12
+.slang -> Slang -> DXIL (SM 6.8) -> D3D12
 ```
 
 The engine requests `SLANG_DXIL` directly from the Slang API and passes the returned
@@ -147,9 +148,9 @@ When `DebugLayer` is enabled, the backend enables the D3D12 debug layer and forw
 
 ### ShaderCompiler
 
-Compiles Slang shaders from `Shaders/` when a mesh is uploaded. It uses only the Slang headers and loads `slang-compiler.dll` at runtime, so the engine has no link-time dependency on Slang. There is no shader cache: each launch reads the `.slang` sources again, and the bytecode is not written to disk. A material description names a file under `Shaders/Material/`. `BlinnPhongMaterial.slang` is shared by the cube, sphere, and Suzanne, so that path compiles once. `TableBlinnPhongMaterial.slang` samples the table BaseColor and Roughness textures. `Shaders/Common` declares per-object data, the vertex layout, and the Blinn-Phong surface parameters. `Shaders/BlinnPhong` transforms the mesh and evaluates the lighting.
+Compiles Slang shaders from `Shaders/` when a mesh is uploaded. It uses only the Slang headers and loads `slang-compiler.dll` at runtime, so the engine has no link-time dependency on Slang. There is no shader cache: each launch reads the `.slang` sources again, and the bytecode is not written to disk. The compile roots are the vertex and fragment files named by the active renderer binding. The pixel compile includes that binding's material file and then the fragment file, so `PixelMain` can call `EvaluateMaterial`. Cube, sphere, and Suzanne share one Blinn-Phong path triple. The table uses `TableBlinnPhongMaterial.slang`, which samples BaseColor, Roughness, and Normal through `LoadResourceDescriptor` and `LoadSamplerDescriptor` in `Shaders/Common/DescriptorHeap.slang`. Those helpers emit `ResourceDescriptorHeap` and `SamplerDescriptorHeap`. The indices live in the `b0` constant buffer. `Shaders/BlinnPhong` is the lighting entry. `Shaders/DebugRenderer` is the debug entry; its material maps the world normal into color. A mesh section whose material has no binding for the renderer selected in `Renderer.json` is not uploaded and is not drawn.
 
-The module implements `IShaderCompiler` and registers it with `RegisterSlangShaderCompiler()`. It resolves `slang_createGlobalSession` from the library and reaches everything else through Slang's COM interfaces. Each compile loads the module named after the file, finds the entry point for the requested stage, links it, and returns the bytecode. Slang diagnostics are included in the error message or logged as warnings.
+The module implements `IShaderCompiler` and registers it with `RegisterSlangShaderCompiler()`. It resolves `slang_createGlobalSession` from the library and reaches everything else through Slang's COM interfaces. A vertex compile loads the module named after the vertex file. A pixel compile builds one source that includes the material file and then the fragment file, loads that as a module, finds `PixelMain`, links it, and returns the bytecode. Slang diagnostics are included in the error message or logged as warnings.
 
 `ShaderCompiler` is the only module that owns shader compiler runtimes. It declares the Slang DLLs and Slang's Windows DXIL backend dependencies in its `SHADOW_RUNTIME_DLLS` target property, and the executable copies whatever that property lists. The RHI backends never see compiler implementation details. They only report the bytecode format they consume through `RHIDevice::GetShaderFormat()`, such as DXIL for D3D12.
 
@@ -179,7 +180,7 @@ Owns the process entry point. It initializes the application, ticks it until it 
 | File | Contents |
 | --- | --- |
 | `Engine.json` | `ViewportSetting`: resolution, aspect ratio, field of view, clip planes, background color, and clear mode. `MovementSetting`: forward, right, up, down, yaw, and pitch speeds |
-| `Renderer.json` | `RHISetting`: backend name (`D3D12`), VSync, debug layer, and back buffer count (2 to 8) |
+| `Renderer.json` | `Renderer`: `BlinnPhongRenderer` or `DebugRenderer`. `RHISetting`: backend name (`D3D12`), VSync, debug layer, and back buffer count (2 to 8) |
 | `Scene.json` | Scene meshes and directional lights. Each mesh key is an `.asset.json` path. Each instance stores translation, rotation in radians as pitch, yaw and roll, and scale. Each light stores direction, color, and intensity |
 
 `JsonConfigParser` reads the three startup files and validates them before they enter `ConfigManager`. `ConfigManager` is the single store for those settings. Mesh and material description files are not cached there. `DescriptionParser` parses them on demand into the data types declared in `Asset/Description.h`. Later changes to startup settings, including changes from a UI, go through `ConfigManager` rather than through another copy of the settings.
@@ -200,6 +201,7 @@ Each library is a separate CMake target. A module links only the libraries it us
 | | | `ImGuiWin32` (static) | `WindowsPlatform` |
 | Slang | 2026.18.3 | `SlangHeaders` (headers only) | `ShaderCompiler` |
 | DXC | 1.9.2609.5 | runtime DLLs only, Windows | `ShaderCompiler`, loaded by Slang |
+| DirectX 12 Agility SDK | 1.619.6 | runtime DLLs, Windows | `ShadowEngine`, loaded by the D3D12 loader |
 
 The stb and cgltf implementations are compiled once, in `Framework/Common/Private/ThirdPartyImpl.cpp`. The ImGui Vulkan backend is not built while the Vulkan RHI is empty.
 
@@ -272,3 +274,11 @@ Slang is under the Apache License 2.0 with LLVM Exception. Its binaries bundle f
 ```
 
 The DXC source is under the University of Illinois/NCSA Open Source License (`LICENSE-LLVM.txt`) and the MIT License (`LICENCE-MIT.txt`). The prebuilt release is also covered by the Microsoft Software License Terms for the DirectX Shader Compiler (`LICENSE-MS.txt`), which limit use to Windows and define which files may be redistributed. All three files are in `Source/ThirdParty/DXC/Windows`. Ship them with any build that includes `dxcompiler.dll` and `dxil.dll`.
+
+### DirectX 12 Agility SDK
+
+```text
+(c) Microsoft Corporation
+```
+
+The Agility SDK is under the Microsoft Software License Terms for Microsoft DirectX, in `Source/ThirdParty/DirectX/AgilitySDK/LICENSE.txt`. The runtime redistributables are `D3D12Core.dll` and `d3d12SDKLayers.dll`. Ship that license with any build that includes them.

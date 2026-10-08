@@ -34,6 +34,7 @@ namespace ShadowEngine
     {
         struct RHISetting
         {
+            std::string Renderer;
             std::string Backend;
             bool bVSync = true;
             bool bDebugLayer = false;

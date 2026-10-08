@@ -2,14 +2,19 @@
 
 #include "Framework/Common/Public/Log.h"
 #include "RHI/Direct3D12/Public/D3D12Buffer.h"
-#include "RHI/Direct3D12/Public/D3D12Descriptor.h"
 #include "RHI/Direct3D12/Public/D3D12Pipeline.h"
 #include "RHI/Direct3D12/Public/D3D12Texture.h"
 
 namespace ShadowEngine
 {
-    bool D3D12CommandList::Initialize(ID3D12Device* Device, std::string* ErrorMessage)
+    bool D3D12CommandList::Initialize(
+        ID3D12Device* Device,
+        ID3D12DescriptorHeap* InResourceHeap,
+        ID3D12DescriptorHeap* InSamplerHeap,
+        std::string* ErrorMessage)
     {
+        ResourceHeap = InResourceHeap;
+        SamplerHeap = InSamplerHeap;
         HRESULT Result = Device->CreateCommandAllocator(
             D3D12_COMMAND_LIST_TYPE_DIRECT,
             IID_PPV_ARGS(Allocator.GetAddressOf()));
@@ -95,6 +100,8 @@ namespace ShadowEngine
     void D3D12CommandList::SetPipeline(RHIPipeline& Pipeline)
     {
         auto& D3D12PipelineObject = static_cast<D3D12Pipeline&>(Pipeline);
+        ID3D12DescriptorHeap* Heaps[] = {ResourceHeap, SamplerHeap};
+        CommandList->SetDescriptorHeaps(2, Heaps);
         CommandList->SetGraphicsRootSignature(D3D12PipelineObject.GetRootSignature());
         CommandList->SetPipelineState(D3D12PipelineObject.GetPipelineState());
         CommandList->IASetPrimitiveTopology(D3D12PipelineObject.GetTopology());
@@ -119,13 +126,10 @@ namespace ShadowEngine
         CommandList->SetGraphicsRootConstantBufferView(0, Address);
     }
 
-    void D3D12CommandList::SetMaterialBinding(RHIMaterialBinding& Binding)
+    void D3D12CommandList::BindShaderResources()
     {
-        auto& MaterialBinding = static_cast<D3D12MaterialBinding&>(Binding);
-        ID3D12DescriptorHeap* Heaps[] = {MaterialBinding.GetSrvHeap(), MaterialBinding.GetSamplerHeap()};
+        ID3D12DescriptorHeap* Heaps[] = {ResourceHeap, SamplerHeap};
         CommandList->SetDescriptorHeaps(2, Heaps);
-        CommandList->SetGraphicsRootDescriptorTable(1, MaterialBinding.GetSrvGpu());
-        CommandList->SetGraphicsRootDescriptorTable(2, MaterialBinding.GetSamplerGpu());
     }
 
     void D3D12CommandList::SetViewport(const RHIViewport& Viewport)

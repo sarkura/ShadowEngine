@@ -42,18 +42,33 @@ namespace ShadowEngine
             return false;
         }
 
-        D3D12_FEATURE_DATA_SHADER_MODEL ShaderModel{D3D12MinimumShaderModel};
-        if (FAILED(Device->CheckFeatureSupport(
+        D3D12_FEATURE_DATA_SHADER_MODEL ShaderModel{static_cast<D3D_SHADER_MODEL>(0x69)};
+        HRESULT ShaderModelResult = Device->CheckFeatureSupport(
+            D3D12_FEATURE_SHADER_MODEL,
+            &ShaderModel,
+            sizeof(ShaderModel));
+        if (FAILED(ShaderModelResult))
+        {
+            ShaderModel.HighestShaderModel = D3D12MinimumShaderModel;
+            ShaderModelResult = Device->CheckFeatureSupport(
                 D3D12_FEATURE_SHADER_MODEL,
                 &ShaderModel,
-                sizeof(ShaderModel))) ||
-            ShaderModel.HighestShaderModel < D3D12MinimumShaderModel)
+                sizeof(ShaderModel));
+        }
+        if (FAILED(ShaderModelResult) || ShaderModel.HighestShaderModel < D3D12MinimumShaderModel)
         {
             SetErrorMessage(
                 ErrorMessage,
-                "The adapter or its driver does not support Shader Model 6.0, which is required for DXIL");
+                "The adapter or its driver does not support Shader Model 6.8, which is required for DXIL");
             return false;
         }
+
+        const unsigned int ReportedModel = static_cast<unsigned int>(ShaderModel.HighestShaderModel);
+        Log::Info(
+            "D3D12 shader model 0x{:X} (major {}, minor {})",
+            ReportedModel,
+            ReportedModel >> 4,
+            ReportedModel & 0xF);
 
         if (Desc.bEnableDebugLayer)
         {
@@ -71,7 +86,25 @@ namespace ShadowEngine
         }
 
         Fence = std::make_unique<D3D12Fence>();
-        return Fence->Initialize(Device.Get(), ErrorMessage);
+        if (!Fence->Initialize(Device.Get(), ErrorMessage))
+        {
+            return false;
+        }
+
+        constexpr uint32 ResourceCapacity = 1024;
+        constexpr uint32 SamplerCapacity = 64;
+        return CreateShaderVisibleHeap(
+                   D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
+                   ResourceCapacity,
+                   ResourceHeap,
+                   ResourceIncrement,
+                   ErrorMessage) &&
+            CreateShaderVisibleHeap(
+                   D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER,
+                   SamplerCapacity,
+                   SamplerHeap,
+                   SamplerIncrement,
+                   ErrorMessage);
     }
 
     bool D3D12Device::CreateFactory(bool bEnableDebugLayer, std::string* ErrorMessage)
@@ -118,6 +151,10 @@ namespace ShadowEngine
         FlushDebugMessages();
 
         Fence.reset();
+        ResourceHeap.Reset();
+        SamplerHeap.Reset();
+        ResourceCount = 0;
+        SamplerCount = 0;
         Queue.Reset();
         InfoQueue.Reset();
         Device.Reset();
@@ -239,39 +276,85 @@ namespace ShadowEngine
         return D3D12Texture::CreateSampled(Device.Get(), Queue.Get(), *Fence, Desc, ErrorMessage);
     }
 
-    std::unique_ptr<RHISampler> D3D12Device::CreateSampler(std::string* ErrorMessage)
-    {
-        return D3D12Sampler::Create(Device.Get(), ErrorMessage);
-    }
-
-    std::unique_ptr<RHIMaterialBinding> D3D12Device::CreateMaterialBinding(
-        const RHIMaterialBindingDesc& Desc,
+    bool D3D12Device::CreateShaderVisibleHeap(
+        D3D12_DESCRIPTOR_HEAP_TYPE Type,
+        uint32 Capacity,
+        ComPtr<ID3D12DescriptorHeap>& OutHeap,
+        uint32& OutIncrement,
         std::string* ErrorMessage)
     {
-        if (Desc.BaseColor == nullptr || Desc.Roughness == nullptr || Desc.Sampler == nullptr)
+        D3D12_DESCRIPTOR_HEAP_DESC Desc{};
+        Desc.Type = Type;
+        Desc.NumDescriptors = Capacity;
+        Desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        const HRESULT Result = Device->CreateDescriptorHeap(&Desc, IID_PPV_ARGS(OutHeap.GetAddressOf()));
+        if (FAILED(Result))
         {
-            SetErrorMessage(ErrorMessage, "Material binding requires a base color texture, a roughness texture, and a sampler");
+            SetErrorMessage(ErrorMessage, "CreateDescriptorHeap failed: " + FormatHResult(Result));
+            return false;
+        }
+
+        OutIncrement = Device->GetDescriptorHandleIncrementSize(Type);
+        return true;
+    }
+
+    std::unique_ptr<RHISampler> D3D12Device::CreateSampler(std::string* ErrorMessage)
+    {
+        constexpr uint32 SamplerCapacity = 64;
+        if (SamplerHeap == nullptr || SamplerCount >= SamplerCapacity)
+        {
+            SetErrorMessage(ErrorMessage, "Sampler descriptor heap is full");
             return nullptr;
         }
 
-        auto Binding = std::make_unique<D3D12MaterialBinding>();
-        if (!Binding->Initialize(
-                Device.Get(),
-                static_cast<D3D12Texture&>(*Desc.BaseColor),
-                static_cast<D3D12Texture&>(*Desc.Roughness),
-                static_cast<D3D12Sampler&>(*Desc.Sampler),
-                ErrorMessage))
+        D3D12_SAMPLER_DESC Desc{};
+        Desc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+        Desc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        Desc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        Desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        Desc.MipLODBias = 0.0F;
+        Desc.MaxAnisotropy = 1;
+        Desc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+        Desc.MinLOD = 0.0F;
+        Desc.MaxLOD = D3D12_FLOAT32_MAX;
+
+        D3D12_CPU_DESCRIPTOR_HANDLE Cpu = SamplerHeap->GetCPUDescriptorHandleForHeapStart();
+        Cpu.ptr += static_cast<SIZE_T>(SamplerCount) * SamplerIncrement;
+        Device->CreateSampler(&Desc, Cpu);
+        const uint32 Index = SamplerCount;
+        ++SamplerCount;
+        return std::make_unique<D3D12Sampler>(Index);
+    }
+
+    bool D3D12Device::CreateShaderResourceView(RHITexture& Texture, uint32& OutIndex, std::string* ErrorMessage)
+    {
+        constexpr uint32 ResourceCapacity = 1024;
+        if (ResourceHeap == nullptr || ResourceCount >= ResourceCapacity)
         {
-            return nullptr;
+            SetErrorMessage(ErrorMessage, "Shader resource descriptor heap is full");
+            return false;
         }
 
-        return Binding;
+        auto& Sampled = static_cast<D3D12Texture&>(Texture);
+        D3D12_SHADER_RESOURCE_VIEW_DESC View{};
+        View.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        View.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        View.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        View.Texture2D.MostDetailedMip = 0;
+        View.Texture2D.MipLevels = Sampled.GetMipCount();
+
+        D3D12_CPU_DESCRIPTOR_HANDLE Cpu = ResourceHeap->GetCPUDescriptorHandleForHeapStart();
+        Cpu.ptr += static_cast<SIZE_T>(ResourceCount) * ResourceIncrement;
+        Device->CreateShaderResourceView(Sampled.GetResource(), &View, Cpu);
+        OutIndex = ResourceCount;
+        ++ResourceCount;
+        return true;
     }
 
     std::unique_ptr<RHICommandList> D3D12Device::CreateCommandList(std::string* ErrorMessage)
     {
         auto CommandList = std::make_unique<D3D12CommandList>();
-        if (!CommandList->Initialize(Device.Get(), ErrorMessage))
+        if (!CommandList->Initialize(Device.Get(), ResourceHeap.Get(), SamplerHeap.Get(), ErrorMessage))
         {
             return nullptr;
         }

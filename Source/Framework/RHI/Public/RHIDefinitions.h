@@ -57,6 +57,7 @@ namespace ShadowEngine
     {
         RHITexture* BaseColor = nullptr;
         RHITexture* Roughness = nullptr;
+        RHITexture* Normal = nullptr;
         RHISampler* Sampler = nullptr;
     };
 

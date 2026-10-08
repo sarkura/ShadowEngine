@@ -553,6 +553,11 @@ namespace ShadowEngine
 
         RenderSetting::RHISetting ParsedSetting;
         if (!ReadString(
+                Document,
+                "Renderer",
+                ParsedSetting.Renderer,
+                ErrorMessage) ||
+            !ReadString(
                 *RHI,
                 "Backend",
                 ParsedSetting.Backend,
@@ -589,6 +594,12 @@ namespace ShadowEngine
         const RenderSetting::RHISetting& Setting,
         std::string* ErrorMessage)
     {
+        if (Setting.Renderer != "BlinnPhongRenderer" && Setting.Renderer != "DebugRenderer")
+        {
+            SetError(ErrorMessage, "Renderer must be BlinnPhongRenderer or DebugRenderer");
+            return false;
+        }
+
         if (Setting.Backend.empty())
         {
             SetError(ErrorMessage, "RHI Backend cannot be empty");

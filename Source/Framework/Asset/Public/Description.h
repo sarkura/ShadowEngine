@@ -19,13 +19,23 @@ namespace ShadowEngine
         std::vector<MeshMaterialBinding> Materials;
     };
 
-    struct MaterialDescription
+    struct MaterialRendererBinding
     {
-        std::string Shader;
+        std::string Renderer;
+        std::string VertexShader;
+        std::string PixelShader;
+        std::string MaterialShader;
+        bool bHasParameters = false;
         std::vector<float> BaseColor;
         float Roughness = 0.0F;
         std::vector<float> SpecularColor;
         std::string BaseColorTexture;
         std::string RoughnessTexture;
+        std::string NormalTexture;
+    };
+
+    struct MaterialDescription
+    {
+        std::vector<MaterialRendererBinding> Bindings;
     };
 }

@@ -12,7 +12,11 @@ namespace ShadowEngine
     class D3D12CommandList final : public RHICommandList
     {
         public:
-            bool Initialize(ID3D12Device* Device, std::string* ErrorMessage = nullptr);
+            bool Initialize(
+                ID3D12Device* Device,
+                ID3D12DescriptorHeap* InResourceHeap,
+                ID3D12DescriptorHeap* InSamplerHeap,
+                std::string* ErrorMessage = nullptr);
 
             void Begin() override;
             void End() override;
@@ -27,7 +31,7 @@ namespace ShadowEngine
             void SetVertexBuffer(RHIBuffer& Buffer) override;
             void SetIndexBuffer(RHIBuffer& Buffer) override;
             void SetConstantBuffer(RHIBuffer& Buffer, uint32 Offset) override;
-            void SetMaterialBinding(RHIMaterialBinding& Binding) override;
+            void BindShaderResources() override;
             void SetViewport(const RHIViewport& Viewport) override;
             void SetScissor(const RHIRect& Scissor) override;
             void Draw(uint32 VertexCount, uint32 FirstVertex = 0) override;
@@ -40,6 +44,8 @@ namespace ShadowEngine
 
             ComPtr<ID3D12CommandAllocator> Allocator;
             ComPtr<ID3D12GraphicsCommandList> CommandList;
+            ID3D12DescriptorHeap* ResourceHeap = nullptr;
+            ID3D12DescriptorHeap* SamplerHeap = nullptr;
 
             D3D12Texture* CurrentRenderTarget = nullptr;
             D3D12_RESOURCE_STATES RenderTargetRestoreState = D3D12_RESOURCE_STATE_COMMON;

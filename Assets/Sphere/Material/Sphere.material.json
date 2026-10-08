@@ -1,11 +1,24 @@
 {
-    "type": "Material",
-    "shader": "Material/BlinnPhongMaterial.slang",
-
-    "parameters":
+    "Type": "Material",
+    "DebugRenderer":
     {
-        "BaseColor": [0.6, 0.3, 0.2],
-        "Roughness": 0.15,
-        "SpecularColor": [1, 1, 1]
+        "Vertex": "DebugRenderer/DebugRendererVertex.slang",
+        "Fragment": "DebugRenderer/DebugRendererFragment.slang",
+        "Material": "Material/DebugRendererMaterial.slang",
+        "Parameters":
+        {
+        }
+    },
+    "BlinnPhongRenderer":
+    {
+        "Vertex": "BlinnPhong/BlinnPhongVertex.slang",
+        "Fragment": "BlinnPhong/BlinnPhongFragment.slang",
+        "Material": "Material/BlinnPhongMaterial.slang",
+        "Parameters":
+        {
+            "BaseColor": [0.6, 0.3, 0.2],
+            "Roughness": 0.15,
+            "SpecularColor": [1, 1, 1]
+        }
     }
 }

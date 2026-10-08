@@ -8,15 +8,11 @@
 #include "Framework/Material/Public/MaterialInstance.h"
 #include "Framework/Material/Public/MaterialParameter.h"
 #include "Framework/RHI/Public/RHIDevice.h"
+#include "Framework/RHI/Public/RHISwapChain.h"
 #include "Framework/Shader/Public/ShaderManager.h"
-
-#include <glm/ext/matrix_clip_space.hpp>
-#include <glm/ext/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
 
 #include <algorithm>
 #include <cstdint>
-#include <cstring>
 #include <span>
 #include <string>
 #include <vector>
@@ -25,21 +21,6 @@ namespace ShadowEngine
 {
     namespace
     {
-        constexpr uint32 ConstantAlignment = 512;
-
-        struct GpuObjectConstants
-        {
-            float ViewProjection[16];
-            float World[16];
-            float NormalMatrix[16];
-            float CameraPosition[4];
-            float LightDirection[4];
-            float LightColor[4];
-            MaterialParameter::SurfaceConstants Surface;
-        };
-
-        static_assert(sizeof(GpuObjectConstants) <= ConstantAlignment);
-
         std::span<const uint8> AsBytes(const void* Data, size_t Size)
         {
             return {static_cast<const uint8*>(Data), Size};
@@ -162,8 +143,10 @@ namespace ShadowEngine
             return false;
         }
 
-        for (const MeshSection& Section : Mesh.GetSections())
+        const std::vector<MeshSection>& Sections = Mesh.GetSections();
+        for (uint32 SectionIndex = 0; SectionIndex < static_cast<uint32>(Sections.size()); ++SectionIndex)
         {
+            const MeshSection& Section = Sections[SectionIndex];
             const MaterialInstance* Instance = Assets->ResolveMaterialInstance(Section.Material);
             const Material* Material = Instance == nullptr ? nullptr : Assets->ResolveMaterial(Instance->GetBaseMaterial());
             if (Material == nullptr)
@@ -172,7 +155,13 @@ namespace ShadowEngine
                 return false;
             }
 
-            if (!Shaders.LoadShaders(*Device, Material->GetShader(), ErrorMessage))
+            const ShaderHandle* Shader = Material->FindShader(GetName());
+            if (Shader == nullptr)
+            {
+                continue;
+            }
+
+            if (!Shaders.LoadShaders(*Device, *Shader, ErrorMessage))
             {
                 return false;
             }
@@ -187,8 +176,9 @@ namespace ShadowEngine
 
             MeshBatch Batch;
             Batch.Mesh = Handle;
-            Batch.VertexShader = Shaders.GetVertexShader(Material->GetShader());
-            Batch.PixelShader = Shaders.GetPixelShader(Material->GetShader());
+            Batch.Section = SectionIndex;
+            Batch.VertexShader = Shaders.GetVertexShader(*Shader);
+            Batch.PixelShader = Shaders.GetPixelShader(*Shader);
             if (Batch.VertexShader == nullptr || Batch.PixelShader == nullptr)
             {
                 SetErrorMessage(ErrorMessage, "Material shader is not loaded: " + Mesh.GetPath().generic_string());
@@ -255,7 +245,7 @@ namespace ShadowEngine
             const MaterialParameter::TextureBinding Textures = MaterialParameter::GetTextureBinding(Instance->GetParameters());
             if (!Textures.IsValid())
             {
-                SetErrorMessage(ErrorMessage, "Material textures must include BaseColor and Roughness: " + Mesh.GetPath().generic_string());
+                SetErrorMessage(ErrorMessage, "Material textures must include BaseColor, Roughness, and Normal: " + Mesh.GetPath().generic_string());
                 return false;
             }
 
@@ -263,18 +253,9 @@ namespace ShadowEngine
             {
                 RHITexture* BaseColor = UploadTexture(Textures.BaseColor, ErrorMessage);
                 RHITexture* Roughness = UploadTexture(Textures.Roughness, ErrorMessage);
+                RHITexture* Normal = UploadTexture(Textures.Normal, ErrorMessage);
                 RHISampler* Sampler = UploadSampler(Textures.Sampler, ErrorMessage);
-                if (BaseColor == nullptr || Roughness == nullptr || Sampler == nullptr)
-                {
-                    return false;
-                }
-
-                RHIMaterialBindingDesc BindingDesc;
-                BindingDesc.BaseColor = BaseColor;
-                BindingDesc.Roughness = Roughness;
-                BindingDesc.Sampler = Sampler;
-                Batch.MaterialBinding = Device->CreateMaterialBinding(BindingDesc, ErrorMessage);
-                if (Batch.MaterialBinding == nullptr)
+                if (BaseColor == nullptr || Roughness == nullptr || Normal == nullptr || Sampler == nullptr)
                 {
                     return false;
                 }
@@ -323,6 +304,12 @@ namespace ShadowEngine
         }
 
         RHITexture* Loaded = Texture.get();
+        uint32 Created = 0;
+        if (!Device->CreateShaderResourceView(*Loaded, Created, ErrorMessage))
+        {
+            return nullptr;
+        }
+        TextureDescriptors.emplace(Handle.Index, Created);
         GpuTextures.emplace(Handle.Index, std::move(Texture));
         return Loaded;
     }
@@ -358,6 +345,7 @@ namespace ShadowEngine
         MeshBatches.clear();
         GpuSamplers.clear();
         GpuTextures.clear();
+        TextureDescriptors.clear();
         DepthBuffer.reset();
         ConstantBuffer.reset();
         ConstantCapacity = 0;
@@ -391,36 +379,9 @@ namespace ShadowEngine
         SyncRenderProxy(InScene, SceneProxy);
     }
 
-    bool Renderer::RenderFrame()
+    bool Renderer::CollectDraws(std::vector<FrameDraw>& Draws) const
     {
-        if (Device == nullptr || SwapChain == nullptr || CommandList == nullptr || ConstantBuffer == nullptr ||
-            DepthBuffer == nullptr || MeshBatches.empty())
-        {
-            return false;
-        }
-
-        const float Width = static_cast<float>(SwapChain->GetWidth());
-        const float Height = static_cast<float>(SwapChain->GetHeight());
-        const float Aspect = Height > 0.0F ? Width / Height : 1.0F;
-        const glm::mat4 View = ViewCamera.ViewMatrix();
-        const glm::mat4 Projection = glm::perspectiveRH_ZO(glm::radians(45.0F), Aspect, 0.1F, 100.0F);
-        const glm::mat4 ViewProjection = Projection * View;
-        const glm::vec3 CameraPosition = ViewCamera.GetPosition();
-
-        if (SceneProxy.Meshes.size() > ConstantCapacity)
-        {
-            Log::Error("Scene has more objects than the constant buffer can hold");
-            return false;
-        }
-
-        struct Draw
-        {
-            const MeshBatch* Batch = nullptr;
-            const MeshRenderProxy* Proxy = nullptr;
-            MaterialInstanceHandle Material;
-        };
-
-        std::vector<Draw> Draws;
+        Draws.clear();
         for (const MeshRenderProxy& Proxy : SceneProxy.Meshes)
         {
             const MeshAsset* Mesh = Assets->ResolveMesh(Proxy.Mesh);
@@ -430,23 +391,14 @@ namespace ShadowEngine
                 return false;
             }
 
-            std::vector<const MeshBatch*> SectionBatches;
-            for (const MeshBatch& Batch : MeshBatches)
-            {
-                if (Batch.Mesh.Index == Proxy.Mesh.Index)
-                {
-                    SectionBatches.push_back(&Batch);
-                }
-            }
-
             const std::vector<MeshSection>& Sections = Mesh->GetSections();
-            if (SectionBatches.size() != Sections.size() || Proxy.Materials.size() != Sections.size())
+            if (Proxy.Materials.size() != Sections.size())
             {
                 Log::Error("Render proxy mesh was not uploaded");
                 return false;
             }
 
-            for (size_t SectionIndex = 0; SectionIndex < Sections.size(); ++SectionIndex)
+            for (uint32 SectionIndex = 0; SectionIndex < static_cast<uint32>(Sections.size()); ++SectionIndex)
             {
                 if (!Proxy.Materials[SectionIndex].IsValid())
                 {
@@ -454,60 +406,59 @@ namespace ShadowEngine
                     return false;
                 }
 
-                Draw Item;
-                Item.Batch = SectionBatches[SectionIndex];
+                const MaterialInstance* Instance = Assets->ResolveMaterialInstance(Proxy.Materials[SectionIndex]);
+                const Material* BoundMaterial = Instance == nullptr ? nullptr : Assets->ResolveMaterial(Instance->GetBaseMaterial());
+                if (BoundMaterial == nullptr)
+                {
+                    Log::Error("Render proxy material is missing");
+                    return false;
+                }
+
+                if (BoundMaterial->FindShader(GetName()) == nullptr)
+                {
+                    continue;
+                }
+
+                const MeshBatch* Batch = nullptr;
+                for (const MeshBatch& Existing : MeshBatches)
+                {
+                    if (Existing.Mesh.Index == Proxy.Mesh.Index && Existing.Section == SectionIndex)
+                    {
+                        Batch = &Existing;
+                        break;
+                    }
+                }
+                if (Batch == nullptr)
+                {
+                    Log::Error("Render proxy mesh was not uploaded");
+                    return false;
+                }
+
+                FrameDraw Item;
+                Item.Batch = Batch;
                 Item.Proxy = &Proxy;
                 Item.Material = Proxy.Materials[SectionIndex];
                 Draws.push_back(Item);
             }
         }
 
-        if (Draws.size() > ConstantCapacity)
+        return true;
+    }
+
+    bool Renderer::SubmitDraws(const std::vector<FrameDraw>& Draws)
+    {
+        if (Device == nullptr || SwapChain == nullptr || CommandList == nullptr || DepthBuffer == nullptr)
         {
-            Log::Error("Scene has more objects than the constant buffer can hold");
             return false;
         }
 
-        DirectLightRenderProxy Light{};
-        if (!SceneProxy.DirectLights.empty())
+        if (!Draws.empty() && ConstantBuffer == nullptr)
         {
-            Light = SceneProxy.DirectLights.front();
-        }
-
-        std::vector<uint8> Constants(Draws.size() * ConstantAlignment);
-        for (size_t Index = 0; Index < Draws.size(); ++Index)
-        {
-            const MaterialInstance* Instance = Assets->ResolveMaterialInstance(Draws[Index].Material);
-            if (Instance == nullptr)
-            {
-                Log::Error("Render proxy material is missing");
-                return false;
-            }
-
-            const MaterialParameterBlock& Parameter = Instance->GetParameters();
-            GpuObjectConstants Slot{};
-            std::memcpy(Slot.ViewProjection, glm::value_ptr(ViewProjection), sizeof(Slot.ViewProjection));
-            std::memcpy(Slot.World, Draws[Index].Proxy->World, sizeof(Slot.World));
-            std::memcpy(Slot.NormalMatrix, Draws[Index].Proxy->NormalMatrix, sizeof(Slot.NormalMatrix));
-            Slot.CameraPosition[0] = CameraPosition.x;
-            Slot.CameraPosition[1] = CameraPosition.y;
-            Slot.CameraPosition[2] = CameraPosition.z;
-            Slot.LightDirection[0] = Light.Direction[0];
-            Slot.LightDirection[1] = Light.Direction[1];
-            Slot.LightDirection[2] = Light.Direction[2];
-            Slot.LightColor[0] = Light.Color[0];
-            Slot.LightColor[1] = Light.Color[1];
-            Slot.LightColor[2] = Light.Color[2];
-            Slot.LightColor[3] = Light.Intensity;
-            MaterialParameter::WriteSurfaceConstants(Parameter, Slot.Surface);
-            std::memcpy(Constants.data() + Index * ConstantAlignment, &Slot, sizeof(Slot));
-        }
-        if (!Constants.empty() && !ConstantBuffer->Update(0, Constants))
-        {
-            Log::Error("Failed to write scene constants");
             return false;
         }
 
+        const float Width = static_cast<float>(SwapChain->GetWidth());
+        const float Height = static_cast<float>(SwapChain->GetHeight());
         CommandList->Begin();
         CommandList->BeginRenderPass(SwapChain->GetCurrentBackBuffer(), DepthBuffer.get(), ClearColor);
         CommandList->SetViewport({0.0F, 0.0F, Width, Height, 0.0F, 1.0F});
@@ -520,13 +471,10 @@ namespace ShadowEngine
         {
             const MeshBatch& Batch = *Draws[Index].Batch;
             CommandList->SetPipeline(*Batch.Pipeline);
+            CommandList->BindShaderResources();
             CommandList->SetVertexBuffer(*Batch.VertexBuffer);
             CommandList->SetIndexBuffer(*Batch.IndexBuffer);
             CommandList->SetConstantBuffer(*ConstantBuffer, Index * ConstantAlignment);
-            if (Batch.MaterialBinding != nullptr)
-            {
-                CommandList->SetMaterialBinding(*Batch.MaterialBinding);
-            }
             CommandList->DrawIndexed(Batch.IndexCount);
         }
         CommandList->EndRenderPass();

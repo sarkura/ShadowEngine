@@ -67,8 +67,9 @@ namespace ShadowEngine
             virtual std::unique_ptr<RHISampler> CreateSampler(
                 std::string* ErrorMessage = nullptr) = 0;
 
-            virtual std::unique_ptr<RHIMaterialBinding> CreateMaterialBinding(
-                const RHIMaterialBindingDesc& Desc,
+            virtual bool CreateShaderResourceView(
+                RHITexture& Texture,
+                uint32& OutIndex,
                 std::string* ErrorMessage = nullptr) = 0;
 
             virtual std::unique_ptr<RHICommandList> CreateCommandList(

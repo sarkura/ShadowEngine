@@ -255,6 +255,18 @@ target_link_libraries(ShadowEngine PRIVATE
 if(WIN32)
     target_compile_definitions(ShadowEngine PRIVATE SHADOW_WITH_D3D12=1)
     target_compile_definitions(WindowsPlatform PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    set_target_properties(ShadowEngine PROPERTIES ENABLE_EXPORTS TRUE)
+
+    set(D3D12_AGILITY_BIN ${SHADOW_THIRDPARTY_DIR}/DirectX/AgilitySDK/build/native/bin/x64)
+    add_custom_command(TARGET ShadowEngine POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:ShadowEngine>/D3D12
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${D3D12_AGILITY_BIN}/D3D12Core.dll
+            $<TARGET_FILE_DIR:ShadowEngine>/D3D12/D3D12Core.dll
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${D3D12_AGILITY_BIN}/d3d12SDKLayers.dll
+            $<TARGET_FILE_DIR:ShadowEngine>/D3D12/d3d12SDKLayers.dll
+    )
 endif()
 
 get_target_property(SHADER_COMPILER_RUNTIME_DLLS ShaderCompiler SHADOW_RUNTIME_DLLS)

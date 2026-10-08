@@ -4,15 +4,23 @@
 
 namespace ShadowEngine
 {
-    Material::Material(ShaderHandle InShader, MaterialParameterLayout InLayout)
-        : Shader(std::move(InShader))
+    Material::Material(std::vector<MaterialShaderBinding> InShaders, MaterialParameterLayout InLayout)
+        : Shaders(std::move(InShaders))
         , Layout(std::move(InLayout))
     {
     }
 
-    const ShaderHandle& Material::GetShader() const
+    const ShaderHandle* Material::FindShader(std::string_view RendererName) const
     {
-        return Shader;
+        for (const MaterialShaderBinding& Binding : Shaders)
+        {
+            if (Binding.Renderer == RendererName)
+            {
+                return &Binding.Shader;
+            }
+        }
+
+        return nullptr;
     }
 
     const MaterialParameterLayout& Material::GetLayout() const

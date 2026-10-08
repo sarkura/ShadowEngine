@@ -1,11 +1,5 @@
-#include "../BlinnPhong/BlinnPhongVertex.slang"
-
-struct BlinnPhongMaterialSample
-{
-    float3 Albedo;
-    float Roughness;
-    float3 SpecularColor;
-};
+#include "../Common/BlinnPhongConstants.slang"
+#include "BlinnPhongMaterialSample.slang"
 
 BlinnPhongMaterialSample EvaluateMaterial(VertexOutput Input)
 {
@@ -13,7 +7,6 @@ BlinnPhongMaterialSample EvaluateMaterial(VertexOutput Input)
     Sample.Albedo = saturate(BlinnPhongSurface.BaseColor.rgb);
     Sample.Roughness = saturate(BlinnPhongSurface.Roughness.x);
     Sample.SpecularColor = BlinnPhongSurface.SpecularColor.rgb;
+    Sample.Normal = normalize(Input.WorldNormal);
     return Sample;
 }
-
-#include "../BlinnPhong/BlinnPhongFragment.slang"

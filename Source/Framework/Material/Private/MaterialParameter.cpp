@@ -7,13 +7,14 @@
 namespace ShadowEngine
 {
     bool MaterialParameter::BuildLayout(
-        const MaterialDescription& Description,
+        const MaterialRendererBinding& Description,
         MaterialParameterLayout& Layout,
         std::string* ErrorMessage)
     {
-        if (Description.BaseColorTexture.empty() != Description.RoughnessTexture.empty())
+        if (Description.BaseColorTexture.empty() != Description.RoughnessTexture.empty() ||
+            Description.BaseColorTexture.empty() != Description.NormalTexture.empty())
         {
-            SetErrorMessage(ErrorMessage, "BaseColorTexture and RoughnessTexture must be set together");
+            SetErrorMessage(ErrorMessage, "BaseColorTexture, RoughnessTexture, and NormalTexture must be set together");
             return false;
         }
 
@@ -25,6 +26,7 @@ namespace ShadowEngine
         {
             Built.Entries.push_back({"BaseColorTexture", EMaterialParameterType::Texture2D});
             Built.Entries.push_back({"RoughnessTexture", EMaterialParameterType::Texture2D});
+            Built.Entries.push_back({"NormalTexture", EMaterialParameterType::Texture2D});
             Built.Entries.push_back({"Sampler", EMaterialParameterType::Sampler});
         }
 
@@ -33,7 +35,7 @@ namespace ShadowEngine
     }
 
     bool MaterialParameter::BuildBlock(
-        const MaterialDescription& Description,
+        const MaterialRendererBinding& Description,
         MaterialParameterBlock& Block,
         std::string* ErrorMessage)
     {
@@ -67,10 +69,12 @@ namespace ShadowEngine
         MaterialParameterBlock& Block,
         TextureAssetHandle BaseColor,
         TextureAssetHandle Roughness,
+        TextureAssetHandle Normal,
         SamplerHandle Sampler)
     {
         Block.BaseColorTexture = BaseColor;
         Block.RoughnessTexture = Roughness;
+        Block.NormalTexture = Normal;
         Block.Sampler = Sampler;
     }
 
@@ -99,6 +103,7 @@ namespace ShadowEngine
         TextureBinding Binding;
         Binding.BaseColor = Block.BaseColorTexture;
         Binding.Roughness = Block.RoughnessTexture;
+        Binding.Normal = Block.NormalTexture;
         Binding.Sampler = Block.Sampler;
         return Binding;
     }

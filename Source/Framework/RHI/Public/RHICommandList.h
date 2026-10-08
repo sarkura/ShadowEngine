@@ -6,7 +6,6 @@
 namespace ShadowEngine
 {
     class RHIBuffer;
-    class RHIMaterialBinding;
     class RHIPipeline;
     class RHITexture;
 
@@ -28,7 +27,7 @@ namespace ShadowEngine
             virtual void SetVertexBuffer(RHIBuffer& Buffer) = 0;
             virtual void SetIndexBuffer(RHIBuffer& Buffer) = 0;
             virtual void SetConstantBuffer(RHIBuffer& Buffer, uint32 Offset) = 0;
-            virtual void SetMaterialBinding(RHIMaterialBinding& Binding) = 0;
+            virtual void BindShaderResources() = 0;
             virtual void SetViewport(const RHIViewport& Viewport) = 0;
             virtual void SetScissor(const RHIRect& Scissor) = 0;
             virtual void Draw(uint32 VertexCount, uint32 FirstVertex = 0) = 0;

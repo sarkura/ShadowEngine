@@ -8,12 +8,6 @@
 
 namespace ShadowEngine
 {
-    class D3D12Sampler;
-    class D3D12Texture;
-}
-
-namespace ShadowEngine
-{
     class D3D12DescriptorHeap final : public NonCopyable
     {
         public:
@@ -39,13 +33,6 @@ namespace ShadowEngine
     class D3D12MaterialBinding final : public RHIMaterialBinding
     {
         public:
-            bool Initialize(
-                ID3D12Device* Device,
-                D3D12Texture& BaseColor,
-                D3D12Texture& Roughness,
-                D3D12Sampler& Sampler,
-                std::string* ErrorMessage = nullptr);
-
             [[nodiscard]] ID3D12DescriptorHeap* GetSrvHeap() const;
             [[nodiscard]] ID3D12DescriptorHeap* GetSamplerHeap() const;
             [[nodiscard]] D3D12_GPU_DESCRIPTOR_HANDLE GetSrvGpu() const;

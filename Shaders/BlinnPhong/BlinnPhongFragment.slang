@@ -1,10 +1,11 @@
 #include "../Common/BlinnPhongConstants.slang"
+#include "../Material/BlinnPhongMaterialSample.slang"
 
 [shader("fragment")]
 float4 PixelMain(VertexOutput Input) : SV_Target
 {
     const BlinnPhongMaterialSample Material = EvaluateMaterial(Input);
-    const float3 Normal = normalize(Input.WorldNormal);
+    const float3 Normal = normalize(Material.Normal);
     const float3 ToLight = normalize(-PerObject.LightDirection.xyz);
     const float3 ToView = normalize(PerObject.CameraPosition.xyz - Input.WorldPosition);
     const float3 HalfVector = normalize(ToLight + ToView);

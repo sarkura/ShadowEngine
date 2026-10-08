@@ -61,8 +61,9 @@ namespace ShadowEngine
             std::unique_ptr<RHISampler> CreateSampler(
                 std::string* ErrorMessage = nullptr) override;
 
-            std::unique_ptr<RHIMaterialBinding> CreateMaterialBinding(
-                const RHIMaterialBindingDesc& Desc,
+            bool CreateShaderResourceView(
+                RHITexture& Texture,
+                uint32& OutIndex,
                 std::string* ErrorMessage = nullptr) override;
 
             std::unique_ptr<RHICommandList> CreateCommandList(
@@ -73,6 +74,12 @@ namespace ShadowEngine
 
         private:
             bool CreateFactory(bool bEnableDebugLayer, std::string* ErrorMessage);
+            bool CreateShaderVisibleHeap(
+                D3D12_DESCRIPTOR_HEAP_TYPE Type,
+                uint32 Capacity,
+                ComPtr<ID3D12DescriptorHeap>& OutHeap,
+                uint32& OutIncrement,
+                std::string* ErrorMessage);
             void FlushDebugMessages();
 
             ComPtr<IDXGIFactory4> Factory;
@@ -81,5 +88,11 @@ namespace ShadowEngine
             ComPtr<ID3D12InfoQueue> InfoQueue;
             ComPtr<ID3D12CommandQueue> Queue;
             std::unique_ptr<D3D12Fence> Fence;
+            ComPtr<ID3D12DescriptorHeap> ResourceHeap;
+            ComPtr<ID3D12DescriptorHeap> SamplerHeap;
+            uint32 ResourceIncrement = 0;
+            uint32 SamplerIncrement = 0;
+            uint32 ResourceCount = 0;
+            uint32 SamplerCount = 0;
     };
 }

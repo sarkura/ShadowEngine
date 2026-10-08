@@ -11,6 +11,7 @@ namespace ShadowEngine
     struct ShaderCompileRequest
     {
         std::filesystem::path SourcePath;
+        std::filesystem::path ImplementationPath;
         std::string EntryPoint;
         ERHIShaderStage Stage = ERHIShaderStage::Vertex;
         ERHIShaderFormat Format = ERHIShaderFormat::DXBC;

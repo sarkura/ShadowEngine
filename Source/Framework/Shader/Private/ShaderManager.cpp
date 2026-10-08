@@ -51,12 +51,19 @@ namespace ShadowEngine
         }
     }
 
-    ShaderHandle ShaderManager::Register(const std::filesystem::path& RelativePath)
+    ShaderHandle ShaderManager::Register(
+        const std::filesystem::path& VertexPath,
+        const std::filesystem::path& PixelPath,
+        const std::filesystem::path& MaterialPath)
     {
-        const std::string Key = RelativePath.generic_string();
+        const std::string VertexKey = VertexPath.generic_string();
+        const std::string PixelKey = PixelPath.generic_string();
+        const std::string MaterialKey = MaterialPath.generic_string();
         for (uint32 Index = 0; Index < Records.size(); ++Index)
         {
-            if (Records[Index].Path.generic_string() == Key)
+            if (Records[Index].VertexPath.generic_string() == VertexKey &&
+                Records[Index].PixelPath.generic_string() == PixelKey &&
+                Records[Index].MaterialPath.generic_string() == MaterialKey)
             {
                 ShaderHandle Handle;
                 Handle.Index = Index;
@@ -65,7 +72,9 @@ namespace ShadowEngine
         }
 
         ShaderRecord Record;
-        Record.Path = RelativePath;
+        Record.VertexPath = VertexPath;
+        Record.PixelPath = PixelPath;
+        Record.MaterialPath = MaterialPath;
         Records.push_back(std::move(Record));
         ShaderHandle Handle;
         Handle.Index = static_cast<uint32>(Records.size() - 1);
@@ -86,13 +95,25 @@ namespace ShadowEngine
             return true;
         }
 
-        Record.VertexShader = LoadShader(Device, Record.Path, "VertexMain", ERHIShaderStage::Vertex, ErrorMessage);
+        Record.VertexShader = LoadShader(
+            Device,
+            Record.VertexPath,
+            {},
+            "VertexMain",
+            ERHIShaderStage::Vertex,
+            ErrorMessage);
         if (Record.VertexShader == nullptr)
         {
             return false;
         }
 
-        Record.PixelShader = LoadShader(Device, Record.Path, "PixelMain", ERHIShaderStage::Pixel, ErrorMessage);
+        Record.PixelShader = LoadShader(
+            Device,
+            Record.PixelPath,
+            Record.MaterialPath,
+            "PixelMain",
+            ERHIShaderStage::Pixel,
+            ErrorMessage);
         return Record.PixelShader != nullptr;
     }
 
@@ -119,6 +140,7 @@ namespace ShadowEngine
     std::unique_ptr<RHIShader> ShaderManager::LoadShader(
         RHIDevice& Device,
         const std::filesystem::path& RelativePath,
+        const std::filesystem::path& ImplementationPath,
         std::string_view EntryPoint,
         ERHIShaderStage Stage,
         std::string* ErrorMessage)
@@ -131,6 +153,10 @@ namespace ShadowEngine
 
         ShaderCompileRequest Request;
         Request.SourcePath = ShaderDirectory / RelativePath;
+        if (!ImplementationPath.empty())
+        {
+            Request.ImplementationPath = ShaderDirectory / ImplementationPath;
+        }
         Request.EntryPoint = EntryPoint;
         Request.Stage = Stage;
         Request.Format = Device.GetShaderFormat();

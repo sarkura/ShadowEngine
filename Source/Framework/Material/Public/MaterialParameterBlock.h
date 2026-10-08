@@ -11,6 +11,7 @@ namespace ShadowEngine
         float SpecularColor[4] = {1.0F, 1.0F, 1.0F, 1.0F};
         TextureAssetHandle BaseColorTexture;
         TextureAssetHandle RoughnessTexture;
+        TextureAssetHandle NormalTexture;
         SamplerHandle Sampler;
     };
 }

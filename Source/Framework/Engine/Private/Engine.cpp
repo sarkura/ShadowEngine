@@ -4,7 +4,8 @@
 #include "Framework/Common/Public/Log.h"
 #include "Framework/Config/Public/ConfigManager.h"
 #include "Framework/Engine/Public/EngineModules.h"
-#include "Framework/Render/Public/Renderer.h"
+#include "Framework/Render/Public/BlinnPhongRenderer.h"
+#include "Framework/Render/Public/DebugRenderer.h"
 #include "Framework/Scene/Public/Light.h"
 #include "Framework/Scene/Public/Scene.h"
 
@@ -130,7 +131,21 @@ namespace ShadowEngine
             Light.SetIntensity(LightConfig.Intensity);
         }
 
-        MainRenderer = std::make_unique<Renderer>();
+        const std::string RendererName = ConfigManager::Get().GetRHISetting().Renderer;
+        if (RendererName == "BlinnPhongRenderer")
+        {
+            MainRenderer = std::make_unique<BlinnPhongRenderer>();
+        }
+        else if (RendererName == "DebugRenderer")
+        {
+            MainRenderer = std::make_unique<DebugRenderer>();
+        }
+        else
+        {
+            SetErrorMessage(ErrorMessage, "Renderer is not available: " + RendererName);
+            Finalize();
+            return false;
+        }
         if (!MainRenderer->Initialize(
                 *Device,
                 *SwapChain,

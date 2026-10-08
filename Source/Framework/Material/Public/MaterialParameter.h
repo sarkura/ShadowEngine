@@ -14,12 +14,12 @@ namespace ShadowEngine
             MaterialParameter() = delete;
 
             static bool BuildLayout(
-                const MaterialDescription& Description,
+                const MaterialRendererBinding& Description,
                 MaterialParameterLayout& Layout,
                 std::string* ErrorMessage = nullptr);
 
             static bool BuildBlock(
-                const MaterialDescription& Description,
+                const MaterialRendererBinding& Description,
                 MaterialParameterBlock& Block,
                 std::string* ErrorMessage = nullptr);
 
@@ -27,6 +27,7 @@ namespace ShadowEngine
                 MaterialParameterBlock& Block,
                 TextureAssetHandle BaseColor,
                 TextureAssetHandle Roughness,
+                TextureAssetHandle Normal,
                 SamplerHandle Sampler);
 
             struct SurfaceConstants
@@ -44,6 +45,7 @@ namespace ShadowEngine
             {
                 TextureAssetHandle BaseColor;
                 TextureAssetHandle Roughness;
+                TextureAssetHandle Normal;
                 SamplerHandle Sampler;
 
                 [[nodiscard]] bool HasTextures() const
@@ -53,7 +55,8 @@ namespace ShadowEngine
 
                 [[nodiscard]] bool IsValid() const
                 {
-                    if (BaseColor.IsValid() != Roughness.IsValid())
+                    const bool bSameTextures = BaseColor.IsValid() == Roughness.IsValid() && BaseColor.IsValid() == Normal.IsValid();
+                    if (!bSameTextures)
                     {
                         return false;
                     }
