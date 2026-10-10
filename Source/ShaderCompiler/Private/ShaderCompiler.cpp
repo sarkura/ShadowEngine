@@ -252,24 +252,34 @@ namespace ShadowEngine
                     Slang::ComPtr<slang::IBlob> Diagnostics;
                     const std::string ModuleName = Request.SourcePath.stem().string();
                     slang::IModule* Module = nullptr;
-                    if (Request.ImplementationPath.empty())
+                    if (Request.ImplementationPath.empty() && Request.LightPath.empty())
                     {
                         Module = Session->loadModule(ModuleName.c_str(), Diagnostics.writeRef());
                     }
                     else
                     {
-                        const std::filesystem::path Implementation =
-                            std::filesystem::absolute(Request.ImplementationPath);
                         const std::filesystem::path Fragment = std::filesystem::absolute(Request.SourcePath);
-                        const std::string Source =
-                            "#include \"" + Implementation.generic_string() + "\"\n#include \"" +
-                            Fragment.generic_string() + "\"\n";
+                        std::string Source;
+                        std::string ModuleStem;
+                        if (!Request.LightPath.empty())
+                        {
+                            const std::filesystem::path Light = std::filesystem::absolute(Request.LightPath);
+                            Source += "#include \"" + Light.generic_string() + "\"\n";
+                            ModuleStem += Light.stem().string() + "+";
+                        }
+                        if (!Request.ImplementationPath.empty())
+                        {
+                            const std::filesystem::path Implementation =
+                                std::filesystem::absolute(Request.ImplementationPath);
+                            Source += "#include \"" + Implementation.generic_string() + "\"\n";
+                            ModuleStem += Implementation.stem().string() + "+";
+                        }
+                        Source += "#include \"" + Fragment.generic_string() + "\"\n";
+                        ModuleStem += Fragment.filename().string();
                         Slang::ComPtr<ISlangBlob> SourceBlob;
                         SourceBlob.attach(new ShaderSourceBlob(Source));
 
-                        const std::string ModulePath =
-                            (Fragment.parent_path() / (Implementation.stem().string() + "+" + Fragment.filename().string()))
-                                .generic_string();
+                        const std::string ModulePath = (Fragment.parent_path() / ModuleStem).generic_string();
                         Module = Session->loadModuleFromSource(
                             ModuleName.c_str(),
                             ModulePath.c_str(),

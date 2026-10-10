@@ -52,12 +52,22 @@ namespace ShadowEngine
             return false;
         }
 
+        GlobalTextureSetting::Setting LoadedGlobalTextures;
+        if (!JsonConfigParser::LoadGlobalTextureSetting(
+                ConfigDirectory / "GlobalTexture.json",
+                LoadedGlobalTextures,
+                ErrorMessage))
+        {
+            return false;
+        }
+
         const std::scoped_lock Lock(ConfigMutex);
         ConfigRoot = ConfigDirectory;
         Viewport = std::move(LoadedViewport);
         Movement = std::move(LoadedMovement);
         RHI = std::move(LoadedRHI);
         Scene = std::move(LoadedScene);
+        GlobalTextures = std::move(LoadedGlobalTextures);
         bInitialized = true;
         return true;
     }
@@ -101,6 +111,12 @@ namespace ShadowEngine
     {
         const std::scoped_lock Lock(ConfigMutex);
         return Scene;
+    }
+
+    GlobalTextureSetting::Setting ConfigManager::GetGlobalTextureSetting() const
+    {
+        const std::scoped_lock Lock(ConfigMutex);
+        return GlobalTextures;
     }
 
     bool ConfigManager::SetViewportSetting(

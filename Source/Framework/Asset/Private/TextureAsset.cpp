@@ -80,13 +80,41 @@ namespace ShadowEngine
             Height = NextHeight;
         }
 
-        return std::unique_ptr<TextureAsset>(new TextureAsset(std::move(InPath), std::move(Mips)));
+        return std::unique_ptr<TextureAsset>(new TextureAsset(std::move(InPath), std::move(Mips), ETextureFormat::RGBA8_UNorm));
     }
 
-    TextureAsset::TextureAsset(std::filesystem::path InPath, std::vector<Mip> InMips)
+    std::unique_ptr<TextureAsset> TextureAsset::CreateFloat(
+        std::filesystem::path InPath,
+        uint32 Width,
+        uint32 Height,
+        std::vector<uint8> Pixels,
+        std::string* ErrorMessage)
+    {
+        if (Width == 0 || Height == 0 || Pixels.size() != static_cast<size_t>(Width) * Height * 16)
+        {
+            SetErrorMessage(ErrorMessage, "Texture pixels do not match its size: " + InPath.generic_string());
+            return nullptr;
+        }
+
+        Mip First;
+        First.Width = Width;
+        First.Height = Height;
+        First.Pixels = std::move(Pixels);
+        std::vector<Mip> Mips;
+        Mips.push_back(std::move(First));
+        return std::unique_ptr<TextureAsset>(new TextureAsset(std::move(InPath), std::move(Mips), ETextureFormat::RGBA32_Float));
+    }
+
+    TextureAsset::TextureAsset(std::filesystem::path InPath, std::vector<Mip> InMips, ETextureFormat InFormat)
         : Asset(EAssetType::Texture, std::move(InPath))
         , Mips(std::move(InMips))
+        , Format(InFormat)
     {
+    }
+
+    ETextureFormat TextureAsset::GetFormat() const
+    {
+        return Format;
     }
 
     const std::vector<TextureAsset::Mip>& TextureAsset::GetMips() const

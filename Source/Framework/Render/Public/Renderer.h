@@ -2,6 +2,7 @@
 
 #include "Framework/Common/Public/NonCopyable.h"
 #include "Framework/Render/Public/Camera.h"
+#include "Framework/Render/Public/MeshBatch.h"
 #include "Framework/Render/Public/RenderProxy.h"
 #include "Framework/RHI/Public/RHIBuffer.h"
 #include "Framework/RHI/Public/RHICommandList.h"
@@ -47,38 +48,22 @@ namespace ShadowEngine
             void SetCameraMoveSpeed(float ForwardSpeed, float RightSpeed, float UpSpeed, float DownSpeed);
 
         protected:
-            struct MeshBatch
-            {
-                MeshHandle Mesh;
-                uint32 Section = 0;
-                RHIShader* VertexShader = nullptr;
-                RHIShader* PixelShader = nullptr;
-                std::unique_ptr<RHIBuffer> VertexBuffer;
-                std::unique_ptr<RHIBuffer> IndexBuffer;
-                std::unique_ptr<RHIPipeline> Pipeline;
-                uint32 IndexCount = 0;
-            };
-
-            struct FrameDraw
-            {
-                const MeshBatch* Batch = nullptr;
-                const MeshRenderProxy* Proxy = nullptr;
-                MaterialInstanceHandle Material;
-            };
-
             [[nodiscard]] virtual const char* GetName() const = 0;
-            bool CollectDraws(std::vector<FrameDraw>& Draws) const;
-            bool SubmitDraws(const std::vector<FrameDraw>& Draws);
 
             static constexpr uint32 ConstantAlignment = 512;
 
             RHIDevice* Device = nullptr;
             RHISwapChain* SwapChain = nullptr;
             AssetManager* Assets = nullptr;
+            ShaderManager* ShaderLibrary = nullptr;
             RHIColor ClearColor;
 
             std::unique_ptr<RHICommandList> CommandList;
             std::unique_ptr<RHIBuffer> ConstantBuffer;
+            std::unique_ptr<RHIPipeline> SkyPipeline;
+            std::unique_ptr<RHIBuffer> SkyConstantBuffer;
+            uint32 EnvironmentDescriptor = 0;
+            uint32 EnvironmentSampler = 0;
             std::unique_ptr<RHITexture> DepthBuffer;
             std::unordered_map<uint32, std::unique_ptr<RHISampler>> GpuSamplers;
             std::unordered_map<uint32, uint32> TextureDescriptors;
@@ -89,6 +74,7 @@ namespace ShadowEngine
 
         private:
             bool UploadMesh(ShaderManager& Shaders, MeshHandle Mesh, std::string* ErrorMessage);
+            bool UploadEnvironment(ShaderManager& Shaders, std::string* ErrorMessage);
             RHITexture* UploadTexture(TextureAssetHandle Texture, std::string* ErrorMessage);
             RHISampler* UploadSampler(SamplerHandle Sampler, std::string* ErrorMessage);
 

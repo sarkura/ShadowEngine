@@ -50,5 +50,27 @@ namespace ShadowEngine
             Light.Intensity = Item.GetIntensity();
             Out.DirectLights.push_back(Light);
         }
+
+        Out.PointLights.clear();
+        Out.PointLights.reserve(InScene.GetPointLights().size());
+        for (const PointLight& Item : InScene.GetPointLights())
+        {
+            PointLightRenderProxy Light;
+            Item.GetPosition(Light.Position);
+            Item.GetColor(Light.Color);
+            Light.Radius = Item.GetRadius();
+            Light.Intensity = Item.GetIntensity();
+            Out.PointLights.push_back(Light);
+        }
+
+        Out.SkyLights.clear();
+        Out.SkyLights.reserve(InScene.GetSkyLights().size());
+        for (const SkyLight& Item : InScene.GetSkyLights())
+        {
+            SkyLightRenderProxy Light;
+            Item.GetColor(Light.Color);
+            Light.Intensity = Item.GetIntensity();
+            Out.SkyLights.push_back(Light);
+        }
     }
 }

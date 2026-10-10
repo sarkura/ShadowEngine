@@ -47,5 +47,10 @@ namespace ShadowEngine
             static bool ValidateSceneSetting(
                 const SceneSetting::Setting& Setting,
                 std::string* ErrorMessage = nullptr);
+
+            static bool LoadGlobalTextureSetting(
+                const std::filesystem::path& FilePath,
+                GlobalTextureSetting::Setting& Setting,
+                std::string* ErrorMessage = nullptr);
     };
 }

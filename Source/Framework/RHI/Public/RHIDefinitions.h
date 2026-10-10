@@ -77,5 +77,6 @@ namespace ShadowEngine
         ERHIPrimitiveTopology Topology = ERHIPrimitiveTopology::TriangleList;
         std::span<const RHIInputElement> InputLayout;
         bool bEnableDepth = false;
+        ERHIFormat DepthFormat = ERHIFormat::Unknown;
     };
 }

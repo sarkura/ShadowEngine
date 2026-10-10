@@ -1,5 +1,5 @@
 {
-    "Renderer": "BlinnPhongRenderer",
+    "Renderer": "PBRForwardRenderer",
     "RHISetting":
     {
         "Backend": "D3D12",

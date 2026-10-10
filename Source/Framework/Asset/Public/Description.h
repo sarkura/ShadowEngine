@@ -25,6 +25,7 @@ namespace ShadowEngine
         std::string VertexShader;
         std::string PixelShader;
         std::string MaterialShader;
+        std::string LightShader;
         bool bHasParameters = false;
         std::vector<float> BaseColor;
         float Roughness = 0.0F;

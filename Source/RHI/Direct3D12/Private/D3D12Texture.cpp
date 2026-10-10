@@ -115,9 +115,11 @@ namespace ShadowEngine
         const RHITextureDesc& Desc,
         std::string* ErrorMessage)
     {
-        if (Desc.Mips.empty() || Desc.Format != ERHIFormat::R8G8B8A8_UNorm)
+        const uint32 PixelStride = Desc.Format == ERHIFormat::R32G32B32A32_Float ? 16u : 4u;
+        if (Desc.Mips.empty() ||
+            (Desc.Format != ERHIFormat::R8G8B8A8_UNorm && Desc.Format != ERHIFormat::R32G32B32A32_Float))
         {
-            SetErrorMessage(ErrorMessage, "Sampled texture requires RGBA8 mip data");
+            SetErrorMessage(ErrorMessage, "Sampled texture format is unsupported");
             return nullptr;
         }
 
@@ -133,7 +135,7 @@ namespace ShadowEngine
         ResourceDesc.Height = Desc.Mips[0].Height;
         ResourceDesc.DepthOrArraySize = 1;
         ResourceDesc.MipLevels = static_cast<UINT16>(MipCount);
-        ResourceDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        ResourceDesc.Format = ToDXGIFormat(Desc.Format);
         ResourceDesc.SampleDesc.Count = 1;
         ResourceDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
 
@@ -205,7 +207,7 @@ namespace ShadowEngine
         for (uint32 MipIndex = 0; MipIndex < MipCount; ++MipIndex)
         {
             const RHITextureMipDesc& Mip = Desc.Mips[MipIndex];
-            const uint32 SourcePitch = Mip.Width * 4;
+            const uint32 SourcePitch = Mip.Width * PixelStride;
             if (Mip.Pixels == nullptr || Mip.Size < SourcePitch * Mip.Height)
             {
                 Upload->Unmap(0, nullptr);

@@ -14,11 +14,22 @@
         "Vertex": "BlinnPhong/BlinnPhongVertex.slang",
         "Fragment": "BlinnPhong/BlinnPhongFragment.slang",
         "Material": "Material/BlinnPhongMaterial.slang",
+        "Light": "Light/BlinnPhongLight.slang",
         "Parameters":
         {
             "BaseColor": [0.6, 0.3, 0.2],
             "Roughness": 0.15,
             "SpecularColor": [1, 1, 1]
+        }
+    },
+    "PBRForwardRenderer":
+    {
+        "Vertex": "PBRForward/ForwardVertex.slang",
+        "Fragment": "PBRForward/ForwardFragment.slang",
+        "Material": "Material/ForwardMaterial.slang",
+        "Light": "Light/PBRForwardLight.slang",
+        "Parameters":
+        {
         }
     }
 }

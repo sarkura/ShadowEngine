@@ -5,6 +5,7 @@
         "Vertex": "BlinnPhong/BlinnPhongVertex.slang",
         "Fragment": "BlinnPhong/BlinnPhongFragment.slang",
         "Material": "Material/TableBlinnPhongMaterial.slang",
+        "Light": "Light/BlinnPhongLight.slang",
         "Parameters":
         {
             "BaseColor": [1, 1, 1],
@@ -13,6 +14,16 @@
             "BaseColorTexture": "Assets/Table/Texture/Basecolor.png",
             "RoughnessTexture": "Assets/Table/Texture/Roughness.png",
             "NormalTexture": "Assets/Table/Texture/Normal.png"
+        }
+    },
+    "PBRForwardRenderer":
+    {
+        "Vertex": "PBRForward/ForwardVertex.slang",
+        "Fragment": "PBRForward/ForwardFragment.slang",
+        "Material": "Material/TableForwardMaterial.slang",
+        "Light": "Light/PBRForwardLight.slang",
+        "Parameters":
+        {
         }
     }
 }

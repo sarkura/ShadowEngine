@@ -62,17 +62,35 @@ namespace ShadowEngine
             std::vector<MeshInstance> Instances;
         };
 
+        enum class LightType
+        {
+            Direct,
+            Point,
+            Sky
+        };
+
         struct Light
         {
+            LightType Type = LightType::Direct;
             std::vector<float> Direction;
+            std::vector<float> Position;
             std::vector<float> Color;
             float Intensity = 0.0F;
+            float Radius = 0.0F;
         };
 
         struct Setting
         {
             std::vector<Mesh> Meshes;
             std::vector<Light> Lights;
+        };
+    }
+
+    namespace GlobalTextureSetting
+    {
+        struct Setting
+        {
+            std::string EnvironmentMap;
         };
     }
 }

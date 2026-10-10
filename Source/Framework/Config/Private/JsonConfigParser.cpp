@@ -286,6 +286,76 @@ namespace ShadowEngine
             return true;
         }
 
+        bool RequireMembers(
+            const rapidjson::Value& Object,
+            const char* const* Names,
+            size_t Count,
+            const char* Label,
+            std::string* ErrorMessage)
+        {
+            if (Object.MemberCount() != Count)
+            {
+                SetError(ErrorMessage, std::string(Label) + " has an unexpected set of members");
+                return false;
+            }
+
+            for (size_t Index = 0; Index < Count; ++Index)
+            {
+                if (!Object.HasMember(Names[Index]))
+                {
+                    SetError(ErrorMessage, std::string(Label) + " is missing member: " + Names[Index]);
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        bool ReadSceneLight(
+            const rapidjson::Value& Item,
+            SceneSetting::Light& Light,
+            std::string* ErrorMessage)
+        {
+            std::string Type;
+            if (!ReadString(Item, "Type", Type, ErrorMessage))
+            {
+                return false;
+            }
+
+            if (Type == "DirectLight")
+            {
+                const char* const Members[] = {"Type", "Direction", "Color", "Intensity"};
+                Light.Type = SceneSetting::LightType::Direct;
+                return RequireMembers(Item, Members, 4, "DirectLight", ErrorMessage) &&
+                       ReadVec3(Item, "Direction", Light.Direction, ErrorMessage) &&
+                       ReadColor(Item, "Color", Light.Color, ErrorMessage) &&
+                       ReadFloat(Item, "Intensity", Light.Intensity, ErrorMessage);
+            }
+
+            if (Type == "PointLight")
+            {
+                const char* const Members[] = {"Type", "Position", "Color", "Intensity", "Radius"};
+                Light.Type = SceneSetting::LightType::Point;
+                return RequireMembers(Item, Members, 5, "PointLight", ErrorMessage) &&
+                       ReadVec3(Item, "Position", Light.Position, ErrorMessage) &&
+                       ReadColor(Item, "Color", Light.Color, ErrorMessage) &&
+                       ReadFloat(Item, "Intensity", Light.Intensity, ErrorMessage) &&
+                       ReadFloat(Item, "Radius", Light.Radius, ErrorMessage);
+            }
+
+            if (Type == "SkyLight")
+            {
+                const char* const Members[] = {"Type", "Color", "Intensity"};
+                Light.Type = SceneSetting::LightType::Sky;
+                return RequireMembers(Item, Members, 3, "SkyLight", ErrorMessage) &&
+                       ReadColor(Item, "Color", Light.Color, ErrorMessage) &&
+                       ReadFloat(Item, "Intensity", Light.Intensity, ErrorMessage);
+            }
+
+            SetError(ErrorMessage, "Light Type must be DirectLight, PointLight, or SkyLight");
+            return false;
+        }
+
         const rapidjson::Value* FindArray(
             const rapidjson::Value& Object,
             const char* Name,
@@ -594,9 +664,10 @@ namespace ShadowEngine
         const RenderSetting::RHISetting& Setting,
         std::string* ErrorMessage)
     {
-        if (Setting.Renderer != "BlinnPhongRenderer" && Setting.Renderer != "DebugRenderer")
+        if (Setting.Renderer != "BlinnPhongRenderer" && Setting.Renderer != "DebugRenderer" &&
+            Setting.Renderer != "PBRForwardRenderer")
         {
-            SetError(ErrorMessage, "Renderer must be BlinnPhongRenderer or DebugRenderer");
+            SetError(ErrorMessage, "Renderer must be BlinnPhongRenderer, DebugRenderer, or PBRForwardRenderer");
             return false;
         }
 
@@ -692,9 +763,7 @@ namespace ShadowEngine
             }
 
             SceneSetting::Light Light;
-            if (!ReadVec3(Item, "Direction", Light.Direction, ErrorMessage) ||
-                !ReadColor(Item, "Color", Light.Color, ErrorMessage) ||
-                !ReadFloat(Item, "Intensity", Light.Intensity, ErrorMessage))
+            if (!ReadSceneLight(Item, Light, ErrorMessage))
             {
                 return false;
             }
@@ -743,22 +812,6 @@ namespace ShadowEngine
 
         for (const SceneSetting::Light& Light : Setting.Lights)
         {
-            if (Light.Direction.size() != 3)
-            {
-                SetError(ErrorMessage, "Light Direction must contain 3 numbers");
-                return false;
-            }
-
-            const float Length =
-                Light.Direction[0] * Light.Direction[0] +
-                Light.Direction[1] * Light.Direction[1] +
-                Light.Direction[2] * Light.Direction[2];
-            if (Length <= 0.0F)
-            {
-                SetError(ErrorMessage, "Light Direction cannot be zero");
-                return false;
-            }
-
             if (Light.Color.size() != 3 && Light.Color.size() != 4)
             {
                 SetError(ErrorMessage, "Light Color must contain 3 or 4 components");
@@ -770,8 +823,74 @@ namespace ShadowEngine
                 SetError(ErrorMessage, "Light Intensity cannot be negative");
                 return false;
             }
+
+            if (Light.Type == SceneSetting::LightType::Direct)
+            {
+                if (Light.Direction.size() != 3)
+                {
+                    SetError(ErrorMessage, "DirectLight Direction must contain 3 numbers");
+                    return false;
+                }
+
+                const float Length =
+                    Light.Direction[0] * Light.Direction[0] +
+                    Light.Direction[1] * Light.Direction[1] +
+                    Light.Direction[2] * Light.Direction[2];
+                if (Length <= 0.0F)
+                {
+                    SetError(ErrorMessage, "DirectLight Direction cannot be zero");
+                    return false;
+                }
+            }
+            else if (Light.Type == SceneSetting::LightType::Point)
+            {
+                if (Light.Position.size() != 3)
+                {
+                    SetError(ErrorMessage, "PointLight Position must contain 3 numbers");
+                    return false;
+                }
+
+                if (Light.Radius <= 0.0F)
+                {
+                    SetError(ErrorMessage, "PointLight Radius must be positive");
+                    return false;
+                }
+            }
         }
 
+        return true;
+    }
+
+    bool JsonConfigParser::LoadGlobalTextureSetting(
+        const std::filesystem::path& FilePath,
+        GlobalTextureSetting::Setting& Setting,
+        std::string* ErrorMessage)
+    {
+        rapidjson::Document Document;
+        if (!ParseJsonFile(FilePath, Document, ErrorMessage))
+        {
+            return false;
+        }
+
+        if (Document.MemberCount() != 1 || !Document.HasMember("EnvironmentMap"))
+        {
+            SetError(ErrorMessage, "Global texture file must contain EnvironmentMap");
+            return false;
+        }
+
+        GlobalTextureSetting::Setting ParsedSetting;
+        if (!ReadString(Document, "EnvironmentMap", ParsedSetting.EnvironmentMap, ErrorMessage))
+        {
+            return false;
+        }
+
+        if (ParsedSetting.EnvironmentMap.empty())
+        {
+            SetError(ErrorMessage, "EnvironmentMap cannot be empty");
+            return false;
+        }
+
+        Setting = std::move(ParsedSetting);
         return true;
     }
 }

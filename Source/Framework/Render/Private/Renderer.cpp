@@ -44,6 +44,7 @@ namespace ShadowEngine
         Device = &InDevice;
         SwapChain = &InSwapChain;
         Assets = &InAssets;
+        ShaderLibrary = &Shaders;
         ClearColor = InClearColor;
         Sync(InScene);
 
@@ -101,6 +102,11 @@ namespace ShadowEngine
         }
 
         if (!Resize(InSwapChain.GetWidth(), InSwapChain.GetHeight(), ErrorMessage))
+        {
+            return false;
+        }
+
+        if (!UploadEnvironment(Shaders, ErrorMessage))
         {
             return false;
         }
@@ -295,7 +301,9 @@ namespace ShadowEngine
         }
 
         RHITextureDesc TextureDesc;
-        TextureDesc.Format = ERHIFormat::R8G8B8A8_UNorm;
+        TextureDesc.Format = Asset->GetFormat() == ETextureFormat::RGBA32_Float
+            ? ERHIFormat::R32G32B32A32_Float
+            : ERHIFormat::R8G8B8A8_UNorm;
         TextureDesc.Mips = Mips;
         std::unique_ptr<RHITexture> Texture = Device->CreateTexture(TextureDesc, ErrorMessage);
         if (Texture == nullptr)
@@ -339,9 +347,77 @@ namespace ShadowEngine
         return Loaded;
     }
 
+    bool Renderer::UploadEnvironment(ShaderManager& Shaders, std::string* ErrorMessage)
+    {
+        const TextureAssetHandle Environment = Assets->GetEnvironmentMap();
+        RHITexture* Texture = UploadTexture(Environment, ErrorMessage);
+        if (Texture == nullptr)
+        {
+            return false;
+        }
+
+        RHISampler* Sampler = nullptr;
+        const auto ExistingSampler = GpuSamplers.find(0);
+        if (ExistingSampler != GpuSamplers.end())
+        {
+            Sampler = ExistingSampler->second.get();
+        }
+        else
+        {
+            std::unique_ptr<RHISampler> Created = Device->CreateSampler(ErrorMessage);
+            if (Created == nullptr)
+            {
+                return false;
+            }
+
+            Sampler = Created.get();
+            GpuSamplers.emplace(0, std::move(Created));
+        }
+
+        const auto Descriptor = TextureDescriptors.find(Environment.Index);
+        if (Descriptor == TextureDescriptors.end())
+        {
+            SetErrorMessage(ErrorMessage, "Environment map descriptor is missing");
+            return false;
+        }
+
+        EnvironmentDescriptor = Descriptor->second;
+        EnvironmentSampler = Sampler->GetDescriptorIndex();
+
+        const ShaderHandle SkyShader = Shaders.Register(
+            "Sky/SkyVertex.slang",
+            "Sky/SkyFragment.slang",
+            {},
+            {});
+        if (!SkyShader.IsValid() || !Shaders.LoadShaders(*Device, SkyShader, ErrorMessage))
+        {
+            return false;
+        }
+
+        RHIGraphicsPipelineDesc PipelineDesc;
+        PipelineDesc.VertexShader = Shaders.GetVertexShader(SkyShader);
+        PipelineDesc.PixelShader = Shaders.GetPixelShader(SkyShader);
+        PipelineDesc.RenderTargetFormat = SwapChain->GetFormat();
+        PipelineDesc.Topology = ERHIPrimitiveTopology::TriangleList;
+        PipelineDesc.bEnableDepth = false;
+        PipelineDesc.DepthFormat = ERHIFormat::D32_Float;
+        SkyPipeline = Device->CreateGraphicsPipeline(PipelineDesc, ErrorMessage);
+        if (SkyPipeline == nullptr)
+        {
+            return false;
+        }
+
+        SkyConstantBuffer = Device->CreateConstantBuffer(256, ErrorMessage);
+        return SkyConstantBuffer != nullptr;
+    }
+
     void Renderer::Finalize()
     {
         CommandList.reset();
+        SkyPipeline.reset();
+        SkyConstantBuffer.reset();
+        EnvironmentDescriptor = 0;
+        EnvironmentSampler = 0;
         MeshBatches.clear();
         GpuSamplers.clear();
         GpuTextures.clear();
@@ -350,6 +426,7 @@ namespace ShadowEngine
         ConstantBuffer.reset();
         ConstantCapacity = 0;
         SwapChain = nullptr;
+        ShaderLibrary = nullptr;
         Device = nullptr;
     }
 
@@ -377,112 +454,5 @@ namespace ShadowEngine
     void Renderer::Sync(const Scene& InScene)
     {
         SyncRenderProxy(InScene, SceneProxy);
-    }
-
-    bool Renderer::CollectDraws(std::vector<FrameDraw>& Draws) const
-    {
-        Draws.clear();
-        for (const MeshRenderProxy& Proxy : SceneProxy.Meshes)
-        {
-            const MeshAsset* Mesh = Assets->ResolveMesh(Proxy.Mesh);
-            if (Mesh == nullptr)
-            {
-                Log::Error("Render proxy has no mesh");
-                return false;
-            }
-
-            const std::vector<MeshSection>& Sections = Mesh->GetSections();
-            if (Proxy.Materials.size() != Sections.size())
-            {
-                Log::Error("Render proxy mesh was not uploaded");
-                return false;
-            }
-
-            for (uint32 SectionIndex = 0; SectionIndex < static_cast<uint32>(Sections.size()); ++SectionIndex)
-            {
-                if (!Proxy.Materials[SectionIndex].IsValid())
-                {
-                    Log::Error("Render proxy section has no material");
-                    return false;
-                }
-
-                const MaterialInstance* Instance = Assets->ResolveMaterialInstance(Proxy.Materials[SectionIndex]);
-                const Material* BoundMaterial = Instance == nullptr ? nullptr : Assets->ResolveMaterial(Instance->GetBaseMaterial());
-                if (BoundMaterial == nullptr)
-                {
-                    Log::Error("Render proxy material is missing");
-                    return false;
-                }
-
-                if (BoundMaterial->FindShader(GetName()) == nullptr)
-                {
-                    continue;
-                }
-
-                const MeshBatch* Batch = nullptr;
-                for (const MeshBatch& Existing : MeshBatches)
-                {
-                    if (Existing.Mesh.Index == Proxy.Mesh.Index && Existing.Section == SectionIndex)
-                    {
-                        Batch = &Existing;
-                        break;
-                    }
-                }
-                if (Batch == nullptr)
-                {
-                    Log::Error("Render proxy mesh was not uploaded");
-                    return false;
-                }
-
-                FrameDraw Item;
-                Item.Batch = Batch;
-                Item.Proxy = &Proxy;
-                Item.Material = Proxy.Materials[SectionIndex];
-                Draws.push_back(Item);
-            }
-        }
-
-        return true;
-    }
-
-    bool Renderer::SubmitDraws(const std::vector<FrameDraw>& Draws)
-    {
-        if (Device == nullptr || SwapChain == nullptr || CommandList == nullptr || DepthBuffer == nullptr)
-        {
-            return false;
-        }
-
-        if (!Draws.empty() && ConstantBuffer == nullptr)
-        {
-            return false;
-        }
-
-        const float Width = static_cast<float>(SwapChain->GetWidth());
-        const float Height = static_cast<float>(SwapChain->GetHeight());
-        CommandList->Begin();
-        CommandList->BeginRenderPass(SwapChain->GetCurrentBackBuffer(), DepthBuffer.get(), ClearColor);
-        CommandList->SetViewport({0.0F, 0.0F, Width, Height, 0.0F, 1.0F});
-        CommandList->SetScissor({
-            0,
-            0,
-            static_cast<int32>(SwapChain->GetWidth()),
-            static_cast<int32>(SwapChain->GetHeight())});
-        for (uint32 Index = 0; Index < static_cast<uint32>(Draws.size()); ++Index)
-        {
-            const MeshBatch& Batch = *Draws[Index].Batch;
-            CommandList->SetPipeline(*Batch.Pipeline);
-            CommandList->BindShaderResources();
-            CommandList->SetVertexBuffer(*Batch.VertexBuffer);
-            CommandList->SetIndexBuffer(*Batch.IndexBuffer);
-            CommandList->SetConstantBuffer(*ConstantBuffer, Index * ConstantAlignment);
-            CommandList->DrawIndexed(Batch.IndexCount);
-        }
-        CommandList->EndRenderPass();
-        CommandList->End();
-
-        Device->SubmitCommandList(*CommandList);
-        const bool bPresented = SwapChain->Present();
-        Device->WaitIdle();
-        return bPresented;
     }
 }

@@ -24,6 +24,7 @@ namespace ShadowEngine
             [[nodiscard]] EngineSetting::MovementSetting GetMovementSetting() const;
             [[nodiscard]] RenderSetting::RHISetting GetRHISetting() const;
             [[nodiscard]] SceneSetting::Setting GetSceneSetting() const;
+            [[nodiscard]] GlobalTextureSetting::Setting GetGlobalTextureSetting() const;
 
             bool SetViewportSetting(
                 EngineSetting::ViewportSetting Setting,
@@ -43,6 +44,7 @@ namespace ShadowEngine
             EngineSetting::MovementSetting Movement;
             RenderSetting::RHISetting RHI;
             SceneSetting::Setting Scene;
+            GlobalTextureSetting::Setting GlobalTextures;
             bool bInitialized = false;
     };
 }

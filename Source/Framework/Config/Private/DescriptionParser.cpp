@@ -17,10 +17,38 @@ namespace ShadowEngine
             MaterialRendererBinding& Binding,
             std::string* ErrorMessage)
         {
-            const char* const Members[] = {"Vertex", "Fragment", "Material", "Parameters"};
-            if (!RequireMembers(Object, FilePath, RendererName, Members, 4, ErrorMessage))
+            const char* const AllowedMembers[] = {"Vertex", "Fragment", "Material", "Light", "Parameters"};
+            for (auto Member = Object.MemberBegin(); Member != Object.MemberEnd(); ++Member)
             {
-                return false;
+                bool bKnown = false;
+                for (const char* Name : AllowedMembers)
+                {
+                    if (Member->name == Name)
+                    {
+                        bKnown = true;
+                        break;
+                    }
+                }
+                if (!bKnown)
+                {
+                    SetErrorMessage(
+                        ErrorMessage,
+                        std::string(RendererName) + " has unsupported member '" + Member->name.GetString() +
+                            "': " + FilePath.generic_string());
+                    return false;
+                }
+            }
+
+            const char* const RequiredMembers[] = {"Vertex", "Fragment", "Material", "Parameters"};
+            for (const char* Name : RequiredMembers)
+            {
+                if (!Object.HasMember(Name))
+                {
+                    SetErrorMessage(
+                        ErrorMessage,
+                        std::string(RendererName) + " is missing '" + Name + "': " + FilePath.generic_string());
+                    return false;
+                }
             }
 
             const rapidjson::Value& VertexShader = Object["Vertex"];
@@ -55,6 +83,17 @@ namespace ShadowEngine
             Binding.VertexShader = VertexShader.GetString();
             Binding.PixelShader = PixelShader.GetString();
             Binding.MaterialShader = MaterialShader.GetString();
+            if (Object.HasMember("Light"))
+            {
+                const rapidjson::Value& LightShader = Object["Light"];
+                if (!LightShader.IsString() || LightShader.GetStringLength() == 0)
+                {
+                    SetErrorMessage(ErrorMessage, std::string(RendererName) + " Light must be a path: " + FilePath.generic_string());
+                    return false;
+                }
+
+                Binding.LightShader = LightShader.GetString();
+            }
             if (Parameters.MemberCount() == 0)
             {
                 return true;
@@ -307,7 +346,7 @@ namespace ShadowEngine
             return false;
         }
 
-        const char* const RendererNames[] = {"BlinnPhongRenderer", "DebugRenderer"};
+        const char* const RendererNames[] = {"BlinnPhongRenderer", "DebugRenderer", "PBRForwardRenderer"};
         MaterialDescription Parsed;
         for (auto Member = Document.MemberBegin(); Member != Document.MemberEnd(); ++Member)
         {

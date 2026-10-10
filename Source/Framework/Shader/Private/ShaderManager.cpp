@@ -54,16 +54,19 @@ namespace ShadowEngine
     ShaderHandle ShaderManager::Register(
         const std::filesystem::path& VertexPath,
         const std::filesystem::path& PixelPath,
-        const std::filesystem::path& MaterialPath)
+        const std::filesystem::path& MaterialPath,
+        const std::filesystem::path& LightPath)
     {
         const std::string VertexKey = VertexPath.generic_string();
         const std::string PixelKey = PixelPath.generic_string();
         const std::string MaterialKey = MaterialPath.generic_string();
+        const std::string LightKey = LightPath.generic_string();
         for (uint32 Index = 0; Index < Records.size(); ++Index)
         {
             if (Records[Index].VertexPath.generic_string() == VertexKey &&
                 Records[Index].PixelPath.generic_string() == PixelKey &&
-                Records[Index].MaterialPath.generic_string() == MaterialKey)
+                Records[Index].MaterialPath.generic_string() == MaterialKey &&
+                Records[Index].LightPath.generic_string() == LightKey)
             {
                 ShaderHandle Handle;
                 Handle.Index = Index;
@@ -75,6 +78,7 @@ namespace ShadowEngine
         Record.VertexPath = VertexPath;
         Record.PixelPath = PixelPath;
         Record.MaterialPath = MaterialPath;
+        Record.LightPath = LightPath;
         Records.push_back(std::move(Record));
         ShaderHandle Handle;
         Handle.Index = static_cast<uint32>(Records.size() - 1);
@@ -99,6 +103,7 @@ namespace ShadowEngine
             Device,
             Record.VertexPath,
             {},
+            {},
             "VertexMain",
             ERHIShaderStage::Vertex,
             ErrorMessage);
@@ -111,6 +116,7 @@ namespace ShadowEngine
             Device,
             Record.PixelPath,
             Record.MaterialPath,
+            Record.LightPath,
             "PixelMain",
             ERHIShaderStage::Pixel,
             ErrorMessage);
@@ -141,6 +147,7 @@ namespace ShadowEngine
         RHIDevice& Device,
         const std::filesystem::path& RelativePath,
         const std::filesystem::path& ImplementationPath,
+        const std::filesystem::path& LightPath,
         std::string_view EntryPoint,
         ERHIShaderStage Stage,
         std::string* ErrorMessage)
@@ -156,6 +163,10 @@ namespace ShadowEngine
         if (!ImplementationPath.empty())
         {
             Request.ImplementationPath = ShaderDirectory / ImplementationPath;
+        }
+        if (!LightPath.empty())
+        {
+            Request.LightPath = ShaderDirectory / LightPath;
         }
         Request.EntryPoint = EntryPoint;
         Request.Stage = Stage;

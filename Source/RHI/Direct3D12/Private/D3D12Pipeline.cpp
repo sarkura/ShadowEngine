@@ -140,7 +140,14 @@ namespace ShadowEngine
         PipelineDesc.PrimitiveTopologyType = ToTopologyType(Desc.Topology);
         PipelineDesc.NumRenderTargets = 1;
         PipelineDesc.RTVFormats[0] = ToDXGIFormat(Desc.RenderTargetFormat);
-        PipelineDesc.DSVFormat = Desc.bEnableDepth ? DXGI_FORMAT_D32_FLOAT : DXGI_FORMAT_UNKNOWN;
+        if (Desc.DepthFormat != ERHIFormat::Unknown)
+        {
+            PipelineDesc.DSVFormat = ToDXGIFormat(Desc.DepthFormat);
+        }
+        else
+        {
+            PipelineDesc.DSVFormat = Desc.bEnableDepth ? DXGI_FORMAT_D32_FLOAT : DXGI_FORMAT_UNKNOWN;
+        }
         PipelineDesc.SampleDesc.Count = 1;
         PipelineDesc.SampleDesc.Quality = 0;
 

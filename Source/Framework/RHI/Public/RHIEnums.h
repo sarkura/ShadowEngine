@@ -8,6 +8,7 @@ namespace ShadowEngine
     {
         Unknown,
         R8G8B8A8_UNorm,
+        R32G32B32A32_Float,
         D32_Float
     };
 

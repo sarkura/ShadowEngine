@@ -12,6 +12,7 @@ namespace ShadowEngine
     {
         std::filesystem::path SourcePath;
         std::filesystem::path ImplementationPath;
+        std::filesystem::path LightPath;
         std::string EntryPoint;
         ERHIShaderStage Stage = ERHIShaderStage::Vertex;
         ERHIShaderFormat Format = ERHIShaderFormat::DXBC;

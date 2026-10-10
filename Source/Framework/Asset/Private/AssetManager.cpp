@@ -18,6 +18,7 @@
 #include <glm/mat4x4.hpp>
 #include <glm/geometric.hpp>
 
+#include <cstring>
 #include <string>
 #include <utility>
 #include <vector>
@@ -600,7 +601,8 @@ namespace ShadowEngine
                 const ShaderHandle Shader = Shaders->Register(
                     Binding.VertexShader,
                     Binding.PixelShader,
-                    Binding.MaterialShader);
+                    Binding.MaterialShader,
+                    Binding.LightShader);
                 if (!Shader.IsValid())
                 {
                     SetErrorMessage(ErrorMessage, "Unable to register shader: " + Binding.VertexShader);
@@ -717,6 +719,86 @@ namespace ShadowEngine
         TextureAssetHandle Handle;
         Handle.Index = static_cast<uint32>(Textures.size() - 1);
         return Handle;
+    }
+
+    TextureAssetHandle AssetManager::LoadEnvironmentMap(
+        const std::filesystem::path& Path,
+        std::string* ErrorMessage)
+    {
+        if (Path.empty())
+        {
+            SetErrorMessage(ErrorMessage, "Environment map path is empty");
+            return {};
+        }
+
+        if (const TextureAsset* Existing = Registry.FindTexture(Path))
+        {
+            for (uint32 Index = 0; Index < Textures.size(); ++Index)
+            {
+                if (Textures[Index] == Existing)
+                {
+                    TextureAssetHandle Handle;
+                    Handle.Index = Index;
+                    EnvironmentMap = Handle;
+                    return Handle;
+                }
+            }
+
+            SetErrorMessage(ErrorMessage, "Environment map is registered without a handle: " + Path.generic_string());
+            return {};
+        }
+
+        int Width = 0;
+        int Height = 0;
+        int Channels = 0;
+        float* Pixels = stbi_loadf(Path.generic_string().c_str(), &Width, &Height, &Channels, 4);
+        if (Pixels == nullptr)
+        {
+            const char* Reason = stbi_failure_reason();
+            SetErrorMessage(
+                ErrorMessage,
+                "Unable to load environment map " + Path.generic_string() + ": " + (Reason != nullptr ? Reason : "unknown error"));
+            return {};
+        }
+
+        const size_t FloatCount = static_cast<size_t>(Width) * static_cast<size_t>(Height) * 4;
+        std::vector<uint8> Rgba(FloatCount * sizeof(float));
+        std::memcpy(Rgba.data(), Pixels, Rgba.size());
+        stbi_image_free(Pixels);
+
+        std::unique_ptr<TextureAsset> Texture = TextureAsset::CreateFloat(
+            Path,
+            static_cast<uint32>(Width),
+            static_cast<uint32>(Height),
+            std::move(Rgba),
+            ErrorMessage);
+        if (Texture == nullptr)
+        {
+            return {};
+        }
+
+        const TextureAsset* Loaded = Texture.get();
+        if (!Registry.Register(std::move(Texture)))
+        {
+            SetErrorMessage(ErrorMessage, "Unable to register environment map: " + Path.generic_string());
+            return {};
+        }
+
+        Textures.push_back(Loaded);
+        Log::Info(
+            "Loaded environment map {} ({}x{})",
+            Path.generic_string(),
+            Width,
+            Height);
+        TextureAssetHandle Handle;
+        Handle.Index = static_cast<uint32>(Textures.size() - 1);
+        EnvironmentMap = Handle;
+        return Handle;
+    }
+
+    TextureAssetHandle AssetManager::GetEnvironmentMap() const
+    {
+        return EnvironmentMap;
     }
 
     const MeshAsset* AssetManager::ResolveMesh(MeshHandle Handle) const

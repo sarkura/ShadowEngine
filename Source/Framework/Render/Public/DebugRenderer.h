@@ -1,5 +1,8 @@
 #pragma once
 
+#include "Framework/Render/Public/DebugRenderPass.h"
+#include "Framework/Render/Public/RenderItem.h"
+#include "Framework/Render/Public/RenderQueue.h"
 #include "Framework/Render/Public/Renderer.h"
 
 namespace ShadowEngine
@@ -13,5 +16,10 @@ namespace ShadowEngine
 
         protected:
             const char* GetName() const override;
+
+        private:
+            RenderItemFilter ItemFilter;
+            RenderQueue DrawQueue;
+            DebugRenderPass Pass;
     };
 }

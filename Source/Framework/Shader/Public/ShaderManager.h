@@ -30,7 +30,8 @@ namespace ShadowEngine
             [[nodiscard]] ShaderHandle Register(
                 const std::filesystem::path& VertexPath,
                 const std::filesystem::path& PixelPath,
-                const std::filesystem::path& MaterialPath);
+                const std::filesystem::path& MaterialPath,
+                const std::filesystem::path& LightPath);
 
             bool LoadShaders(
                 RHIDevice& Device,
@@ -45,6 +46,7 @@ namespace ShadowEngine
                 RHIDevice& Device,
                 const std::filesystem::path& RelativePath,
                 const std::filesystem::path& ImplementationPath,
+                const std::filesystem::path& LightPath,
                 std::string_view EntryPoint,
                 ERHIShaderStage Stage,
                 std::string* ErrorMessage);
@@ -54,6 +56,7 @@ namespace ShadowEngine
                 std::filesystem::path VertexPath;
                 std::filesystem::path PixelPath;
                 std::filesystem::path MaterialPath;
+                std::filesystem::path LightPath;
                 std::unique_ptr<RHIShader> VertexShader;
                 std::unique_ptr<RHIShader> PixelShader;
             };

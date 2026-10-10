@@ -31,6 +31,12 @@ namespace ShadowEngine
                 const std::filesystem::path& Path,
                 std::string* ErrorMessage = nullptr);
 
+            TextureAssetHandle LoadEnvironmentMap(
+                const std::filesystem::path& Path,
+                std::string* ErrorMessage = nullptr);
+
+            [[nodiscard]] TextureAssetHandle GetEnvironmentMap() const;
+
             [[nodiscard]] const AssetRegistry& GetRegistry() const;
             [[nodiscard]] const MeshAsset* ResolveMesh(MeshHandle Handle) const;
             [[nodiscard]] const TextureAsset* ResolveTexture(TextureAssetHandle Handle) const;
@@ -55,5 +61,6 @@ namespace ShadowEngine
             std::vector<Material*> Materials;
             std::vector<std::unique_ptr<MaterialInstance>> MaterialInstances;
             SamplerHandle LinearSampler;
+            TextureAssetHandle EnvironmentMap;
     };
 }

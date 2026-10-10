@@ -1,11 +1,13 @@
 #include "Framework/Engine/Public/Engine.h"
 
+#include "Framework/Asset/Public/AssetHandle.h"
 #include "Framework/Asset/Public/MeshAsset.h"
 #include "Framework/Common/Public/Log.h"
 #include "Framework/Config/Public/ConfigManager.h"
 #include "Framework/Engine/Public/EngineModules.h"
 #include "Framework/Render/Public/BlinnPhongRenderer.h"
 #include "Framework/Render/Public/DebugRenderer.h"
+#include "Framework/Render/Public/PBRForwardRenderer.h"
 #include "Framework/Scene/Public/Light.h"
 #include "Framework/Scene/Public/Scene.h"
 
@@ -125,10 +127,36 @@ namespace ShadowEngine
 
         for (const SceneSetting::Light& LightConfig : SceneConfig.Lights)
         {
-            DirectLight& Light = MainScene->CreateDirectLight();
-            Light.SetDirection(LightConfig.Direction[0], LightConfig.Direction[1], LightConfig.Direction[2]);
-            Light.SetColor(LightConfig.Color[0], LightConfig.Color[1], LightConfig.Color[2]);
-            Light.SetIntensity(LightConfig.Intensity);
+            if (LightConfig.Type == SceneSetting::LightType::Direct)
+            {
+                DirectLight& Light = MainScene->CreateDirectLight();
+                Light.SetDirection(LightConfig.Direction[0], LightConfig.Direction[1], LightConfig.Direction[2]);
+                Light.SetColor(LightConfig.Color[0], LightConfig.Color[1], LightConfig.Color[2]);
+                Light.SetIntensity(LightConfig.Intensity);
+            }
+            else if (LightConfig.Type == SceneSetting::LightType::Point)
+            {
+                PointLight& Light = MainScene->CreatePointLight();
+                Light.SetPosition(LightConfig.Position[0], LightConfig.Position[1], LightConfig.Position[2]);
+                Light.SetColor(LightConfig.Color[0], LightConfig.Color[1], LightConfig.Color[2]);
+                Light.SetIntensity(LightConfig.Intensity);
+                Light.SetRadius(LightConfig.Radius);
+            }
+            else
+            {
+                SkyLight& Light = MainScene->CreateSkyLight();
+                Light.SetColor(LightConfig.Color[0], LightConfig.Color[1], LightConfig.Color[2]);
+                Light.SetIntensity(LightConfig.Intensity);
+            }
+        }
+
+        const TextureAssetHandle Environment = Assets->LoadEnvironmentMap(
+            ConfigManager::Get().GetGlobalTextureSetting().EnvironmentMap,
+            ErrorMessage);
+        if (!Environment.IsValid())
+        {
+            Finalize();
+            return false;
         }
 
         const std::string RendererName = ConfigManager::Get().GetRHISetting().Renderer;
@@ -139,6 +167,10 @@ namespace ShadowEngine
         else if (RendererName == "DebugRenderer")
         {
             MainRenderer = std::make_unique<DebugRenderer>();
+        }
+        else if (RendererName == "PBRForwardRenderer")
+        {
+            MainRenderer = std::make_unique<PBRForwardRenderer>();
         }
         else
         {
