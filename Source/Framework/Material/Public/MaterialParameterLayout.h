@@ -9,6 +9,9 @@ namespace ShadowEngine
 {
     enum class EMaterialParameterType : uint8
     {
+        Float,
+        Float2,
+        Float3,
         Float4,
         Texture2D,
         Sampler,
@@ -26,5 +29,6 @@ namespace ShadowEngine
 
         [[nodiscard]] bool Has(const std::string& Name) const;
         [[nodiscard]] bool HasTexture(const std::string& Name) const;
+        [[nodiscard]] bool Matches(const MaterialParameterLayout& Other) const;
     };
 }

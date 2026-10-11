@@ -1,6 +1,7 @@
 #include "RHI/Direct3D12/Public/D3D12Pipeline.h"
 
 #include "Framework/Common/Public/Log.h"
+#include "Framework/RHI/Public/RHIPipelineLayout.h"
 #include "RHI/Direct3D12/Public/D3D12Shader.h"
 
 #include <climits>
@@ -104,7 +105,7 @@ namespace ShadowEngine
             return false;
         }
 
-        if (!CreateRootSignature(Device, ErrorMessage))
+        if (!CreateRootSignature(Device, Desc.Layout, ErrorMessage))
         {
             return false;
         }
@@ -166,17 +167,38 @@ namespace ShadowEngine
         return true;
     }
 
-    bool D3D12Pipeline::CreateRootSignature(ID3D12Device* Device, std::string* ErrorMessage)
+    bool D3D12Pipeline::CreateRootSignature(
+        ID3D12Device* Device,
+        const RHIPipelineLayout* Layout,
+        std::string* ErrorMessage)
     {
-        D3D12_ROOT_PARAMETER Parameters[1]{};
-        Parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        Parameters[0].Descriptor.ShaderRegister = 0;
-        Parameters[0].Descriptor.RegisterSpace = 0;
-        Parameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        std::vector<D3D12_ROOT_PARAMETER> Parameters;
+        if (Layout == nullptr || Layout->ConstantBuffers.empty())
+        {
+            D3D12_ROOT_PARAMETER Parameter{};
+            Parameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+            Parameter.Descriptor.ShaderRegister = 0;
+            Parameter.Descriptor.RegisterSpace = 0;
+            Parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+            Parameters.push_back(Parameter);
+        }
+        else
+        {
+            Parameters.reserve(Layout->ConstantBuffers.size());
+            for (const RHIPipelineLayout::ConstantBuffer& Buffer : Layout->ConstantBuffers)
+            {
+                D3D12_ROOT_PARAMETER Parameter{};
+                Parameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+                Parameter.Descriptor.ShaderRegister = Buffer.Slot;
+                Parameter.Descriptor.RegisterSpace = Buffer.Space;
+                Parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+                Parameters.push_back(Parameter);
+            }
+        }
 
         D3D12_ROOT_SIGNATURE_DESC Desc{};
-        Desc.NumParameters = 1;
-        Desc.pParameters = Parameters;
+        Desc.NumParameters = static_cast<UINT>(Parameters.size());
+        Desc.pParameters = Parameters.data();
         Desc.NumStaticSamplers = 0;
         Desc.pStaticSamplers = nullptr;
         Desc.Flags =

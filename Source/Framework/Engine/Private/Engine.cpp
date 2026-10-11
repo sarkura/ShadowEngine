@@ -7,7 +7,7 @@
 #include "Framework/Engine/Public/EngineModules.h"
 #include "Framework/Render/Public/BlinnPhongRenderer.h"
 #include "Framework/Render/Public/DebugRenderer.h"
-#include "Framework/Render/Public/PBRForwardRenderer.h"
+#include "Framework/Render/Public/ForwardRenderer.h"
 #include "Framework/Scene/Public/Light.h"
 #include "Framework/Scene/Public/Scene.h"
 
@@ -94,6 +94,8 @@ namespace ShadowEngine
             return false;
         }
 
+        Shaders->SetShaderFormat(Device->GetShaderFormat());
+
         const EngineSetting::ViewportSetting Viewport =
             ConfigManager::Get().GetViewportSetting();
 
@@ -168,9 +170,9 @@ namespace ShadowEngine
         {
             MainRenderer = std::make_unique<DebugRenderer>();
         }
-        else if (RendererName == "PBRForwardRenderer")
+        else if (RendererName == "ForwardRenderer")
         {
-            MainRenderer = std::make_unique<PBRForwardRenderer>();
+            MainRenderer = std::make_unique<ForwardRenderer>();
         }
         else
         {

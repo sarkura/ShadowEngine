@@ -1,3 +1,4 @@
+#include "../Common/DebugConstants.slang"
 #include "DebugRendererMaterialSample.slang"
 
 float4 EvaluateMaterial(VertexOutput Input)

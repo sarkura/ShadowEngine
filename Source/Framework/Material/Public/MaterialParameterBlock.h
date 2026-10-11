@@ -1,17 +1,24 @@
 #pragma once
 
 #include "Framework/Asset/Public/AssetHandle.h"
+#include "Framework/Common/Public/Types.h"
+
+#include <array>
+#include <map>
+#include <string>
 
 namespace ShadowEngine
 {
+    struct MaterialScalarValue
+    {
+        std::array<float, 4> Value{};
+        uint32 Components = 1;
+    };
+
     struct MaterialParameterBlock
     {
-        float BaseColor[4] = {1.0F, 1.0F, 1.0F, 1.0F};
-        float Roughness[4] = {0.5F, 0.0F, 0.0F, 0.0F};
-        float SpecularColor[4] = {1.0F, 1.0F, 1.0F, 1.0F};
-        TextureAssetHandle BaseColorTexture;
-        TextureAssetHandle RoughnessTexture;
-        TextureAssetHandle NormalTexture;
+        std::map<std::string, MaterialScalarValue> Scalars;
+        std::map<std::string, TextureAssetHandle> Textures;
         SamplerHandle Sampler;
     };
 }

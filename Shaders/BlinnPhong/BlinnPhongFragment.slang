@@ -1,4 +1,3 @@
-#include "../Common/BlinnPhongConstants.slang"
 #include "../Material/BlinnPhongMaterialSample.slang"
 #include "../Light/BlinnPhongLightSample.slang"
 

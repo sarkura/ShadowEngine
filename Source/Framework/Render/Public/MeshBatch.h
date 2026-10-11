@@ -3,6 +3,7 @@
 #include "Framework/Asset/Public/AssetHandle.h"
 #include "Framework/RHI/Public/RHIBuffer.h"
 #include "Framework/RHI/Public/RHIPipeline.h"
+#include "Framework/RHI/Public/RHIPipelineLayout.h"
 #include "Framework/RHI/Public/RHIShader.h"
 
 #include <memory>
@@ -19,6 +20,7 @@ namespace ShadowEngine
         std::unique_ptr<RHIBuffer> VertexBuffer;
         std::unique_ptr<RHIBuffer> IndexBuffer;
         std::unique_ptr<RHIPipeline> Pipeline;
+        RHIPipelineLayout Layout;
         uint32 IndexCount = 0;
     };
 

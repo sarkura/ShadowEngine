@@ -1,8 +1,8 @@
-#include "Framework/Render/Public/PBRForwardRenderer.h"
+#include "Framework/Render/Public/ForwardRenderer.h"
 
 namespace ShadowEngine
 {
-    bool PBRForwardRenderer::RenderFrame()
+    bool ForwardRenderer::RenderFrame()
     {
         if (Assets == nullptr || ShaderLibrary == nullptr)
         {
@@ -39,8 +39,8 @@ namespace ShadowEngine
         return Pass.Execute(DrawQueue, Context);
     }
 
-    const char* PBRForwardRenderer::GetName() const
+    const char* ForwardRenderer::GetName() const
     {
-        return "PBRForwardRenderer";
+        return "ForwardRenderer";
     }
 }

@@ -7,10 +7,10 @@
 
 namespace ShadowEngine
 {
-    class PBRForwardRenderer final : public Renderer
+    class ForwardRenderer final : public Renderer
     {
         public:
-            PBRForwardRenderer() = default;
+            ForwardRenderer() = default;
 
             bool RenderFrame() override;
 

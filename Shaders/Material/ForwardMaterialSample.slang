@@ -5,8 +5,10 @@
 struct ForwardMaterialSample
 {
     float3 Albedo;
+    float Metallic;
     float Roughness;
-    float3 SpecularColor;
+    float Occlusion;
+    float3 Emissive;
     float3 Normal;
 };
 

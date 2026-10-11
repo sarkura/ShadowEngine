@@ -3,6 +3,7 @@
 #include "Framework/Common/Public/Types.h"
 
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace ShadowEngine
@@ -19,6 +20,13 @@ namespace ShadowEngine
         std::vector<MeshMaterialBinding> Materials;
     };
 
+    struct MaterialScalarParameter
+    {
+        std::string Name;
+        uint32 Components = 1;
+        float Value[4] = {};
+    };
+
     struct MaterialRendererBinding
     {
         std::string Renderer;
@@ -27,12 +35,8 @@ namespace ShadowEngine
         std::string MaterialShader;
         std::string LightShader;
         bool bHasParameters = false;
-        std::vector<float> BaseColor;
-        float Roughness = 0.0F;
-        std::vector<float> SpecularColor;
-        std::string BaseColorTexture;
-        std::string RoughnessTexture;
-        std::string NormalTexture;
+        std::vector<MaterialScalarParameter> Scalars;
+        std::vector<std::pair<std::string, std::string>> Textures;
     };
 
     struct MaterialDescription

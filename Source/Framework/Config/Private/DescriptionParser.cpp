@@ -3,7 +3,9 @@
 #include "Framework/Common/Public/Log.h"
 #include "Framework/Config/Private/JsonDocument.h"
 
+#include <cctype>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace ShadowEngine
@@ -99,127 +101,141 @@ namespace ShadowEngine
                 return true;
             }
 
-            const char* const RequiredParameters[] = {"BaseColor", "Roughness", "SpecularColor"};
-            const char* const ParameterMembers[] = {
-                "BaseColor",
-                "Roughness",
-                "SpecularColor",
-                "BaseColorTexture",
-                "RoughnessTexture",
-                "NormalTexture",
-            };
-            for (auto Member = Parameters.MemberBegin(); Member != Parameters.MemberEnd(); ++Member)
+            const auto IsParameterName = [](std::string_view Name) -> bool
             {
-                bool bKnown = false;
-                for (const char* Name : ParameterMembers)
+                if (Name.empty() || Name == "Sampler" || Name.rfind("Padding", 0) == 0)
                 {
-                    if (Member->name == Name)
+                    return false;
+                }
+
+                if (std::isalpha(static_cast<unsigned char>(Name.front())) == 0 && Name.front() != '_')
+                {
+                    return false;
+                }
+
+                for (const char Character : Name)
+                {
+                    if (std::isalnum(static_cast<unsigned char>(Character)) == 0 && Character != '_')
                     {
-                        bKnown = true;
-                        break;
+                        return false;
                     }
                 }
-                if (!bKnown)
+
+                return true;
+            };
+            const auto ReadComponents = [&](const std::string& Name, const rapidjson::Value& Value, uint32 Count, float* Out) -> bool
+            {
+                if (!Value.IsArray() || Value.Size() != Count)
                 {
                     SetErrorMessage(
                         ErrorMessage,
-                        "Material parameter '" + std::string(Member->name.GetString()) +
-                            "' is unsupported: " + FilePath.generic_string());
-                    return false;
-                }
-            }
-
-            for (const char* Name : RequiredParameters)
-            {
-                if (!Parameters.HasMember(Name))
-                {
-                    SetErrorMessage(
-                        ErrorMessage,
-                        std::string(Name) + " must be present: " + FilePath.generic_string());
-                    return false;
-                }
-            }
-
-            const auto ReadVec3 = [&](const char* Name, std::vector<float>& Out) -> bool
-            {
-                const auto Found = Parameters.FindMember(Name);
-                if (Found == Parameters.MemberEnd() || !Found->value.IsArray() || Found->value.Size() != 3)
-                {
-                    SetErrorMessage(ErrorMessage, std::string(Name) + " must contain 3 numbers: " + FilePath.generic_string());
+                        "Material parameter '" + Name + "' must contain " + std::to_string(Count) +
+                            " numbers: " + FilePath.generic_string());
                     return false;
                 }
 
-                Out.resize(3);
-                for (rapidjson::SizeType Index = 0; Index < 3; ++Index)
+                for (rapidjson::SizeType Index = 0; Index < Count; ++Index)
                 {
-                    if (!Found->value[Index].IsNumber())
+                    if (!Value[Index].IsNumber())
                     {
                         SetErrorMessage(
                             ErrorMessage,
-                            std::string(Name) + " must contain 3 numbers: " + FilePath.generic_string());
+                            "Material parameter '" + Name + "' must contain " + std::to_string(Count) +
+                                " numbers: " + FilePath.generic_string());
                         return false;
                     }
-                    Out[Index] = Found->value[Index].GetFloat();
+
+                    Out[Index] = Value[Index].GetFloat();
                 }
 
                 return true;
             };
-
-            const auto ReadUnitFloat = [&](const char* Name, float& Out) -> bool
+            for (auto Member = Parameters.MemberBegin(); Member != Parameters.MemberEnd(); ++Member)
             {
-                const auto Found = Parameters.FindMember(Name);
-                if (Found == Parameters.MemberEnd() || !Found->value.IsNumber())
+                const std::string Name = Member->name.GetString();
+                if (!IsParameterName(Name))
                 {
-                    SetErrorMessage(ErrorMessage, std::string(Name) + " must be a number: " + FilePath.generic_string());
+                    SetErrorMessage(
+                        ErrorMessage,
+                        "Material parameter '" + Name + "' is not a valid name: " + FilePath.generic_string());
                     return false;
                 }
 
-                Out = Found->value.GetFloat();
-                if (Out < 0.0F || Out > 1.0F)
+                if (!Member->value.IsObject() || Member->value.MemberCount() != 1)
                 {
-                    SetErrorMessage(ErrorMessage, std::string(Name) + " must be between 0 and 1: " + FilePath.generic_string());
+                    SetErrorMessage(
+                        ErrorMessage,
+                        "Material parameter '" + Name + "' must declare one type: " + FilePath.generic_string());
                     return false;
                 }
 
-                return true;
-            };
-
-            const auto ReadOptionalPath = [&](const char* Name, std::string& Out) -> bool
-            {
-                const auto Found = Parameters.FindMember(Name);
-                if (Found == Parameters.MemberEnd())
+                const auto TypeMember = Member->value.MemberBegin();
+                const std::string TypeName = TypeMember->name.GetString();
+                if (TypeName == "texture")
                 {
-                    Out.clear();
-                    return true;
+                    if (!TypeMember->value.IsString() || TypeMember->value.GetStringLength() == 0)
+                    {
+                        SetErrorMessage(
+                            ErrorMessage,
+                            "Material parameter '" + Name + "' texture must be a path: " + FilePath.generic_string());
+                        return false;
+                    }
+
+                    Binding.Textures.emplace_back(
+                        Name,
+                        std::string(TypeMember->value.GetString(), TypeMember->value.GetStringLength()));
+                    continue;
                 }
 
-                if (!Found->value.IsString() || Found->value.GetStringLength() == 0)
+                MaterialScalarParameter Scalar;
+                Scalar.Name = Name;
+                if (TypeName == "float")
                 {
-                    SetErrorMessage(ErrorMessage, std::string(Name) + " must be a path: " + FilePath.generic_string());
+                    if (!TypeMember->value.IsNumber())
+                    {
+                        SetErrorMessage(
+                            ErrorMessage,
+                            "Material parameter '" + Name + "' float must be a number: " + FilePath.generic_string());
+                        return false;
+                    }
+
+                    Scalar.Components = 1;
+                    Scalar.Value[0] = TypeMember->value.GetFloat();
+                }
+                else if (TypeName == "float2")
+                {
+                    Scalar.Components = 2;
+                    if (!ReadComponents(Name, TypeMember->value, 2, Scalar.Value))
+                    {
+                        return false;
+                    }
+                }
+                else if (TypeName == "float3")
+                {
+                    Scalar.Components = 3;
+                    if (!ReadComponents(Name, TypeMember->value, 3, Scalar.Value))
+                    {
+                        return false;
+                    }
+                }
+                else if (TypeName == "float4")
+                {
+                    Scalar.Components = 4;
+                    if (!ReadComponents(Name, TypeMember->value, 4, Scalar.Value))
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    SetErrorMessage(
+                        ErrorMessage,
+                        "Material parameter '" + Name + "' has unsupported type '" + TypeName + "': " +
+                            FilePath.generic_string());
                     return false;
                 }
 
-                Out.assign(Found->value.GetString(), Found->value.GetStringLength());
-                return true;
-            };
-
-            if (!ReadVec3("BaseColor", Binding.BaseColor) ||
-                !ReadUnitFloat("Roughness", Binding.Roughness) ||
-                !ReadVec3("SpecularColor", Binding.SpecularColor) ||
-                !ReadOptionalPath("BaseColorTexture", Binding.BaseColorTexture) ||
-                !ReadOptionalPath("RoughnessTexture", Binding.RoughnessTexture) ||
-                !ReadOptionalPath("NormalTexture", Binding.NormalTexture))
-            {
-                return false;
-            }
-
-            if (Binding.BaseColorTexture.empty() != Binding.RoughnessTexture.empty() ||
-                Binding.BaseColorTexture.empty() != Binding.NormalTexture.empty())
-            {
-                SetErrorMessage(
-                    ErrorMessage,
-                    "BaseColorTexture, RoughnessTexture, and NormalTexture must be set together: " + FilePath.generic_string());
-                return false;
+                Binding.Scalars.push_back(Scalar);
             }
 
             Binding.bHasParameters = true;
@@ -346,7 +362,7 @@ namespace ShadowEngine
             return false;
         }
 
-        const char* const RendererNames[] = {"BlinnPhongRenderer", "DebugRenderer", "PBRForwardRenderer"};
+        const char* const RendererNames[] = {"BlinnPhongRenderer", "DebugRenderer", "ForwardRenderer"};
         MaterialDescription Parsed;
         for (auto Member = Document.MemberBegin(); Member != Document.MemberEnd(); ++Member)
         {

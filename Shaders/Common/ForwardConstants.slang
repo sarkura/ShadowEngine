@@ -3,21 +3,7 @@
 
 #include "PerObject.slang"
 #include "SceneConstants.slang"
-
-struct ForwardSurfaceData
-{
-    float4 BaseColor;
-    float4 SpecularColor;
-    float4 Roughness;
-};
-
-struct MaterialDescriptorIndices
-{
-    uint BaseColor;
-    uint Roughness;
-    uint Normal;
-    uint Sampler;
-};
+#include "MaterialSurface.slang"
 
 struct ForwardDirectLight
 {
@@ -39,8 +25,9 @@ struct ForwardSkyLight
 cbuffer SceneConstants : register(b0)
 {
     PerObjectData PerObject;
-    ForwardSurfaceData Surface;
-    MaterialDescriptorIndices Descriptors;
+    MaterialSurfaceData Surface;
+    uint4 MaterialPadding0;
+    uint4 MaterialPadding1;
     ForwardDirectLight Direct;
     ForwardPointLight Point;
     ForwardSkyLight Sky;

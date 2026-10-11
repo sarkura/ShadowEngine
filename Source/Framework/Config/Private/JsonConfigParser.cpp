@@ -628,6 +628,11 @@ namespace ShadowEngine
                 ParsedSetting.Renderer,
                 ErrorMessage) ||
             !ReadString(
+                Document,
+                "DefaultMaterial",
+                ParsedSetting.DefaultMaterial,
+                ErrorMessage) ||
+            !ReadString(
                 *RHI,
                 "Backend",
                 ParsedSetting.Backend,
@@ -665,9 +670,15 @@ namespace ShadowEngine
         std::string* ErrorMessage)
     {
         if (Setting.Renderer != "BlinnPhongRenderer" && Setting.Renderer != "DebugRenderer" &&
-            Setting.Renderer != "PBRForwardRenderer")
+            Setting.Renderer != "ForwardRenderer")
         {
-            SetError(ErrorMessage, "Renderer must be BlinnPhongRenderer, DebugRenderer, or PBRForwardRenderer");
+            SetError(ErrorMessage, "Renderer must be BlinnPhongRenderer, DebugRenderer, or ForwardRenderer");
+            return false;
+        }
+
+        if (Setting.DefaultMaterial.empty())
+        {
+            SetError(ErrorMessage, "DefaultMaterial cannot be empty");
             return false;
         }
 

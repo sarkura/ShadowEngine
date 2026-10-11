@@ -8,6 +8,7 @@
 #include "Framework/Material/Public/MaterialInstance.h"
 #include "Framework/Material/Public/MaterialParameter.h"
 #include "Framework/RHI/Public/RHIDevice.h"
+#include "Framework/RHI/Public/RHIPipelineLayout.h"
 #include "Framework/RHI/Public/RHISwapChain.h"
 #include "Framework/Shader/Public/ShaderManager.h"
 
@@ -235,9 +236,20 @@ namespace ShadowEngine
                 {"TEXCOORD", 0, 36, ERHIVertexFormat::Float32x2},
             };
 
+            const ShaderReflection* VertexReflection = Shaders.GetReflection(*Shader, ERHIShaderStage::Vertex);
+            const ShaderReflection* PixelReflection = Shaders.GetReflection(*Shader, ERHIShaderStage::Pixel);
+            if (VertexReflection == nullptr || PixelReflection == nullptr)
+            {
+                SetErrorMessage(ErrorMessage, "Shader reflection is missing: " + Mesh.GetPath().generic_string());
+                return false;
+            }
+
+            Batch.Layout = RHIPipelineLayout::FromReflection(*VertexReflection, *PixelReflection);
+
             RHIGraphicsPipelineDesc PipelineDesc;
             PipelineDesc.VertexShader = Batch.VertexShader;
             PipelineDesc.PixelShader = Batch.PixelShader;
+            PipelineDesc.Layout = &Batch.Layout;
             PipelineDesc.RenderTargetFormat = SwapChain->GetFormat();
             PipelineDesc.Topology = ERHIPrimitiveTopology::TriangleList;
             PipelineDesc.InputLayout = InputLayout;
@@ -248,23 +260,27 @@ namespace ShadowEngine
                 return false;
             }
 
-            const MaterialParameter::TextureBinding Textures = MaterialParameter::GetTextureBinding(Instance->GetParameters());
+            const MaterialParameterBlock* Parameter = Instance->FindParameters(GetName());
+            const MaterialParameter::TextureBinding Textures = Parameter == nullptr
+                ? MaterialParameter::TextureBinding{}
+                : MaterialParameter::GetTextureBinding(*Parameter);
             if (!Textures.IsValid())
             {
-                SetErrorMessage(ErrorMessage, "Material textures must include BaseColor, Roughness, and Normal: " + Mesh.GetPath().generic_string());
+                SetErrorMessage(ErrorMessage, "Material sampler does not match its textures: " + Mesh.GetPath().generic_string());
                 return false;
             }
 
-            if (Textures.HasTextures())
+            for (const auto& [Name, Handle] : Textures.Textures)
             {
-                RHITexture* BaseColor = UploadTexture(Textures.BaseColor, ErrorMessage);
-                RHITexture* Roughness = UploadTexture(Textures.Roughness, ErrorMessage);
-                RHITexture* Normal = UploadTexture(Textures.Normal, ErrorMessage);
-                RHISampler* Sampler = UploadSampler(Textures.Sampler, ErrorMessage);
-                if (BaseColor == nullptr || Roughness == nullptr || Normal == nullptr || Sampler == nullptr)
+                (void)Name;
+                if (Handle.IsValid() && UploadTexture(Handle, ErrorMessage) == nullptr)
                 {
                     return false;
                 }
+            }
+            if (Textures.Sampler.IsValid() && UploadSampler(Textures.Sampler, ErrorMessage) == nullptr)
+            {
+                return false;
             }
 
             MeshBatches.push_back(std::move(Batch));
@@ -394,9 +410,16 @@ namespace ShadowEngine
             return false;
         }
 
+        const ShaderReflection* SkyVertex = Shaders.GetReflection(SkyShader, ERHIShaderStage::Vertex);
+        const ShaderReflection* SkyPixel = Shaders.GetReflection(SkyShader, ERHIShaderStage::Pixel);
+        const RHIPipelineLayout SkyLayout = SkyVertex != nullptr && SkyPixel != nullptr
+            ? RHIPipelineLayout::FromReflection(*SkyVertex, *SkyPixel)
+            : RHIPipelineLayout{};
+
         RHIGraphicsPipelineDesc PipelineDesc;
         PipelineDesc.VertexShader = Shaders.GetVertexShader(SkyShader);
         PipelineDesc.PixelShader = Shaders.GetPixelShader(SkyShader);
+        PipelineDesc.Layout = &SkyLayout;
         PipelineDesc.RenderTargetFormat = SwapChain->GetFormat();
         PipelineDesc.Topology = ERHIPrimitiveTopology::TriangleList;
         PipelineDesc.bEnableDepth = false;

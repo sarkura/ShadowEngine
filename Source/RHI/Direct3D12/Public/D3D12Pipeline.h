@@ -21,7 +21,10 @@ namespace ShadowEngine
             [[nodiscard]] D3D_PRIMITIVE_TOPOLOGY GetTopology() const;
 
         private:
-            bool CreateRootSignature(ID3D12Device* Device, std::string* ErrorMessage);
+            bool CreateRootSignature(
+                ID3D12Device* Device,
+                const RHIPipelineLayout* Layout,
+                std::string* ErrorMessage);
 
             ComPtr<ID3D12RootSignature> RootSignature;
             ComPtr<ID3D12PipelineState> PipelineState;

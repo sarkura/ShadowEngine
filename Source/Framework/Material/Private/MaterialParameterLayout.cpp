@@ -27,4 +27,22 @@ namespace ShadowEngine
 
         return false;
     }
+
+    bool MaterialParameterLayout::Matches(const MaterialParameterLayout& Other) const
+    {
+        if (Entries.size() != Other.Entries.size())
+        {
+            return false;
+        }
+
+        for (size_t Index = 0; Index < Entries.size(); ++Index)
+        {
+            if (Entries[Index].Name != Other.Entries[Index].Name || Entries[Index].Type != Other.Entries[Index].Type)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }

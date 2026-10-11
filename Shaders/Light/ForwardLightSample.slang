@@ -2,11 +2,11 @@
 
 #include "../Material/ForwardMaterialSample.slang"
 
-struct PBRForwardLightSample
+struct ForwardLightSample
 {
     float3 Direct;
     float3 Point;
     float3 Sky;
 };
 
-PBRForwardLightSample EvaluateLight(ForwardMaterialSample Material, VertexOutput Input);
+ForwardLightSample EvaluateLight(ForwardMaterialSample Material, VertexOutput Input);

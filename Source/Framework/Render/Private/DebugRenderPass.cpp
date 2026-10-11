@@ -6,9 +6,11 @@
 #include "Framework/Common/Public/Log.h"
 #include "Framework/Material/Public/Material.h"
 #include "Framework/Material/Public/MaterialInstance.h"
+#include "Framework/Material/Public/MaterialParameter.h"
 #include "Framework/RHI/Public/RHIBuffer.h"
 #include "Framework/RHI/Public/RHICommandList.h"
 #include "Framework/RHI/Public/RHIDevice.h"
+#include "Framework/RHI/Public/RHIPipelineLayout.h"
 #include "Framework/RHI/Public/RHISwapChain.h"
 #include "Framework/RHI/Public/RHITexture.h"
 #include "Framework/Shader/Public/ShaderManager.h"
@@ -16,8 +18,11 @@
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <array>
 #include <cstdint>
 #include <cstring>
+#include <map>
+#include <string>
 #include <vector>
 
 namespace ShadowEngine
@@ -40,7 +45,8 @@ namespace ShadowEngine
         static_assert(sizeof(GpuObjectConstants) <= 512);
         if (Context.Device == nullptr || Context.SwapChain == nullptr || Context.CommandList == nullptr ||
             Context.ConstantBuffer == nullptr || Context.DepthBuffer == nullptr || Context.Assets == nullptr ||
-            Context.Shaders == nullptr || Context.View == nullptr || Context.Batches == nullptr)
+            Context.Shaders == nullptr || Context.View == nullptr || Context.Batches == nullptr ||
+            Context.TextureDescriptors == nullptr || Context.Samplers == nullptr)
         {
             return false;
         }
@@ -75,11 +81,71 @@ namespace ShadowEngine
                 return false;
             }
 
+            const MaterialParameterBlock* Parameter = Instance->FindParameters("DebugRenderer");
+            const MaterialParameter::TextureBinding Textures = Parameter == nullptr
+                ? MaterialParameter::TextureBinding{}
+                : MaterialParameter::GetTextureBinding(*Parameter);
+            std::map<std::string, std::array<float, 4>> ScalarValues;
+            if (Parameter != nullptr)
+            {
+                for (const auto& [Name, Scalar] : Parameter->Scalars)
+                {
+                    ScalarValues.emplace(Name, Scalar.Value);
+                }
+            }
             GpuObjectConstants Slot{};
             std::memcpy(Slot.ViewProjection, glm::value_ptr(ViewProjection), sizeof(Slot.ViewProjection));
             std::memcpy(Slot.World, Item.World, sizeof(Slot.World));
             std::memcpy(Slot.NormalMatrix, Item.NormalMatrix, sizeof(Slot.NormalMatrix));
-            std::memcpy(Constants.data() + Index * Context.ConstantAlignment, &Slot, sizeof(Slot));
+            const auto ResolveTexture = [&](TextureAssetHandle Handle, uint32& DescriptorIndex) -> bool
+            {
+                if (!Handle.IsValid())
+                {
+                    return true;
+                }
+
+                const auto Found = Context.TextureDescriptors->find(Handle.Index);
+                if (Found == Context.TextureDescriptors->end())
+                {
+                    Log::Error("Material descriptor is missing");
+                    return false;
+                }
+
+                DescriptorIndex = Found->second;
+                return true;
+            };
+            std::map<std::string, uint32> TextureIndices;
+            for (const auto& [Name, Handle] : Textures.Textures)
+            {
+                uint32 DescriptorIndex = InvalidShaderDescriptor;
+                if (!ResolveTexture(Handle, DescriptorIndex))
+                {
+                    return false;
+                }
+
+                TextureIndices.emplace(Name, DescriptorIndex);
+            }
+            uint32 SamplerDescriptor = InvalidShaderDescriptor;
+            if (Textures.Sampler.IsValid())
+            {
+                const auto Sampler = Context.Samplers->find(Textures.Sampler.Index);
+                if (Sampler == Context.Samplers->end() || Sampler->second == nullptr)
+                {
+                    Log::Error("Material descriptor is missing");
+                    return false;
+                }
+
+                SamplerDescriptor = Sampler->second->GetDescriptorIndex();
+            }
+
+            uint8* Destination = Constants.data() + Index * Context.ConstantAlignment;
+            std::memcpy(Destination, &Slot, sizeof(Slot));
+            const MeshBatch* Batch = FindMeshBatch(*Context.Batches, Item.Mesh, Item.Section);
+            if (Batch != nullptr)
+            {
+                Batch->Layout.WriteScalars(Destination, ScalarValues);
+                Batch->Layout.WriteDescriptors(Destination, TextureIndices, SamplerDescriptor);
+            }
         }
         if (!Constants.empty() && !Context.ConstantBuffer->Update(0, Constants))
         {

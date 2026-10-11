@@ -12,14 +12,18 @@
 #include "Framework/RHI/Public/RHICommandList.h"
 #include "Framework/RHI/Public/RHIDevice.h"
 #include "Framework/RHI/Public/RHISwapChain.h"
+#include "Framework/RHI/Public/RHIPipelineLayout.h"
 #include "Framework/RHI/Public/RHITexture.h"
 #include "Framework/Shader/Public/ShaderManager.h"
 
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <array>
 #include <cstdint>
 #include <cstring>
+#include <map>
+#include <string>
 #include <vector>
 
 namespace ShadowEngine
@@ -34,11 +38,6 @@ namespace ShadowEngine
             float CameraPosition[4];
             float LightDirection[4];
             float LightColor[4];
-            MaterialParameter::SurfaceConstants Surface;
-            uint32 BaseColorDescriptor = 0;
-            uint32 RoughnessDescriptor = 0;
-            uint32 NormalDescriptor = 0;
-            uint32 SamplerDescriptor = 0;
         };
     }
 
@@ -91,7 +90,7 @@ namespace ShadowEngine
                 return false;
             }
 
-            const MaterialParameterBlock& Parameter = Instance->GetParameters();
+            const MaterialParameterBlock* Parameter = Instance->FindParameters("BlinnPhongRenderer");
             GpuObjectConstants Slot{};
             std::memcpy(Slot.ViewProjection, glm::value_ptr(ViewProjection), sizeof(Slot.ViewProjection));
             std::memcpy(Slot.World, Item.World, sizeof(Slot.World));
@@ -106,27 +105,65 @@ namespace ShadowEngine
             Slot.LightColor[1] = Light.Color[1];
             Slot.LightColor[2] = Light.Color[2];
             Slot.LightColor[3] = Light.Intensity;
-            MaterialParameter::WriteSurfaceConstants(Parameter, Slot.Surface);
-            const MaterialParameter::TextureBinding Textures = MaterialParameter::GetTextureBinding(Parameter);
-            if (Textures.HasTextures())
+            MaterialParameter::TextureBinding Textures;
+            std::map<std::string, std::array<float, 4>> ScalarValues;
+            if (Parameter != nullptr)
             {
-                const auto BaseColor = Context.TextureDescriptors->find(Textures.BaseColor.Index);
-                const auto Roughness = Context.TextureDescriptors->find(Textures.Roughness.Index);
-                const auto Normal = Context.TextureDescriptors->find(Textures.Normal.Index);
-                const auto Sampler = Context.Samplers->find(Textures.Sampler.Index);
-                if (BaseColor == Context.TextureDescriptors->end() || Roughness == Context.TextureDescriptors->end() ||
-                    Normal == Context.TextureDescriptors->end() || Sampler == Context.Samplers->end() || Sampler->second == nullptr)
+                Textures = MaterialParameter::GetTextureBinding(*Parameter);
+                for (const auto& [Name, Scalar] : Parameter->Scalars)
+                {
+                    ScalarValues.emplace(Name, Scalar.Value);
+                }
+            }
+            const auto ResolveTexture = [&](TextureAssetHandle Handle, uint32& Index) -> bool
+            {
+                if (!Handle.IsValid())
+                {
+                    return true;
+                }
+
+                const auto Found = Context.TextureDescriptors->find(Handle.Index);
+                if (Found == Context.TextureDescriptors->end())
                 {
                     Log::Error("Material descriptor is missing");
                     return false;
                 }
 
-                Slot.BaseColorDescriptor = BaseColor->second;
-                Slot.RoughnessDescriptor = Roughness->second;
-                Slot.NormalDescriptor = Normal->second;
-                Slot.SamplerDescriptor = Sampler->second->GetDescriptorIndex();
+                Index = Found->second;
+                return true;
+            };
+            uint32 SamplerDescriptor = InvalidShaderDescriptor;
+            std::map<std::string, uint32> TextureIndices;
+            for (const auto& [Name, Handle] : Textures.Textures)
+            {
+                uint32 Index = InvalidShaderDescriptor;
+                if (!ResolveTexture(Handle, Index))
+                {
+                    return false;
+                }
+
+                TextureIndices.emplace(Name, Index);
             }
-            std::memcpy(Constants.data() + Index * Context.ConstantAlignment, &Slot, sizeof(Slot));
+            if (Textures.Sampler.IsValid())
+            {
+                const auto Sampler = Context.Samplers->find(Textures.Sampler.Index);
+                if (Sampler == Context.Samplers->end() || Sampler->second == nullptr)
+                {
+                    Log::Error("Material descriptor is missing");
+                    return false;
+                }
+
+                SamplerDescriptor = Sampler->second->GetDescriptorIndex();
+            }
+
+            uint8* Destination = Constants.data() + Index * Context.ConstantAlignment;
+            std::memcpy(Destination, &Slot, sizeof(Slot));
+            const MeshBatch* Batch = FindMeshBatch(*Context.Batches, Item.Mesh, Item.Section);
+            if (Batch != nullptr)
+            {
+                Batch->Layout.WriteScalars(Destination, ScalarValues);
+                Batch->Layout.WriteDescriptors(Destination, TextureIndices, SamplerDescriptor);
+            }
         }
         if (!Constants.empty() && !Context.ConstantBuffer->Update(0, Constants))
         {

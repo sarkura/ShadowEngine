@@ -4,9 +4,8 @@
 
 namespace ShadowEngine
 {
-    Material::Material(std::vector<MaterialShaderBinding> InShaders, MaterialParameterLayout InLayout)
+    Material::Material(std::vector<MaterialShaderBinding> InShaders)
         : Shaders(std::move(InShaders))
-        , Layout(std::move(InLayout))
     {
     }
 
@@ -21,10 +20,5 @@ namespace ShadowEngine
         }
 
         return nullptr;
-    }
-
-    const MaterialParameterLayout& Material::GetLayout() const
-    {
-        return Layout;
     }
 }

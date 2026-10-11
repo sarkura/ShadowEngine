@@ -8,19 +8,21 @@
         "Light": "Light/BlinnPhongLight.slang",
         "Parameters":
         {
-            "BaseColor": [0.4, 0.5, 0.2],
-            "Roughness": 0.55,
-            "SpecularColor": [0.8, 0.8, 0.8]
+            "BaseColor": {"float3": [0.4, 0.5, 0.2]},
+            "Roughness": {"float": 0.55},
+            "SpecularColor": {"float3": [0.8, 0.8, 0.8]}
         }
     },
-    "PBRForwardRenderer":
+    "ForwardRenderer":
     {
-        "Vertex": "PBRForward/ForwardVertex.slang",
-        "Fragment": "PBRForward/ForwardFragment.slang",
+        "Vertex": "Forward/ForwardVertex.slang",
+        "Fragment": "Forward/ForwardFragment.slang",
         "Material": "Material/ForwardMaterial.slang",
-        "Light": "Light/PBRForwardLight.slang",
+        "Light": "Light/ForwardLight.slang",
         "Parameters":
         {
+            "BaseColor": {"float3": [0.4, 0.5, 0.2]},
+            "Roughness": {"float": 0.55}
         }
     }
 }

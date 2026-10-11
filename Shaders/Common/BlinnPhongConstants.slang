@@ -3,19 +3,11 @@
 
 #include "PerObject.slang"
 #include "SceneConstants.slang"
-#include "BlinnPhongSurface.slang"
-
-struct MaterialDescriptorIndices
-{
-    uint BaseColor;
-    uint Roughness;
-    uint Normal;
-    uint Sampler;
-};
+#include "MaterialSurface.slang"
 
 cbuffer SceneConstants : register(b0)
 {
     PerObjectData PerObject;
-    BlinnPhongSurfaceData BlinnPhongSurface;
-    MaterialDescriptorIndices Descriptors;
+    MaterialSurfaceData Surface;
+    uint4 MaterialPadding;
 };

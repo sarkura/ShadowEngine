@@ -1,4 +1,3 @@
-#include "../Common/BlinnPhongConstants.slang"
 #include "BlinnPhongLightSample.slang"
 
 BlinnPhongLightSample EvaluateLight(BlinnPhongMaterialSample Material, VertexOutput Input)

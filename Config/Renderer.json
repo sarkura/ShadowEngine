@@ -1,5 +1,6 @@
 {
-    "Renderer": "PBRForwardRenderer",
+    "Renderer": "ForwardRenderer",
+    "DefaultMaterial": "Assets/EngineAsset/DefaultAsset.material.json",
     "RHISetting":
     {
         "Backend": "D3D12",

@@ -4,9 +4,9 @@
 BlinnPhongMaterialSample EvaluateMaterial(VertexOutput Input)
 {
     BlinnPhongMaterialSample Sample;
-    Sample.Albedo = saturate(BlinnPhongSurface.BaseColor.rgb);
-    Sample.Roughness = saturate(BlinnPhongSurface.Roughness.x);
-    Sample.SpecularColor = BlinnPhongSurface.SpecularColor.rgb;
+    Sample.Albedo = saturate(Surface.BaseColor.rgb);
+    Sample.Roughness = saturate(Surface.Roughness);
+    Sample.SpecularColor = Surface.SpecularColor.rgb;
     Sample.Normal = normalize(Input.WorldNormal);
     return Sample;
 }

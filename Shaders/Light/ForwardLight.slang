@@ -1,5 +1,4 @@
-#include "../Common/ForwardConstants.slang"
-#include "PBRForwardLightSample.slang"
+#include "ForwardLightSample.slang"
 
 float3 ShadeDirectional(ForwardMaterialSample Material, float3 Normal, float3 ToView)
 {
@@ -14,7 +13,8 @@ float3 ShadeDirectional(ForwardMaterialSample Material, float3 Normal, float3 To
     const float Shininess = lerp(128.0, 4.0, Material.Roughness);
     const float SpecularTerm = pow(saturate(dot(Normal, HalfVector)), Shininess) * DiffuseTerm;
     const float3 Light = Direct.Color.rgb * Direct.Color.a;
-    return Material.Albedo * Light * DiffuseTerm + Material.SpecularColor * Light * SpecularTerm;
+    const float3 SpecularColor = lerp(float3(0.04, 0.04, 0.04), Material.Albedo, Material.Metallic);
+    return Material.Albedo * Light * DiffuseTerm + SpecularColor * Light * SpecularTerm;
 }
 
 float3 ShadePoint(ForwardMaterialSample Material, float3 Normal, float3 WorldPosition, float3 ToView)
@@ -35,16 +35,17 @@ float3 ShadePoint(ForwardMaterialSample Material, float3 Normal, float3 WorldPos
     const float Shininess = lerp(128.0, 4.0, Material.Roughness);
     const float SpecularTerm = pow(saturate(dot(Normal, HalfVector)), Shininess) * DiffuseTerm;
     const float3 Light = Point.Color.rgb * Point.Color.a * Attenuation;
-    return Material.Albedo * Light * DiffuseTerm + Material.SpecularColor * Light * SpecularTerm;
+    const float3 SpecularColor = lerp(float3(0.04, 0.04, 0.04), Material.Albedo, Material.Metallic);
+    return Material.Albedo * Light * DiffuseTerm + SpecularColor * Light * SpecularTerm;
 }
 
-PBRForwardLightSample EvaluateLight(ForwardMaterialSample Material, VertexOutput Input)
+ForwardLightSample EvaluateLight(ForwardMaterialSample Material, VertexOutput Input)
 {
     const float3 Normal = normalize(Material.Normal);
     const float3 ToView = normalize(PerObject.CameraPosition.xyz - Input.WorldPosition);
-    PBRForwardLightSample Sample;
+    ForwardLightSample Sample;
     Sample.Direct = ShadeDirectional(Material, Normal, ToView);
     Sample.Point = ShadePoint(Material, Normal, Input.WorldPosition, ToView);
-    Sample.Sky = Material.Albedo * Sky.Color.rgb * Sky.Color.a;
+    Sample.Sky = Material.Albedo * Sky.Color.rgb * Sky.Color.a * Material.Occlusion;
     return Sample;
 }

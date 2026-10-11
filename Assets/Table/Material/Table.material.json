@@ -8,22 +8,30 @@
         "Light": "Light/BlinnPhongLight.slang",
         "Parameters":
         {
-            "BaseColor": [1, 1, 1],
-            "Roughness": 1.0,
-            "SpecularColor": [0.3, 0.3, 0.3],
-            "BaseColorTexture": "Assets/Table/Texture/Basecolor.png",
-            "RoughnessTexture": "Assets/Table/Texture/Roughness.png",
-            "NormalTexture": "Assets/Table/Texture/Normal.png"
+            "BaseColor": {"float3": [1, 1, 1]},
+            "Roughness": {"float": 1.0},
+            "SpecularColor": {"float3": [0.3, 0.3, 0.3]},
+            "BaseColorTexture": {"texture": "Assets/Table/Texture/Basecolor.png"},
+            "RoughnessTexture": {"texture": "Assets/Table/Texture/Roughness.png"},
+            "NormalTexture": {"texture": "Assets/Table/Texture/Normal.png"}
         }
     },
-    "PBRForwardRenderer":
+    "ForwardRenderer":
     {
-        "Vertex": "PBRForward/ForwardVertex.slang",
-        "Fragment": "PBRForward/ForwardFragment.slang",
+        "Vertex": "Forward/ForwardVertex.slang",
+        "Fragment": "Forward/ForwardFragment.slang",
         "Material": "Material/TableForwardMaterial.slang",
-        "Light": "Light/PBRForwardLight.slang",
+        "Light": "Light/ForwardLight.slang",
         "Parameters":
         {
+            "BaseColor": {"float3": [1, 1, 1]},
+            "Metallic": {"float": 0.0},
+            "Roughness": {"float": 0.5},
+            "BaseColorTexture": {"texture": "Assets/Table/Texture/Basecolor.png"},
+            "RoughnessTexture": {"texture": "Assets/Table/Texture/Roughness.png"},
+            "MetallicTexture": {"texture": "Assets/Table/Texture/Metallic.png"},
+            "NormalTexture": {"texture": "Assets/Table/Texture/Normal.png"},
+            "OcclusionTexture": {"texture": "Assets/Table/Texture/AO.png"}
         }
     }
 }

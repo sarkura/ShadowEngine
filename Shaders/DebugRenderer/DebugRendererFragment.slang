@@ -1,3 +1,5 @@
+#include "../Common/DebugConstants.slang"
+#include "../Common/DescriptorHeap.slang"
 #include "../Material/DebugRendererMaterialSample.slang"
 
 [shader("fragment")]

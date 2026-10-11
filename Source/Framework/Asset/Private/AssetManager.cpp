@@ -3,6 +3,7 @@
 #include "Framework/Asset/Public/MaterialAsset.h"
 #include "Framework/Asset/Public/TextureAsset.h"
 #include "Framework/Common/Public/Log.h"
+#include "Framework/Config/Public/ConfigManager.h"
 #include "Framework/Config/Public/DescriptionParser.h"
 #include "Framework/Shader/Public/ShaderManager.h"
 #include "Framework/Material/Public/Material.h"
@@ -18,7 +19,11 @@
 #include <glm/mat4x4.hpp>
 #include <glm/geometric.hpp>
 
+#include <array>
+#include <cctype>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,6 +32,21 @@ namespace ShadowEngine
 {
     namespace
     {
+        std::vector<ShaderScalarField> ScalarFieldsFor(const MaterialRendererBinding& Binding)
+        {
+            std::vector<ShaderScalarField> Fields;
+            Fields.reserve(Binding.Scalars.size());
+            for (const MaterialScalarParameter& Scalar : Binding.Scalars)
+            {
+                ShaderScalarField Field;
+                Field.Name = Scalar.Name;
+                Field.Components = Scalar.Components;
+                Fields.push_back(std::move(Field));
+            }
+
+            return Fields;
+        }
+
         struct GltfFile
         {
             cgltf_data* Data = nullptr;
@@ -341,6 +361,108 @@ namespace ShadowEngine
             return true;
         }
 
+        bool WriteMeshMaterial(
+            const std::filesystem::path& MeshPath,
+            uint32 Slot,
+            const std::string& OldMaterial,
+            const std::string& NewMaterial,
+            std::string* ErrorMessage)
+        {
+            std::ifstream Input(MeshPath, std::ios::binary);
+            if (!Input)
+            {
+                SetErrorMessage(ErrorMessage, "Unable to open mesh asset: " + MeshPath.generic_string());
+                return false;
+            }
+
+            std::string Json{
+                std::istreambuf_iterator<char>(Input),
+                std::istreambuf_iterator<char>()};
+            Input.close();
+
+            const std::string SlotText = std::to_string(Slot);
+            size_t Search = 0;
+            bool bReplaced = false;
+            while (Search < Json.size())
+            {
+                const size_t SlotPos = Json.find("\"slot\"", Search);
+                if (SlotPos == std::string::npos)
+                {
+                    break;
+                }
+
+                const size_t Colon = Json.find(':', SlotPos + 6);
+                if (Colon == std::string::npos)
+                {
+                    break;
+                }
+
+                size_t Number = Colon + 1;
+                while (Number < Json.size() && std::isspace(static_cast<unsigned char>(Json[Number])) != 0)
+                {
+                    ++Number;
+                }
+
+                const size_t NumberEnd = Number + SlotText.size();
+                if (Json.compare(Number, SlotText.size(), SlotText) != 0 ||
+                    (NumberEnd < Json.size() && std::isdigit(static_cast<unsigned char>(Json[NumberEnd])) != 0))
+                {
+                    Search = Number + 1;
+                    continue;
+                }
+
+                const size_t ObjectStart = Json.rfind('{', SlotPos);
+                const size_t ObjectEnd = Json.find('}', NumberEnd);
+                if (ObjectStart == std::string::npos || ObjectEnd == std::string::npos)
+                {
+                    break;
+                }
+
+                const size_t MaterialKey = Json.find("\"material\"", ObjectStart);
+                const size_t ValueColon = MaterialKey < ObjectEnd ? Json.find(':', MaterialKey + 10) : std::string::npos;
+                const size_t OpenQuote = ValueColon < ObjectEnd ? Json.find('"', ValueColon + 1) : std::string::npos;
+                const size_t CloseQuote = OpenQuote < ObjectEnd ? Json.find('"', OpenQuote + 1) : std::string::npos;
+                if (MaterialKey > ObjectEnd || CloseQuote > ObjectEnd)
+                {
+                    Search = ObjectEnd + 1;
+                    continue;
+                }
+
+                const std::string Current = Json.substr(OpenQuote + 1, CloseQuote - OpenQuote - 1);
+                if (Current != OldMaterial)
+                {
+                    Search = CloseQuote + 1;
+                    continue;
+                }
+
+                Json.replace(OpenQuote + 1, Current.size(), NewMaterial);
+                bReplaced = true;
+                break;
+            }
+
+            if (!bReplaced)
+            {
+                SetErrorMessage(ErrorMessage, "Mesh asset material slot was not written: " + MeshPath.generic_string());
+                return false;
+            }
+
+            std::ofstream Output(MeshPath, std::ios::binary | std::ios::trunc);
+            if (!Output)
+            {
+                SetErrorMessage(ErrorMessage, "Unable to write mesh asset: " + MeshPath.generic_string());
+                return false;
+            }
+
+            Output.write(Json.data(), static_cast<std::streamsize>(Json.size()));
+            if (!Output)
+            {
+                SetErrorMessage(ErrorMessage, "Unable to write mesh asset: " + MeshPath.generic_string());
+                return false;
+            }
+
+            return true;
+        }
+
     }
 
     AssetManager::~AssetManager()
@@ -409,15 +531,52 @@ namespace ShadowEngine
 
         for (MeshBlock& Block : Blocks)
         {
-            Block.Material = LoadMaterialInstance(Block.MaterialPath, ErrorMessage);
+            std::string MaterialError;
+            Block.Material = LoadMaterialInstance(Block.MaterialPath, &MaterialError);
             if (!Block.Material.IsValid())
             {
-                return {};
+                const std::string DefaultMaterialPath = std::filesystem::path(
+                    ConfigManager::Get().GetRHISetting().DefaultMaterial).generic_string();
+                if (DefaultMaterialPath.empty())
+                {
+                    SetErrorMessage(ErrorMessage, "DefaultMaterial is not configured");
+                    return {};
+                }
+
+                const std::string Requested = std::filesystem::path(Block.MaterialPath).generic_string();
+                if (Requested == DefaultMaterialPath)
+                {
+                    SetErrorMessage(ErrorMessage, MaterialError);
+                    return {};
+                }
+
+                Log::Warning(
+                    "Mesh {} slot {} material {} failed: {}. Using {}",
+                    DescriptionPath,
+                    Block.Slot,
+                    Requested,
+                    MaterialError,
+                    DefaultMaterialPath);
+                Block.Material = LoadMaterialInstance(DefaultMaterialPath, ErrorMessage);
+                if (!Block.Material.IsValid())
+                {
+                    return {};
+                }
+
+                if (!WriteMeshMaterial(Path, Block.Slot, Block.MaterialPath, DefaultMaterialPath, ErrorMessage))
+                {
+                    return {};
+                }
+
+                Log::Info(
+                    "Updated mesh asset {} slot {} to {}",
+                    DescriptionPath,
+                    Block.Slot,
+                    DefaultMaterialPath);
             }
 
             const MaterialInstance* Instance = ResolveMaterialInstance(Block.Material);
-            Block.bRequireTexCoord =
-                Instance != nullptr && MaterialParameter::GetTextureBinding(Instance->GetParameters()).HasTextures();
+            Block.bRequireTexCoord = Instance != nullptr && Instance->HasTextures();
         }
 
         const std::string SourcePath = SourceFile.generic_string();
@@ -542,43 +701,163 @@ namespace ShadowEngine
             return {};
         }
 
-        const MaterialRendererBinding* Surface = nullptr;
-        for (const MaterialRendererBinding& Binding : Description.Bindings)
+        if (Shaders == nullptr)
         {
-            if (!Binding.bHasParameters)
-            {
-                continue;
-            }
-
-            if (Surface != nullptr)
-            {
-                SetErrorMessage(ErrorMessage, "Material has more than one parameter block: " + DescriptionPath.generic_string());
-                return {};
-            }
-
-            Surface = &Binding;
-        }
-
-        MaterialParameterLayout Layout;
-        MaterialParameterBlock Parameters;
-        if (Surface != nullptr &&
-            (!MaterialParameter::BuildLayout(*Surface, Layout, ErrorMessage) ||
-             !MaterialParameter::BuildBlock(*Surface, Parameters, ErrorMessage)))
-        {
+            SetErrorMessage(ErrorMessage, "Shader manager is not set");
             return {};
         }
 
-        if (Surface != nullptr && !Surface->BaseColorTexture.empty())
+        std::vector<MaterialRendererParameters> ParameterSets;
+        ParameterSets.reserve(Description.Bindings.size());
+        for (const MaterialRendererBinding& Binding : Description.Bindings)
         {
-            const TextureAssetHandle BaseColorTexture = LoadTexture(Surface->BaseColorTexture, ErrorMessage);
-            const TextureAssetHandle RoughnessTexture = LoadTexture(Surface->RoughnessTexture, ErrorMessage);
-            const TextureAssetHandle NormalTexture = LoadTexture(Surface->NormalTexture, ErrorMessage);
-            if (!BaseColorTexture.IsValid() || !RoughnessTexture.IsValid() || !NormalTexture.IsValid())
+            if (!Shaders->HasSource(Binding.VertexShader) || !Shaders->HasSource(Binding.PixelShader) ||
+                !Shaders->HasSource(Binding.MaterialShader) ||
+                (!Binding.LightShader.empty() && !Shaders->HasSource(Binding.LightShader)))
+            {
+                SetErrorMessage(
+                    ErrorMessage,
+                    "Material shader is missing: " + DescriptionPath.generic_string());
+                return {};
+            }
+
+            MaterialRendererParameters ParameterSet;
+            ParameterSet.Renderer = Binding.Renderer;
+            if (!MaterialParameter::BuildBlock(Binding, ParameterSet.Parameters, ErrorMessage))
             {
                 return {};
             }
 
-            MaterialParameter::SetTextures(Parameters, BaseColorTexture, RoughnessTexture, NormalTexture, DefaultSampler());
+            std::vector<std::string> DescriptorFields;
+            DescriptorFields.reserve(Binding.Textures.size());
+            for (const auto& Texture : Binding.Textures)
+            {
+                DescriptorFields.push_back(Texture.first);
+            }
+
+            const std::vector<ShaderScalarField> ScalarFields = ScalarFieldsFor(Binding);
+            const ShaderHandle Shader = Shaders->Register(
+                Binding.VertexShader,
+                Binding.PixelShader,
+                Binding.MaterialShader,
+                Binding.LightShader,
+                DescriptorFields,
+                ScalarFields);
+            if (!Shader.IsValid() || !Shaders->Compile(Shader, ErrorMessage))
+            {
+                return {};
+            }
+
+            const ShaderReflection* Reflection = Shaders->GetReflection(Shader, ERHIShaderStage::Pixel);
+            if (Reflection == nullptr)
+            {
+                SetErrorMessage(ErrorMessage, "Shader reflection is missing: " + DescriptionPath.generic_string());
+                return {};
+            }
+
+            for (const ShaderBinding& Binding : Reflection->Bindings)
+            {
+                if (Binding.Kind == EShaderBindingKind::ConstantBuffer && Binding.Size > 512)
+                {
+                    SetErrorMessage(
+                        ErrorMessage,
+                        "Material constant buffer exceeds 512 bytes: " + DescriptionPath.generic_string());
+                    return {};
+                }
+            }
+
+            MaterialParameterLayout ShaderLayout;
+            MaterialParameter::BuildLayout(*Reflection, ShaderLayout);
+
+            const auto ComponentCount = [](EMaterialParameterType Type) -> uint32
+            {
+                switch (Type)
+                {
+                    case EMaterialParameterType::Float:
+                        return 1;
+                    case EMaterialParameterType::Float2:
+                        return 2;
+                    case EMaterialParameterType::Float3:
+                        return 3;
+                    case EMaterialParameterType::Float4:
+                        return 4;
+                    default:
+                        return 0;
+                }
+            };
+            for (const MaterialParameterLayout::Entry& Entry : ShaderLayout.Entries)
+            {
+                const uint32 Components = ComponentCount(Entry.Type);
+                if (Components == 0)
+                {
+                    continue;
+                }
+
+                const auto Found = ParameterSet.Parameters.Scalars.find(Entry.Name);
+                if (Found == ParameterSet.Parameters.Scalars.end() || Found->second.Components != Components)
+                {
+                    SetErrorMessage(
+                        ErrorMessage,
+                        Entry.Name + " is missing from material parameters: " + DescriptionPath.generic_string());
+                    return {};
+                }
+            }
+
+            const auto FindTexturePath = [&](const std::string& Name) -> const std::string*
+            {
+                for (const auto& Texture : Binding.Textures)
+                {
+                    if (Texture.first == Name)
+                    {
+                        return &Texture.second;
+                    }
+                }
+
+                return nullptr;
+            };
+
+            bool bLoadedTexture = false;
+            for (const MaterialParameterLayout::Entry& Entry : ShaderLayout.Entries)
+            {
+                if (Entry.Type != EMaterialParameterType::Texture2D)
+                {
+                    continue;
+                }
+
+                const std::string* Path = FindTexturePath(Entry.Name);
+                if (Path == nullptr || Path->empty())
+                {
+                    SetErrorMessage(
+                        ErrorMessage,
+                        Entry.Name + " is missing from material parameters: " + DescriptionPath.generic_string());
+                    return {};
+                }
+
+                const TextureAssetHandle Handle = LoadTexture(*Path, ErrorMessage);
+                if (!Handle.IsValid())
+                {
+                    return {};
+                }
+
+                MaterialParameter::SetTexture(ParameterSet.Parameters, Entry.Name, Handle);
+                bLoadedTexture = true;
+            }
+
+            if (ShaderLayout.Has("Sampler") || bLoadedTexture)
+            {
+                MaterialParameter::SetSampler(ParameterSet.Parameters, DefaultSampler());
+            }
+
+            if (!MaterialParameter::HasResources(ParameterSet.Parameters, ShaderLayout))
+            {
+                SetErrorMessage(
+                    ErrorMessage,
+                    Binding.Renderer + " parameters do not match the shader parameter layout: " +
+                        DescriptionPath.generic_string());
+                return {};
+            }
+
+            ParameterSets.push_back(std::move(ParameterSet));
         }
 
         MaterialHandle BaseMaterial;
@@ -588,21 +867,24 @@ namespace ShadowEngine
         }
         else
         {
-            if (Shaders == nullptr)
-            {
-                SetErrorMessage(ErrorMessage, "Shader manager is not set");
-                return {};
-            }
-
             std::vector<MaterialShaderBinding> ShaderBindings;
             ShaderBindings.reserve(Description.Bindings.size());
             for (const MaterialRendererBinding& Binding : Description.Bindings)
             {
+                std::vector<std::string> DescriptorFields;
+                DescriptorFields.reserve(Binding.Textures.size());
+                for (const auto& Texture : Binding.Textures)
+                {
+                    DescriptorFields.push_back(Texture.first);
+                }
+
                 const ShaderHandle Shader = Shaders->Register(
                     Binding.VertexShader,
                     Binding.PixelShader,
                     Binding.MaterialShader,
-                    Binding.LightShader);
+                    Binding.LightShader,
+                    DescriptorFields,
+                    ScalarFieldsFor(Binding));
                 if (!Shader.IsValid())
                 {
                     SetErrorMessage(ErrorMessage, "Unable to register shader: " + Binding.VertexShader);
@@ -616,7 +898,7 @@ namespace ShadowEngine
             }
 
             BaseMaterial.Index = static_cast<uint32>(Materials.size());
-            auto Owned = std::make_unique<Material>(std::move(ShaderBindings), std::move(Layout));
+            auto Owned = std::make_unique<Material>(std::move(ShaderBindings));
             Materials.push_back(Owned.get());
             auto Asset = std::make_unique<MaterialAsset>(
                 DescriptionPath,
@@ -631,7 +913,7 @@ namespace ShadowEngine
         }
 
         MaterialInstances.push_back(
-            std::make_unique<MaterialInstance>(BaseMaterial, std::move(Parameters)));
+            std::make_unique<MaterialInstance>(BaseMaterial, std::move(ParameterSets)));
         MaterialInstanceHandle Handle;
         Handle.Index = static_cast<uint32>(MaterialInstances.size() - 1);
         return Handle;

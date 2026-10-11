@@ -2,35 +2,105 @@
 
 #include "Framework/Common/Public/Log.h"
 
+#include <string_view>
 #include <utility>
 
 namespace ShadowEngine
 {
-    bool MaterialParameter::BuildLayout(
-        const MaterialRendererBinding& Description,
-        MaterialParameterLayout& Layout,
-        std::string* ErrorMessage)
+    namespace
     {
-        if (Description.BaseColorTexture.empty() != Description.RoughnessTexture.empty() ||
-            Description.BaseColorTexture.empty() != Description.NormalTexture.empty())
+        TextureAssetHandle FindTexture(const MaterialParameterBlock& Block, std::string_view Name)
         {
-            SetErrorMessage(ErrorMessage, "BaseColorTexture, RoughnessTexture, and NormalTexture must be set together");
-            return false;
+            const auto Found = Block.Textures.find(std::string(Name));
+            return Found == Block.Textures.end() ? TextureAssetHandle{} : Found->second;
         }
+    }
 
+    void MaterialParameter::BuildLayout(
+        const ShaderReflection& Reflection,
+        MaterialParameterLayout& Layout)
+    {
         MaterialParameterLayout Built;
-        Built.Entries.push_back({"BaseColor", EMaterialParameterType::Float4});
-        Built.Entries.push_back({"Roughness", EMaterialParameterType::Float4});
-        Built.Entries.push_back({"SpecularColor", EMaterialParameterType::Float4});
-        if (!Description.BaseColorTexture.empty())
+        for (const ShaderBinding& Binding : Reflection.Bindings)
         {
-            Built.Entries.push_back({"BaseColorTexture", EMaterialParameterType::Texture2D});
-            Built.Entries.push_back({"RoughnessTexture", EMaterialParameterType::Texture2D});
-            Built.Entries.push_back({"NormalTexture", EMaterialParameterType::Texture2D});
-            Built.Entries.push_back({"Sampler", EMaterialParameterType::Sampler});
+            MaterialParameterLayout::Entry Entry;
+            Entry.Name = Binding.Name;
+            if (Binding.Kind == EShaderBindingKind::Float)
+            {
+                Entry.Type = EMaterialParameterType::Float;
+            }
+            else if (Binding.Kind == EShaderBindingKind::Float2)
+            {
+                Entry.Type = EMaterialParameterType::Float2;
+            }
+            else if (Binding.Kind == EShaderBindingKind::Float3)
+            {
+                Entry.Type = EMaterialParameterType::Float3;
+            }
+            else if (Binding.Kind == EShaderBindingKind::Float4)
+            {
+                Entry.Type = EMaterialParameterType::Float4;
+            }
+            else if (Binding.Kind == EShaderBindingKind::Texture2D)
+            {
+                Entry.Type = EMaterialParameterType::Texture2D;
+            }
+            else if (Binding.Kind == EShaderBindingKind::Sampler)
+            {
+                Entry.Type = EMaterialParameterType::Sampler;
+            }
+            else
+            {
+                continue;
+            }
+
+            Built.Entries.push_back(std::move(Entry));
         }
 
         Layout = std::move(Built);
+    }
+
+    bool MaterialParameter::HasResources(
+        const MaterialParameterBlock& Block,
+        const MaterialParameterLayout& Layout)
+    {
+        const auto ComponentCount = [](EMaterialParameterType Type) -> uint32
+        {
+            switch (Type)
+            {
+                case EMaterialParameterType::Float:
+                    return 1;
+                case EMaterialParameterType::Float2:
+                    return 2;
+                case EMaterialParameterType::Float3:
+                    return 3;
+                case EMaterialParameterType::Float4:
+                    return 4;
+                default:
+                    return 0;
+            }
+        };
+        for (const MaterialParameterLayout::Entry& Entry : Layout.Entries)
+        {
+            const uint32 Components = ComponentCount(Entry.Type);
+            if (Components != 0)
+            {
+                const auto Found = Block.Scalars.find(Entry.Name);
+                if (Found == Block.Scalars.end() || Found->second.Components != Components)
+                {
+                    return false;
+                }
+            }
+            else if (Entry.Type == EMaterialParameterType::Texture2D && !FindTexture(Block, Entry.Name).IsValid())
+            {
+                return false;
+            }
+            else if (Entry.Type == EMaterialParameterType::Sampler && !Block.Sampler.IsValid())
+            {
+                return false;
+            }
+        }
+
         return true;
     }
 
@@ -39,71 +109,46 @@ namespace ShadowEngine
         MaterialParameterBlock& Block,
         std::string* ErrorMessage)
     {
-        if (Description.BaseColor.size() != 3 || Description.SpecularColor.size() != 3)
-        {
-            SetErrorMessage(ErrorMessage, "Material colors must contain 3 numbers");
-            return false;
-        }
-
-        if (Description.Roughness < 0.0F || Description.Roughness > 1.0F)
-        {
-            SetErrorMessage(ErrorMessage, "Roughness must be between 0 and 1");
-            return false;
-        }
-
         MaterialParameterBlock Built;
-        Built.BaseColor[0] = Description.BaseColor[0];
-        Built.BaseColor[1] = Description.BaseColor[1];
-        Built.BaseColor[2] = Description.BaseColor[2];
-        Built.BaseColor[3] = 1.0F;
-        Built.Roughness[0] = Description.Roughness;
-        Built.SpecularColor[0] = Description.SpecularColor[0];
-        Built.SpecularColor[1] = Description.SpecularColor[1];
-        Built.SpecularColor[2] = Description.SpecularColor[2];
-        Built.SpecularColor[3] = 1.0F;
+        for (const MaterialScalarParameter& Scalar : Description.Scalars)
+        {
+            if (Scalar.Components != 1 && Scalar.Components != 2 && Scalar.Components != 3 && Scalar.Components != 4)
+            {
+                SetErrorMessage(ErrorMessage, "Material parameter '" + Scalar.Name + "' has an unsupported component count");
+                return false;
+            }
+
+            MaterialScalarValue Value;
+            Value.Components = Scalar.Components;
+            for (uint32 Index = 0; Index < Scalar.Components; ++Index)
+            {
+                Value.Value[Index] = Scalar.Value[Index];
+            }
+
+            Built.Scalars.emplace(Scalar.Name, Value);
+        }
+
         Block = Built;
         return true;
     }
 
-    void MaterialParameter::SetTextures(
+    void MaterialParameter::SetTexture(
         MaterialParameterBlock& Block,
-        TextureAssetHandle BaseColor,
-        TextureAssetHandle Roughness,
-        TextureAssetHandle Normal,
-        SamplerHandle Sampler)
+        const std::string& Name,
+        TextureAssetHandle Handle)
     {
-        Block.BaseColorTexture = BaseColor;
-        Block.RoughnessTexture = Roughness;
-        Block.NormalTexture = Normal;
-        Block.Sampler = Sampler;
+        Block.Textures[Name] = Handle;
     }
 
-    void MaterialParameter::WriteSurfaceConstants(
-        const MaterialParameterBlock& Block,
-        SurfaceConstants& Out)
+    void MaterialParameter::SetSampler(MaterialParameterBlock& Block, SamplerHandle Sampler)
     {
-        SurfaceConstants Packed;
-        Packed.BaseColor[0] = Block.BaseColor[0];
-        Packed.BaseColor[1] = Block.BaseColor[1];
-        Packed.BaseColor[2] = Block.BaseColor[2];
-        Packed.BaseColor[3] = Block.BaseColor[3];
-        Packed.SpecularColor[0] = Block.SpecularColor[0];
-        Packed.SpecularColor[1] = Block.SpecularColor[1];
-        Packed.SpecularColor[2] = Block.SpecularColor[2];
-        Packed.SpecularColor[3] = Block.SpecularColor[3];
-        Packed.Roughness[0] = Block.Roughness[0];
-        Packed.Roughness[1] = Block.Roughness[1];
-        Packed.Roughness[2] = Block.Roughness[2];
-        Packed.Roughness[3] = Block.Roughness[3];
-        Out = Packed;
+        Block.Sampler = Sampler;
     }
 
     MaterialParameter::TextureBinding MaterialParameter::GetTextureBinding(const MaterialParameterBlock& Block)
     {
         TextureBinding Binding;
-        Binding.BaseColor = Block.BaseColorTexture;
-        Binding.Roughness = Block.RoughnessTexture;
-        Binding.Normal = Block.NormalTexture;
+        Binding.Textures = Block.Textures;
         Binding.Sampler = Block.Sampler;
         return Binding;
     }
