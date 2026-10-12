@@ -18,6 +18,7 @@ namespace ShadowEngine
         Uniform,
         Texture2D,
         Sampler,
+        ResourceIndex,
     };
 
     struct ShaderBinding

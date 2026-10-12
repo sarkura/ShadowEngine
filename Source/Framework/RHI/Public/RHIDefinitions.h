@@ -80,6 +80,9 @@ namespace ShadowEngine
         ERHIPrimitiveTopology Topology = ERHIPrimitiveTopology::TriangleList;
         std::span<const RHIInputElement> InputLayout;
         bool bEnableDepth = false;
+        bool bWriteDepth = true;
+        bool bDepthEqual = false;
+        bool bWriteColor = true;
         ERHIFormat DepthFormat = ERHIFormat::Unknown;
     };
 }

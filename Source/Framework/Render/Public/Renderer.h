@@ -20,6 +20,8 @@
 namespace ShadowEngine
 {
     class AssetManager;
+    class RenderItemFilter;
+    class RenderQueue;
     class RHIDevice;
     class RHISwapChain;
     class Scene;
@@ -50,7 +52,23 @@ namespace ShadowEngine
         protected:
             [[nodiscard]] virtual const char* GetName() const = 0;
 
-            static constexpr uint32 ConstantAlignment = 512;
+            static constexpr uint32 ConstantAlignment = 1024;
+
+            [[nodiscard]] virtual bool DrawsSkyBackground() const
+            {
+                return false;
+            }
+
+            [[nodiscard]] virtual bool UsesDepthPrepass() const
+            {
+                return false;
+            }
+
+            [[nodiscard]] virtual ERHIFormat GetSceneColorFormat() const;
+
+            bool CollectVisibleItems(const RenderItemFilter& Filter, RenderQueue& Queue);
+            void SelectVisiblePointLights(uint32 Limit, std::vector<PointLightRenderProxy>& Out) const;
+            void ReleaseUploadedTexture(TextureAssetHandle Handle);
 
             RHIDevice* Device = nullptr;
             RHISwapChain* SwapChain = nullptr;
@@ -73,6 +91,14 @@ namespace ShadowEngine
             Camera ViewCamera;
 
         private:
+            struct ViewFrustum
+            {
+                float Planes[6][4] = {};
+                bool bValid = false;
+            };
+
+            ViewFrustum FrameFrustum;
+
             bool UploadMesh(ShaderManager& Shaders, MeshHandle Mesh, std::string* ErrorMessage);
             bool UploadEnvironment(ShaderManager& Shaders, std::string* ErrorMessage);
             RHITexture* UploadTexture(TextureAssetHandle Texture, std::string* ErrorMessage);

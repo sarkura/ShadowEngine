@@ -1,4 +1,34 @@
 #include "ForwardLightSample.slang"
+#include "ImageBasedLighting.slang"
+
+float3 ShadeGgx(
+    float3 Albedo,
+    float Metallic,
+    float Roughness,
+    float3 Normal,
+    float3 ToView,
+    float3 ToLight,
+    float3 Radiance)
+{
+    const float NdotL = saturate(dot(Normal, ToLight));
+    if (NdotL <= 0.0)
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+
+    const float3 HalfVector = normalize(ToLight + ToView);
+    const float NdotV = max(dot(Normal, ToView), 0.001);
+    const float NdotH = saturate(dot(Normal, HalfVector));
+    const float VdotH = saturate(dot(ToView, HalfVector));
+    const float Alpha = max(Roughness * Roughness, 0.0001);
+    const float3 F0 = lerp(float3(0.04, 0.04, 0.04), Albedo, saturate(Metallic));
+    const float3 Fresnel = F0 + (1.0 - F0) * pow(1.0 - VdotH, 5.0);
+    const float Distribution = DistributionGGX(NdotH, Alpha);
+    const float Visibility = VisibilitySmithGGX(NdotV, NdotL, Alpha);
+    const float3 Specular = Distribution * Visibility * Fresnel;
+    const float3 Diffuse = (1.0 - Fresnel) * (1.0 - saturate(Metallic)) * Albedo / IblPi;
+    return (Diffuse + Specular) * Radiance * NdotL;
+}
 
 float3 ShadeDirectional(ForwardMaterialSample Material, float3 Normal, float3 ToView)
 {
@@ -8,35 +38,33 @@ float3 ShadeDirectional(ForwardMaterialSample Material, float3 Normal, float3 To
     }
 
     const float3 ToLight = normalize(-Direct.Direction.xyz);
-    const float DiffuseTerm = saturate(dot(Normal, ToLight));
-    const float3 HalfVector = normalize(ToLight + ToView);
-    const float Shininess = lerp(128.0, 4.0, Material.Roughness);
-    const float SpecularTerm = pow(saturate(dot(Normal, HalfVector)), Shininess) * DiffuseTerm;
-    const float3 Light = Direct.Color.rgb * Direct.Color.a;
-    const float3 SpecularColor = lerp(float3(0.04, 0.04, 0.04), Material.Albedo, Material.Metallic);
-    return Material.Albedo * Light * DiffuseTerm + SpecularColor * Light * SpecularTerm;
+    const float3 Radiance = Direct.Color.rgb * Direct.Color.a;
+    return ShadeGgx(Material.Albedo, Material.Metallic, Material.Roughness, Normal, ToView, ToLight, Radiance);
 }
 
-float3 ShadePoint(ForwardMaterialSample Material, float3 Normal, float3 WorldPosition, float3 ToView)
+float3 ShadePoint(ForwardPointLight Light, ForwardMaterialSample Material, float3 Normal, float3 WorldPosition, float3 ToView)
 {
-    if (Point.Color.a <= 0.0)
+    if (Light.Color.a <= 0.0)
     {
         return float3(0.0, 0.0, 0.0);
     }
 
-    const float3 Offset = Point.Position.xyz - WorldPosition;
-    const float Distance = length(Offset);
-    const float Radius = max(Point.Position.w, 0.001);
-    const float Window = saturate(1.0 - Distance / Radius);
-    const float Attenuation = Window * Window;
+    const float3 Offset = Light.Position.xyz - WorldPosition;
+    const float Distance2 = dot(Offset, Offset);
+    const float Radius = max(Light.Position.w, 0.001);
+    const float Radius2 = Radius * Radius;
+    if (Distance2 >= Radius2)
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+
+    const float Distance = sqrt(Distance2);
+    const float Falloff = Distance2 / Radius2;
+    const float Window = saturate(1.0 - Falloff * Falloff);
+    const float Attenuation = Window * Window / (Distance2 + 1.0);
     const float3 ToLight = Offset / max(Distance, 0.001);
-    const float DiffuseTerm = saturate(dot(Normal, ToLight));
-    const float3 HalfVector = normalize(ToLight + ToView);
-    const float Shininess = lerp(128.0, 4.0, Material.Roughness);
-    const float SpecularTerm = pow(saturate(dot(Normal, HalfVector)), Shininess) * DiffuseTerm;
-    const float3 Light = Point.Color.rgb * Point.Color.a * Attenuation;
-    const float3 SpecularColor = lerp(float3(0.04, 0.04, 0.04), Material.Albedo, Material.Metallic);
-    return Material.Albedo * Light * DiffuseTerm + SpecularColor * Light * SpecularTerm;
+    const float3 Radiance = Light.Color.rgb * Light.Color.a * Attenuation;
+    return ShadeGgx(Material.Albedo, Material.Metallic, Material.Roughness, Normal, ToView, ToLight, Radiance);
 }
 
 ForwardLightSample EvaluateLight(ForwardMaterialSample Material, VertexOutput Input)
@@ -45,7 +73,25 @@ ForwardLightSample EvaluateLight(ForwardMaterialSample Material, VertexOutput In
     const float3 ToView = normalize(PerObject.CameraPosition.xyz - Input.WorldPosition);
     ForwardLightSample Sample;
     Sample.Direct = ShadeDirectional(Material, Normal, ToView);
-    Sample.Point = ShadePoint(Material, Normal, Input.WorldPosition, ToView);
-    Sample.Sky = Material.Albedo * Sky.Color.rgb * Sky.Color.a * Material.Occlusion;
+    Sample.Point = float3(0.0, 0.0, 0.0);
+    for (int Index = 0; Index < ForwardPointLightCapacity; ++Index)
+    {
+        Sample.Point += ShadePoint(Point[Index], Material, Normal, Input.WorldPosition, ToView);
+    }
+    Sample.Sky = EvaluateIBL(
+        Material.Albedo,
+        Material.Metallic,
+        Material.Roughness,
+        Material.Occlusion,
+        Normal,
+        ToView,
+        ImageBasedLight.Irradiance,
+        ImageBasedLight.Prefiltered0,
+        ImageBasedLight.Prefiltered1,
+        ImageBasedLight.Prefiltered2,
+        ImageBasedLight.Prefiltered3,
+        ImageBasedLight.BrdfLut,
+        ImageBasedLight.EnvironmentSampler,
+        ImageBasedLight.BrdfSampler) * Sky.Color.rgb * Sky.Color.a;
     return Sample;
 }

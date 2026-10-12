@@ -1,7 +1,5 @@
 #include "Framework/Render/Public/DebugRenderPass.h"
 
-#include "Framework/Render/Public/SkyBackground.h"
-
 #include "Framework/Asset/Public/AssetManager.h"
 #include "Framework/Common/Public/Log.h"
 #include "Framework/Material/Public/Material.h"
@@ -37,12 +35,15 @@ namespace ShadowEngine
             float CameraPosition[4];
             float LightDirection[4];
             float LightColor[4];
+            float PreviousViewProjection[16];
+            float PreviousWorld[16];
         };
     }
 
     bool DebugRenderPass::Execute(const RenderQueue& Queue, const RenderPassContext& Context)
     {
-        static_assert(sizeof(GpuObjectConstants) <= 512);
+        static_assert(sizeof(GpuObjectConstants) == 368);
+        static_assert(sizeof(GpuObjectConstants) <= 1024);
         if (Context.Device == nullptr || Context.SwapChain == nullptr || Context.CommandList == nullptr ||
             Context.ConstantBuffer == nullptr || Context.DepthBuffer == nullptr || Context.Assets == nullptr ||
             Context.Shaders == nullptr || Context.View == nullptr || Context.Batches == nullptr ||
@@ -97,6 +98,8 @@ namespace ShadowEngine
             std::memcpy(Slot.ViewProjection, glm::value_ptr(ViewProjection), sizeof(Slot.ViewProjection));
             std::memcpy(Slot.World, Item.World, sizeof(Slot.World));
             std::memcpy(Slot.NormalMatrix, Item.NormalMatrix, sizeof(Slot.NormalMatrix));
+            std::memcpy(Slot.PreviousViewProjection, Slot.ViewProjection, sizeof(Slot.PreviousViewProjection));
+            std::memcpy(Slot.PreviousWorld, Slot.World, sizeof(Slot.PreviousWorld));
             const auto ResolveTexture = [&](TextureAssetHandle Handle, uint32& DescriptorIndex) -> bool
             {
                 if (!Handle.IsValid())
@@ -161,10 +164,6 @@ namespace ShadowEngine
             0,
             static_cast<int32>(Context.SwapChain->GetWidth()),
             static_cast<int32>(Context.SwapChain->GetHeight())});
-        if (!DrawSkyBackground(Context))
-        {
-            return false;
-        }
         for (uint32 Index = 0; Index < static_cast<uint32>(Items.size()); ++Index)
         {
             const MeshBatch* Batch = FindMeshBatch(*Context.Batches, Items[Index].Mesh, Items[Index].Section);

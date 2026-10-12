@@ -20,8 +20,12 @@ namespace ShadowEngine
             virtual void BeginRenderPass(
                 RHITexture& RenderTarget,
                 RHITexture* DepthTarget,
-                const RHIColor& ClearColor) = 0;
+                const RHIColor& ClearColor,
+                bool bClearColor = true,
+                bool bClearDepth = true,
+                uint32 ArraySlice = 0) = 0;
             virtual void EndRenderPass() = 0;
+            virtual void UseAsShaderResource(RHITexture& Texture) = 0;
 
             virtual void SetPipeline(RHIPipeline& Pipeline) = 0;
             virtual void SetVertexBuffer(RHIBuffer& Buffer) = 0;

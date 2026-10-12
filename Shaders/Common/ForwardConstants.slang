@@ -4,23 +4,8 @@
 #include "PerObject.slang"
 #include "SceneConstants.slang"
 #include "MaterialSurface.slang"
-
-struct ForwardDirectLight
-{
-    float4 Direction;
-    float4 Color;
-};
-
-struct ForwardPointLight
-{
-    float4 Position;
-    float4 Color;
-};
-
-struct ForwardSkyLight
-{
-    float4 Color;
-};
+#include "ForwardLights.slang"
+#include "ImageBasedLightIndices.slang"
 
 cbuffer SceneConstants : register(b0)
 {
@@ -29,6 +14,7 @@ cbuffer SceneConstants : register(b0)
     uint4 MaterialPadding0;
     uint4 MaterialPadding1;
     ForwardDirectLight Direct;
-    ForwardPointLight Point;
+    ForwardPointLight Point[ForwardPointLightCapacity];
     ForwardSkyLight Sky;
+    ImageBasedLightIndices ImageBasedLight;
 };

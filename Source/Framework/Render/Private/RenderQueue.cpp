@@ -12,6 +12,11 @@ namespace ShadowEngine
         Items.push_back(Item);
     }
 
+    void RenderQueue::Assign(std::vector<RenderItem> Next)
+    {
+        Items = std::move(Next);
+    }
+
     const std::vector<RenderItem>& RenderQueue::GetItems() const
     {
         return Items;

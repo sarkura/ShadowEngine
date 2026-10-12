@@ -22,6 +22,8 @@ namespace ShadowEngine
         std::vector<MeshVertex> Vertices;
         std::vector<uint32> Indices;
         MaterialInstanceHandle Material;
+        float BoundsMin[3] = {};
+        float BoundsMax[3] = {};
     };
 
     class MeshAsset final : public Asset

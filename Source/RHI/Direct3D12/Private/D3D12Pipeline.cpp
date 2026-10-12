@@ -11,7 +11,7 @@ namespace ShadowEngine
 {
     namespace
     {
-        D3D12_BLEND_DESC MakeOpaqueBlendDesc()
+        D3D12_BLEND_DESC MakeOpaqueBlendDesc(bool bWriteColor)
         {
             D3D12_BLEND_DESC Desc{};
             Desc.AlphaToCoverageEnable = FALSE;
@@ -27,7 +27,7 @@ namespace ShadowEngine
             Target.DestBlendAlpha = D3D12_BLEND_ZERO;
             Target.BlendOpAlpha = D3D12_BLEND_OP_ADD;
             Target.LogicOp = D3D12_LOGIC_OP_NOOP;
-            Target.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+            Target.RenderTargetWriteMask = bWriteColor ? D3D12_COLOR_WRITE_ENABLE_ALL : 0;
             return Desc;
         }
 
@@ -48,12 +48,12 @@ namespace ShadowEngine
             return Desc;
         }
 
-        D3D12_DEPTH_STENCIL_DESC MakeDepthStencilDesc(bool bEnableDepth)
+        D3D12_DEPTH_STENCIL_DESC MakeDepthStencilDesc(bool bEnableDepth, bool bWriteDepth, bool bDepthEqual)
         {
             D3D12_DEPTH_STENCIL_DESC Desc{};
             Desc.DepthEnable = bEnableDepth ? TRUE : FALSE;
-            Desc.DepthWriteMask = bEnableDepth ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
-            Desc.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+            Desc.DepthWriteMask = bEnableDepth && bWriteDepth ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
+            Desc.DepthFunc = bDepthEqual ? D3D12_COMPARISON_FUNC_EQUAL : D3D12_COMPARISON_FUNC_LESS;
             Desc.StencilEnable = FALSE;
             return Desc;
         }
@@ -117,10 +117,10 @@ namespace ShadowEngine
         PipelineDesc.pRootSignature = RootSignature.Get();
         PipelineDesc.VS = VertexShader->GetBytecode();
         PipelineDesc.PS = PixelShader->GetBytecode();
-        PipelineDesc.BlendState = MakeOpaqueBlendDesc();
+        PipelineDesc.BlendState = MakeOpaqueBlendDesc(Desc.bWriteColor);
         PipelineDesc.SampleMask = UINT_MAX;
         PipelineDesc.RasterizerState = MakeRasterizerDesc();
-        PipelineDesc.DepthStencilState = MakeDepthStencilDesc(Desc.bEnableDepth);
+        PipelineDesc.DepthStencilState = MakeDepthStencilDesc(Desc.bEnableDepth, Desc.bWriteDepth, Desc.bDepthEqual);
 
         std::vector<D3D12_INPUT_ELEMENT_DESC> InputElements;
         InputElements.reserve(Desc.InputLayout.size());

@@ -52,6 +52,12 @@ namespace ShadowEngine
                 const std::filesystem::path& Path,
                 std::string* ErrorMessage);
 
+            TextureAssetHandle LoadTextureImage(
+                const std::filesystem::path& RegistryPath,
+                const std::filesystem::path& ImagePath,
+                ETextureEncoding Encoding,
+                std::string* ErrorMessage);
+
             [[nodiscard]] SamplerHandle DefaultSampler();
 
             ShaderManager* Shaders = nullptr;

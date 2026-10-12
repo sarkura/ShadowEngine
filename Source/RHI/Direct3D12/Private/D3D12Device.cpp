@@ -263,6 +263,20 @@ namespace ShadowEngine
         return D3D12Texture::CreateDepth(Device.Get(), Width, Height, ErrorMessage);
     }
 
+    std::unique_ptr<RHITexture> D3D12Device::CreateColorTarget(
+        uint32 Width,
+        uint32 Height,
+        ERHIFormat Format,
+        std::string* ErrorMessage)
+    {
+        return D3D12Texture::CreateColorTarget(Device.Get(), Width, Height, Format, ErrorMessage);
+    }
+
+    std::unique_ptr<RHITexture> D3D12Device::CreateCubeTarget(uint32 FaceSize, std::string* ErrorMessage)
+    {
+        return D3D12Texture::CreateCubeTarget(Device.Get(), FaceSize, ErrorMessage);
+    }
+
     std::unique_ptr<RHITexture> D3D12Device::CreateTexture(
         const RHITextureDesc& Desc,
         std::string* ErrorMessage)
@@ -326,6 +340,34 @@ namespace ShadowEngine
         return std::make_unique<D3D12Sampler>(Index);
     }
 
+    std::unique_ptr<RHISampler> D3D12Device::CreateClampSampler(std::string* ErrorMessage)
+    {
+        constexpr uint32 SamplerCapacity = 64;
+        if (SamplerHeap == nullptr || SamplerCount >= SamplerCapacity)
+        {
+            SetErrorMessage(ErrorMessage, "Sampler descriptor heap is full");
+            return nullptr;
+        }
+
+        D3D12_SAMPLER_DESC Desc{};
+        Desc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+        Desc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        Desc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        Desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        Desc.MipLODBias = 0.0F;
+        Desc.MaxAnisotropy = 1;
+        Desc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+        Desc.MinLOD = 0.0F;
+        Desc.MaxLOD = D3D12_FLOAT32_MAX;
+
+        D3D12_CPU_DESCRIPTOR_HANDLE Cpu = SamplerHeap->GetCPUDescriptorHandleForHeapStart();
+        Cpu.ptr += static_cast<SIZE_T>(SamplerCount) * SamplerIncrement;
+        Device->CreateSampler(&Desc, Cpu);
+        const uint32 Index = SamplerCount;
+        ++SamplerCount;
+        return std::make_unique<D3D12Sampler>(Index);
+    }
+
     bool D3D12Device::CreateShaderResourceView(RHITexture& Texture, uint32& OutIndex, std::string* ErrorMessage)
     {
         constexpr uint32 ResourceCapacity = 1024;
@@ -337,17 +379,62 @@ namespace ShadowEngine
 
         auto& Sampled = static_cast<D3D12Texture&>(Texture);
         D3D12_SHADER_RESOURCE_VIEW_DESC View{};
-        View.Format = ToDXGIFormat(Sampled.GetFormat());
-        View.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        View.Format = Sampled.GetFormat() == ERHIFormat::D32_Float
+            ? DXGI_FORMAT_R32_FLOAT
+            : ToDXGIFormat(Sampled.GetFormat());
         View.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        View.Texture2D.MostDetailedMip = 0;
-        View.Texture2D.MipLevels = Sampled.GetMipCount();
+        if (Sampled.GetFaceCount() == 6)
+        {
+            View.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+            View.TextureCube.MostDetailedMip = 0;
+            View.TextureCube.MipLevels = Sampled.GetMipCount();
+        }
+        else
+        {
+            View.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+            View.Texture2D.MostDetailedMip = 0;
+            View.Texture2D.MipLevels = Sampled.GetMipCount();
+        }
 
         D3D12_CPU_DESCRIPTOR_HANDLE Cpu = ResourceHeap->GetCPUDescriptorHandleForHeapStart();
         Cpu.ptr += static_cast<SIZE_T>(ResourceCount) * ResourceIncrement;
         Device->CreateShaderResourceView(Sampled.GetResource(), &View, Cpu);
         OutIndex = ResourceCount;
         ++ResourceCount;
+        return true;
+    }
+
+    bool D3D12Device::UpdateShaderResourceView(RHITexture& Texture, uint32 Index, std::string* ErrorMessage)
+    {
+        constexpr uint32 ResourceCapacity = 1024;
+        if (ResourceHeap == nullptr || Index >= ResourceCount || Index >= ResourceCapacity)
+        {
+            SetErrorMessage(ErrorMessage, "Shader resource descriptor is missing");
+            return false;
+        }
+
+        auto& Sampled = static_cast<D3D12Texture&>(Texture);
+        D3D12_SHADER_RESOURCE_VIEW_DESC View{};
+        View.Format = Sampled.GetFormat() == ERHIFormat::D32_Float
+            ? DXGI_FORMAT_R32_FLOAT
+            : ToDXGIFormat(Sampled.GetFormat());
+        View.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        if (Sampled.GetFaceCount() == 6)
+        {
+            View.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+            View.TextureCube.MostDetailedMip = 0;
+            View.TextureCube.MipLevels = Sampled.GetMipCount();
+        }
+        else
+        {
+            View.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+            View.Texture2D.MostDetailedMip = 0;
+            View.Texture2D.MipLevels = Sampled.GetMipCount();
+        }
+
+        D3D12_CPU_DESCRIPTOR_HANDLE Cpu = ResourceHeap->GetCPUDescriptorHandleForHeapStart();
+        Cpu.ptr += static_cast<SIZE_T>(Index) * ResourceIncrement;
+        Device->CreateShaderResourceView(Sampled.GetResource(), &View, Cpu);
         return true;
     }
 

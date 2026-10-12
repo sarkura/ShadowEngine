@@ -131,7 +131,14 @@ namespace ShadowEngine
         {
             if (LightConfig.Type == SceneSetting::LightType::Direct)
             {
-                DirectLight& Light = MainScene->CreateDirectLight();
+                if (!MainScene->CreateDirectLight())
+                {
+                    SetErrorMessage(ErrorMessage, "Scene already has a directional light");
+                    Finalize();
+                    return false;
+                }
+
+                DirectLight& Light = MainScene->GetDirectLight();
                 Light.SetDirection(LightConfig.Direction[0], LightConfig.Direction[1], LightConfig.Direction[2]);
                 Light.SetColor(LightConfig.Color[0], LightConfig.Color[1], LightConfig.Color[2]);
                 Light.SetIntensity(LightConfig.Intensity);
@@ -146,7 +153,14 @@ namespace ShadowEngine
             }
             else
             {
-                SkyLight& Light = MainScene->CreateSkyLight();
+                if (!MainScene->CreateSkyLight())
+                {
+                    SetErrorMessage(ErrorMessage, "Scene already has a sky light");
+                    Finalize();
+                    return false;
+                }
+
+                SkyLight& Light = MainScene->GetSkyLight();
                 Light.SetColor(LightConfig.Color[0], LightConfig.Color[1], LightConfig.Color[2]);
                 Light.SetIntensity(LightConfig.Intensity);
             }

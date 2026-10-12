@@ -41,9 +41,11 @@ namespace ShadowEngine
     struct RenderProxy
     {
         std::vector<MeshRenderProxy> Meshes;
-        std::vector<DirectLightRenderProxy> DirectLights;
+        DirectLightRenderProxy DirectLight;
+        bool bHasDirectLight = false;
         std::vector<PointLightRenderProxy> PointLights;
-        std::vector<SkyLightRenderProxy> SkyLights;
+        SkyLightRenderProxy SkyLight;
+        bool bHasSkyLight = false;
     };
 
     void SyncRenderProxy(const Scene& InScene, RenderProxy& Out);

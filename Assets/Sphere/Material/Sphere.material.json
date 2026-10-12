@@ -31,7 +31,7 @@
         "Parameters":
         {
             "BaseColor": {"float3": [0.6, 0.3, 0.2]},
-            "Roughness": {"float": 0.15}
+            "Roughness": {"float": 0.8}
         }
     }
 }

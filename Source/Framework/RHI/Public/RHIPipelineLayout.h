@@ -63,5 +63,7 @@ namespace ShadowEngine
             uint8* Destination,
             std::string_view Name,
             const float Value[4]) const;
+
+        [[nodiscard]] bool WriteDescriptorIndex(uint8* Destination, std::string_view Name, uint32 Index) const;
     };
 }

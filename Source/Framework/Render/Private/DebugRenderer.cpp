@@ -9,7 +9,7 @@ namespace ShadowEngine
             return false;
         }
 
-        if (!FillRenderQueue(SceneProxy, ItemFilter, *Assets, GetName(), MeshBatches, DrawQueue))
+        if (!CollectVisibleItems(ItemFilter, DrawQueue))
         {
             return false;
         }
@@ -26,11 +26,7 @@ namespace ShadowEngine
         Context.Batches = &MeshBatches;
         Context.TextureDescriptors = &TextureDescriptors;
         Context.Samplers = &GpuSamplers;
-        Context.Lights = &SceneProxy.DirectLights;
-        Context.SkyPipeline = SkyPipeline.get();
-        Context.SkyConstants = SkyConstantBuffer.get();
-        Context.EnvironmentDescriptor = EnvironmentDescriptor;
-        Context.EnvironmentSampler = EnvironmentSampler;
+        Context.DirectLight = SceneProxy.bHasDirectLight ? &SceneProxy.DirectLight : nullptr;
         Context.ClearColor = ClearColor;
         Context.ConstantCapacity = ConstantCapacity;
         Context.ConstantAlignment = ConstantAlignment;

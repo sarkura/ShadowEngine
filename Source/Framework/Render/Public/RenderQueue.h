@@ -11,6 +11,7 @@ namespace ShadowEngine
         public:
             void Clear();
             void Add(const RenderItem& Item);
+            void Assign(std::vector<RenderItem> Next);
 
             [[nodiscard]] const std::vector<RenderItem>& GetItems() const;
 

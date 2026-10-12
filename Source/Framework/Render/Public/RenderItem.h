@@ -18,6 +18,7 @@ namespace ShadowEngine
         MeshHandle Mesh;
         MaterialInstanceHandle Material;
         uint32 Section = 0;
+        uint32 ProxyIndex = 0;
         float World[16] = {};
         float NormalMatrix[16] = {};
     };

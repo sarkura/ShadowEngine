@@ -35,16 +35,25 @@ namespace ShadowEngine
         const std::vector<MeshBatch>* Batches = nullptr;
         const std::unordered_map<uint32, uint32>* TextureDescriptors = nullptr;
         const std::unordered_map<uint32, std::unique_ptr<RHISampler>>* Samplers = nullptr;
-        const std::vector<DirectLightRenderProxy>* Lights = nullptr;
+        const DirectLightRenderProxy* DirectLight = nullptr;
         const std::vector<PointLightRenderProxy>* PointLights = nullptr;
-        const std::vector<SkyLightRenderProxy>* SkyLights = nullptr;
+        const SkyLightRenderProxy* SkyLight = nullptr;
         RHIPipeline* SkyPipeline = nullptr;
+        RHIPipeline* DepthPrepassPipeline = nullptr;
         RHIBuffer* SkyConstants = nullptr;
+        const struct ImageBasedLightBinding* ImageBasedLight = nullptr;
         uint32 EnvironmentDescriptor = 0;
         uint32 EnvironmentSampler = 0;
+        RHITexture* SceneColor = nullptr;
+        class PostProcess* Post = nullptr;
+        float ProjectionJitterX = 0.0F;
+        float ProjectionJitterY = 0.0F;
+        const float* PreviousViewProjection = nullptr;
+        const std::vector<float>* PreviousWorlds = nullptr;
+        float* StoredViewProjection = nullptr;
         RHIColor ClearColor;
         uint32 ConstantCapacity = 0;
-        uint32 ConstantAlignment = 512;
+        uint32 ConstantAlignment = 1024;
     };
 
     class RenderPass : public NonCopyable

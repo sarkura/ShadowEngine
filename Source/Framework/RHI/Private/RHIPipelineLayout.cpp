@@ -92,7 +92,9 @@ namespace ShadowEngine
         {
             for (const ShaderBinding& Binding : Reflection.Bindings)
             {
-                if (Binding.Kind != EShaderBindingKind::Texture2D && Binding.Kind != EShaderBindingKind::Sampler)
+                if (Binding.Kind != EShaderBindingKind::Texture2D &&
+                    Binding.Kind != EShaderBindingKind::Sampler &&
+                    Binding.Kind != EShaderBindingKind::ResourceIndex)
                 {
                     continue;
                 }
@@ -180,5 +182,24 @@ namespace ShadowEngine
                 return;
             }
         }
+    }
+
+    bool RHIPipelineLayout::WriteDescriptorIndex(uint8* Destination, std::string_view Name, uint32 Index) const
+    {
+        if (Destination == nullptr)
+        {
+            return false;
+        }
+
+        for (const Descriptor& Item : Descriptors)
+        {
+            if (Item.Name == Name)
+            {
+                std::memcpy(Destination + Item.Offset, &Index, sizeof(Index));
+                return true;
+            }
+        }
+
+        return false;
     }
 }

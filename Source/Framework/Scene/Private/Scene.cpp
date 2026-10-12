@@ -8,10 +8,16 @@ namespace ShadowEngine
         return Entities.back();
     }
 
-    DirectLight& Scene::CreateDirectLight()
+    bool Scene::CreateDirectLight()
     {
-        DirectLights.emplace_back();
-        return DirectLights.back();
+        if (bHasDirectLight)
+        {
+            return false;
+        }
+
+        DirectLight = {};
+        bHasDirectLight = true;
+        return true;
     }
 
     PointLight& Scene::CreatePointLight()
@@ -20,10 +26,16 @@ namespace ShadowEngine
         return PointLights.back();
     }
 
-    SkyLight& Scene::CreateSkyLight()
+    bool Scene::CreateSkyLight()
     {
-        SkyLights.emplace_back();
-        return SkyLights.back();
+        if (bHasSkyLight)
+        {
+            return false;
+        }
+
+        SkyLight = {};
+        bHasSkyLight = true;
+        return true;
     }
 
     const std::deque<Entity>& Scene::GetEntities() const
@@ -31,9 +43,19 @@ namespace ShadowEngine
         return Entities;
     }
 
-    const std::deque<DirectLight>& Scene::GetDirectLights() const
+    bool Scene::HasDirectLight() const
     {
-        return DirectLights;
+        return bHasDirectLight;
+    }
+
+    const DirectLight& Scene::GetDirectLight() const
+    {
+        return DirectLight;
+    }
+
+    DirectLight& Scene::GetDirectLight()
+    {
+        return DirectLight;
     }
 
     const std::deque<PointLight>& Scene::GetPointLights() const
@@ -41,8 +63,18 @@ namespace ShadowEngine
         return PointLights;
     }
 
-    const std::deque<SkyLight>& Scene::GetSkyLights() const
+    bool Scene::HasSkyLight() const
     {
-        return SkyLights;
+        return bHasSkyLight;
+    }
+
+    const SkyLight& Scene::GetSkyLight() const
+    {
+        return SkyLight;
+    }
+
+    SkyLight& Scene::GetSkyLight()
+    {
+        return SkyLight;
     }
 }

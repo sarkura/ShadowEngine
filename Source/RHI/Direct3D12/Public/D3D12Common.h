@@ -40,6 +40,10 @@ namespace ShadowEngine
         {
             case ERHIFormat::R8G8B8A8_UNorm:
                 return DXGI_FORMAT_R8G8B8A8_UNORM;
+            case ERHIFormat::R8G8B8A8_UNorm_sRGB:
+                return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+            case ERHIFormat::R16G16B16A16_Float:
+                return DXGI_FORMAT_R16G16B16A16_FLOAT;
             case ERHIFormat::R32G32B32A32_Float:
                 return DXGI_FORMAT_R32G32B32A32_FLOAT;
             case ERHIFormat::D32_Float:

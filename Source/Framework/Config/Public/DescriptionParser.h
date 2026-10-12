@@ -21,5 +21,10 @@ namespace ShadowEngine
                 const std::filesystem::path& FilePath,
                 MaterialDescription& Description,
                 std::string* ErrorMessage = nullptr);
+
+            static bool LoadTextureDescription(
+                const std::filesystem::path& FilePath,
+                TextureDescription& Description,
+                std::string* ErrorMessage = nullptr);
     };
 }

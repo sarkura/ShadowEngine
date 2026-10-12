@@ -7,13 +7,23 @@
 #include "Framework/Material/Public/Material.h"
 #include "Framework/Material/Public/MaterialInstance.h"
 #include "Framework/Material/Public/MaterialParameter.h"
+#include "Framework/Render/Public/RenderQueue.h"
 #include "Framework/RHI/Public/RHIDevice.h"
 #include "Framework/RHI/Public/RHIPipelineLayout.h"
 #include "Framework/RHI/Public/RHISwapChain.h"
 #include "Framework/Shader/Public/ShaderManager.h"
 
+#include <glm/common.hpp>
+#include <glm/ext/matrix_clip_space.hpp>
+#include <glm/geometric.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
+
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <span>
 #include <string>
 #include <vector>
@@ -26,11 +36,177 @@ namespace ShadowEngine
         {
             return {static_cast<const uint8*>(Data), Size};
         }
+
+        void BuildFrustumPlanes(const glm::mat4& ViewProjection, float Planes[6][4])
+        {
+            const glm::vec4 Row0(ViewProjection[0][0], ViewProjection[1][0], ViewProjection[2][0], ViewProjection[3][0]);
+            const glm::vec4 Row1(ViewProjection[0][1], ViewProjection[1][1], ViewProjection[2][1], ViewProjection[3][1]);
+            const glm::vec4 Row2(ViewProjection[0][2], ViewProjection[1][2], ViewProjection[2][2], ViewProjection[3][2]);
+            const glm::vec4 Row3(ViewProjection[0][3], ViewProjection[1][3], ViewProjection[2][3], ViewProjection[3][3]);
+            const glm::vec4 Raw[6] = {
+                Row3 + Row0,
+                Row3 - Row0,
+                Row3 + Row1,
+                Row3 - Row1,
+                Row2,
+                Row3 - Row2,
+            };
+            for (uint32 Index = 0; Index < 6; ++Index)
+            {
+                const float Length = glm::length(glm::vec3(Raw[Index]));
+                const glm::vec4 Plane = Length > 0.0001F ? Raw[Index] / Length : Raw[Index];
+                Planes[Index][0] = Plane.x;
+                Planes[Index][1] = Plane.y;
+                Planes[Index][2] = Plane.z;
+                Planes[Index][3] = Plane.w;
+            }
+        }
+
+        bool SphereIntersectsFrustum(const float Planes[6][4], const glm::vec3& Center, float Radius)
+        {
+            for (uint32 Index = 0; Index < 6; ++Index)
+            {
+                const glm::vec3 Normal(Planes[Index][0], Planes[Index][1], Planes[Index][2]);
+                if (glm::dot(Normal, Center) + Planes[Index][3] < -Radius)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        void WorldBounds(const float World[16], const float LocalMin[3], const float LocalMax[3], glm::vec3& OutMin, glm::vec3& OutMax)
+        {
+            const glm::mat4 Matrix = glm::make_mat4(World);
+            const glm::vec3 Corner(LocalMin[0], LocalMin[1], LocalMin[2]);
+            const glm::vec3 Opposite(LocalMax[0], LocalMax[1], LocalMax[2]);
+            OutMin = glm::vec3(std::numeric_limits<float>::max());
+            OutMax = glm::vec3(std::numeric_limits<float>::lowest());
+            for (int X = 0; X < 2; ++X)
+            {
+                for (int Y = 0; Y < 2; ++Y)
+                {
+                    for (int Z = 0; Z < 2; ++Z)
+                    {
+                        const glm::vec3 Local(X == 0 ? Corner.x : Opposite.x, Y == 0 ? Corner.y : Opposite.y, Z == 0 ? Corner.z : Opposite.z);
+                        const glm::vec3 Point = glm::vec3(Matrix * glm::vec4(Local, 1.0F));
+                        OutMin = glm::min(OutMin, Point);
+                        OutMax = glm::max(OutMax, Point);
+                    }
+                }
+            }
+        }
+
+        bool AabbIntersectsFrustum(const float Planes[6][4], const glm::vec3& Min, const glm::vec3& Max)
+        {
+            const glm::vec3 Center = (Min + Max) * 0.5F;
+            const glm::vec3 Extent = (Max - Min) * 0.5F;
+            for (uint32 Index = 0; Index < 6; ++Index)
+            {
+                const glm::vec3 Normal(Planes[Index][0], Planes[Index][1], Planes[Index][2]);
+                const glm::vec3 Positive(
+                    Normal.x >= 0.0F ? Extent.x : -Extent.x,
+                    Normal.y >= 0.0F ? Extent.y : -Extent.y,
+                    Normal.z >= 0.0F ? Extent.z : -Extent.z);
+                if (glm::dot(Normal, Center + Positive) + Planes[Index][3] < 0.0F)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+    }
+
+    bool Renderer::CollectVisibleItems(const RenderItemFilter& Filter, RenderQueue& Queue)
+    {
+        FrameFrustum = {};
+        if (Assets == nullptr || SwapChain == nullptr)
+        {
+            return false;
+        }
+
+        if (!FillRenderQueue(SceneProxy, Filter, *Assets, GetName(), MeshBatches, Queue))
+        {
+            return false;
+        }
+
+        const uint32 Width = SwapChain->GetWidth();
+        const uint32 Height = SwapChain->GetHeight();
+        if (Width == 0 || Height == 0)
+        {
+            return true;
+        }
+
+        const float Aspect = static_cast<float>(Width) / static_cast<float>(Height);
+        const glm::mat4 Projection = glm::perspectiveRH_ZO(glm::radians(45.0F), Aspect, 0.1F, 100.0F);
+        BuildFrustumPlanes(Projection * ViewCamera.ViewMatrix(), FrameFrustum.Planes);
+        FrameFrustum.bValid = true;
+
+        std::vector<RenderItem> Visible;
+        Visible.reserve(Queue.GetItems().size());
+        for (const RenderItem& Item : Queue.GetItems())
+        {
+            const MeshAsset* Mesh = Assets->ResolveMesh(Item.Mesh);
+            if (Mesh == nullptr || Item.Section >= Mesh->GetSections().size())
+            {
+                Visible.push_back(Item);
+                continue;
+            }
+
+            const MeshSection& Section = Mesh->GetSections()[Item.Section];
+            glm::vec3 Min;
+            glm::vec3 Max;
+            WorldBounds(Item.World, Section.BoundsMin, Section.BoundsMax, Min, Max);
+            if (AabbIntersectsFrustum(FrameFrustum.Planes, Min, Max))
+            {
+                Visible.push_back(Item);
+            }
+        }
+        Queue.Assign(std::move(Visible));
+        return true;
+    }
+
+    void Renderer::SelectVisiblePointLights(uint32 Limit, std::vector<PointLightRenderProxy>& Out) const
+    {
+        Out.clear();
+        if (!FrameFrustum.bValid)
+        {
+            return;
+        }
+
+        for (const PointLightRenderProxy& Light : SceneProxy.PointLights)
+        {
+            const glm::vec3 Center(Light.Position[0], Light.Position[1], Light.Position[2]);
+            if (SphereIntersectsFrustum(FrameFrustum.Planes, Center, Light.Radius))
+            {
+                Out.push_back(Light);
+            }
+        }
+
+        if (Out.size() <= Limit)
+        {
+            return;
+        }
+
+        static size_t LoggedCount = 0;
+        if (LoggedCount != Out.size())
+        {
+            Log::Warning("View contains {} point lights and keeps the first {}", Out.size(), Limit);
+            LoggedCount = Out.size();
+        }
+        Out.resize(Limit);
     }
 
     Renderer::~Renderer()
     {
         Finalize();
+    }
+
+    ERHIFormat Renderer::GetSceneColorFormat() const
+    {
+        return SwapChain != nullptr ? SwapChain->GetFormat() : ERHIFormat::R8G8B8A8_UNorm;
     }
 
     bool Renderer::Initialize(
@@ -107,7 +283,7 @@ namespace ShadowEngine
             return false;
         }
 
-        if (!UploadEnvironment(Shaders, ErrorMessage))
+        if (DrawsSkyBackground() && !UploadEnvironment(Shaders, ErrorMessage))
         {
             return false;
         }
@@ -250,10 +426,16 @@ namespace ShadowEngine
             PipelineDesc.VertexShader = Batch.VertexShader;
             PipelineDesc.PixelShader = Batch.PixelShader;
             PipelineDesc.Layout = &Batch.Layout;
-            PipelineDesc.RenderTargetFormat = SwapChain->GetFormat();
+            PipelineDesc.RenderTargetFormat = GetSceneColorFormat();
             PipelineDesc.Topology = ERHIPrimitiveTopology::TriangleList;
             PipelineDesc.InputLayout = InputLayout;
             PipelineDesc.bEnableDepth = true;
+            if (UsesDepthPrepass())
+            {
+                PipelineDesc.bWriteDepth = false;
+                PipelineDesc.bDepthEqual = true;
+                PipelineDesc.DepthFormat = ERHIFormat::D32_Float;
+            }
             Batch.Pipeline = Device->CreateGraphicsPipeline(PipelineDesc, ErrorMessage);
             if (Batch.Pipeline == nullptr)
             {
@@ -317,9 +499,18 @@ namespace ShadowEngine
         }
 
         RHITextureDesc TextureDesc;
-        TextureDesc.Format = Asset->GetFormat() == ETextureFormat::RGBA32_Float
-            ? ERHIFormat::R32G32B32A32_Float
-            : ERHIFormat::R8G8B8A8_UNorm;
+        if (Asset->GetFormat() == ETextureFormat::RGBA32_Float)
+        {
+            TextureDesc.Format = ERHIFormat::R32G32B32A32_Float;
+        }
+        else if (Asset->GetEncoding() == ETextureEncoding::sRGB)
+        {
+            TextureDesc.Format = ERHIFormat::R8G8B8A8_UNorm_sRGB;
+        }
+        else
+        {
+            TextureDesc.Format = ERHIFormat::R8G8B8A8_UNorm;
+        }
         TextureDesc.Mips = Mips;
         std::unique_ptr<RHITexture> Texture = Device->CreateTexture(TextureDesc, ErrorMessage);
         if (Texture == nullptr)
@@ -336,6 +527,12 @@ namespace ShadowEngine
         TextureDescriptors.emplace(Handle.Index, Created);
         GpuTextures.emplace(Handle.Index, std::move(Texture));
         return Loaded;
+    }
+
+    void Renderer::ReleaseUploadedTexture(TextureAssetHandle Handle)
+    {
+        GpuTextures.erase(Handle.Index);
+        TextureDescriptors.erase(Handle.Index);
     }
 
     RHISampler* Renderer::UploadSampler(SamplerHandle Handle, std::string* ErrorMessage)
@@ -420,7 +617,7 @@ namespace ShadowEngine
         PipelineDesc.VertexShader = Shaders.GetVertexShader(SkyShader);
         PipelineDesc.PixelShader = Shaders.GetPixelShader(SkyShader);
         PipelineDesc.Layout = &SkyLayout;
-        PipelineDesc.RenderTargetFormat = SwapChain->GetFormat();
+        PipelineDesc.RenderTargetFormat = GetSceneColorFormat();
         PipelineDesc.Topology = ERHIPrimitiveTopology::TriangleList;
         PipelineDesc.bEnableDepth = false;
         PipelineDesc.DepthFormat = ERHIFormat::D32_Float;

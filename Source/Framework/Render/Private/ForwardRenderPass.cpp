@@ -1,5 +1,7 @@
 #include "Framework/Render/Public/ForwardRenderPass.h"
 
+#include "Framework/Render/Public/ImageBasedLighting.h"
+#include "Framework/Render/Public/PostProcess.h"
 #include "Framework/Render/Public/SkyBackground.h"
 
 #include "Framework/Asset/Public/AssetManager.h"
@@ -17,8 +19,10 @@
 #include "Framework/Shader/Public/ShaderManager.h"
 
 #include <glm/ext/matrix_clip_space.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -30,6 +34,42 @@ namespace ShadowEngine
 {
     namespace
     {
+        uint32 PointLightCapacity(const RHIPipelineLayout& Layout)
+        {
+            uint32 Capacity = 0;
+            for (const RHIPipelineLayout::Uniform& Uniform : Layout.Uniforms)
+            {
+                if (Uniform.Name.rfind("ForwardPointLight[", 0) == 0 && Uniform.Name.ends_with(".Position"))
+                {
+                    ++Capacity;
+                }
+            }
+            return Capacity;
+        }
+
+        bool WriteImageBasedLight(uint8* Destination, const RHIPipelineLayout& Layout, const ImageBasedLightBinding& Binding)
+        {
+            const auto Write = [&](const char* Name, uint32 Index) -> bool
+            {
+                if (Layout.WriteDescriptorIndex(Destination, Name, Index))
+                {
+                    return true;
+                }
+
+                Log::Error("Image based light binding {} is missing from the constant layout", Name);
+                return false;
+            };
+
+            return Write("Irradiance", Binding.Irradiance) &&
+                Write("Prefiltered0", Binding.Prefiltered0) &&
+                Write("Prefiltered1", Binding.Prefiltered1) &&
+                Write("Prefiltered2", Binding.Prefiltered2) &&
+                Write("Prefiltered3", Binding.Prefiltered3) &&
+                Write("BrdfLut", Binding.BrdfLut) &&
+                Write("EnvironmentSampler", Binding.EnvironmentSampler) &&
+                Write("BrdfSampler", Binding.BrdfSampler);
+        }
+
         struct GpuObjectConstants
         {
             float ViewProjection[16];
@@ -38,18 +78,21 @@ namespace ShadowEngine
             float CameraPosition[4];
             float LightDirection[4];
             float LightColor[4];
+            float PreviousViewProjection[16];
+            float PreviousWorld[16];
         };
     }
 
     bool ForwardRenderPass::Execute(const RenderQueue& Queue, const RenderPassContext& Context)
     {
-        static_assert(sizeof(GpuObjectConstants) == 240);
-        static_assert(sizeof(GpuObjectConstants) <= 512);
+        static_assert(sizeof(GpuObjectConstants) == 368);
+        static_assert(sizeof(GpuObjectConstants) <= 1024);
         if (Context.Device == nullptr || Context.SwapChain == nullptr || Context.CommandList == nullptr ||
             Context.ConstantBuffer == nullptr || Context.DepthBuffer == nullptr || Context.Assets == nullptr ||
             Context.Shaders == nullptr || Context.View == nullptr || Context.Batches == nullptr ||
-            Context.TextureDescriptors == nullptr || Context.Samplers == nullptr || Context.Lights == nullptr ||
-            Context.PointLights == nullptr || Context.SkyLights == nullptr)
+            Context.TextureDescriptors == nullptr || Context.Samplers == nullptr ||
+            Context.PointLights == nullptr || Context.SceneColor == nullptr ||
+            Context.DepthPrepassPipeline == nullptr || Context.ImageBasedLight == nullptr || Context.Post == nullptr)
         {
             return false;
         }
@@ -65,29 +108,29 @@ namespace ShadowEngine
         const float Height = static_cast<float>(Context.SwapChain->GetHeight());
         const float Aspect = Height > 0.0F ? Width / Height : 1.0F;
         const glm::mat4 View = Context.View->ViewMatrix();
-        const glm::mat4 Projection = glm::perspectiveRH_ZO(glm::radians(45.0F), Aspect, 0.1F, 100.0F);
+        glm::mat4 Projection = glm::perspectiveRH_ZO(glm::radians(45.0F), Aspect, 0.1F, 100.0F);
+        ApplyProjectionJitter(Projection, Context.ProjectionJitterX, Context.ProjectionJitterY, Width, Height);
         const glm::mat4 ViewProjection = Projection * View;
+        const glm::mat4 InverseViewProjection = glm::inverse(ViewProjection);
         const glm::vec3 CameraPosition = Context.View->GetPosition();
+        if (Context.Post == nullptr || Context.SceneColor == nullptr)
+        {
+            Log::Error("Forward post process is missing");
+            return false;
+        }
 
         DirectLightRenderProxy Direct{};
         Direct.Intensity = 0.0F;
-        if (!Context.Lights->empty())
+        if (Context.DirectLight != nullptr)
         {
-            Direct = Context.Lights->front();
-        }
-
-        PointLightRenderProxy Point{};
-        Point.Intensity = 0.0F;
-        if (!Context.PointLights->empty())
-        {
-            Point = Context.PointLights->front();
+            Direct = *Context.DirectLight;
         }
 
         SkyLightRenderProxy Sky{};
         Sky.Intensity = 0.0F;
-        if (!Context.SkyLights->empty())
+        if (Context.SkyLight != nullptr)
         {
-            Sky = Context.SkyLights->front();
+            Sky = *Context.SkyLight;
         }
 
         std::vector<uint8> Constants(Items.size() * Context.ConstantAlignment);
@@ -122,10 +165,25 @@ namespace ShadowEngine
             Slot.LightColor[1] = Direct.Color[1];
             Slot.LightColor[2] = Direct.Color[2];
             Slot.LightColor[3] = Direct.Intensity;
+            if (Context.PreviousViewProjection != nullptr)
+            {
+                std::memcpy(Slot.PreviousViewProjection, Context.PreviousViewProjection, sizeof(Slot.PreviousViewProjection));
+            }
+            else
+            {
+                std::memcpy(Slot.PreviousViewProjection, Slot.ViewProjection, sizeof(Slot.PreviousViewProjection));
+            }
+            const size_t PreviousIndex = static_cast<size_t>(Items[Index].ProxyIndex) * 16;
+            if (Context.PreviousWorlds != nullptr && PreviousIndex + 16 <= Context.PreviousWorlds->size())
+            {
+                std::memcpy(Slot.PreviousWorld, Context.PreviousWorlds->data() + PreviousIndex, sizeof(Slot.PreviousWorld));
+            }
+            else
+            {
+                std::memcpy(Slot.PreviousWorld, Slot.World, sizeof(Slot.PreviousWorld));
+            }
             const float DirectDirection[4] = {Direct.Direction[0], Direct.Direction[1], Direct.Direction[2], 0.0F};
             const float DirectColor[4] = {Direct.Color[0], Direct.Color[1], Direct.Color[2], Direct.Intensity};
-            const float PointPosition[4] = {Point.Position[0], Point.Position[1], Point.Position[2], Point.Radius};
-            const float PointColor[4] = {Point.Color[0], Point.Color[1], Point.Color[2], Point.Intensity};
             const float SkyColor[4] = {Sky.Color[0], Sky.Color[1], Sky.Color[2], Sky.Intensity};
             MaterialParameter::TextureBinding Textures;
             std::map<std::string, std::array<float, 4>> ScalarValues;
@@ -185,11 +243,52 @@ namespace ShadowEngine
             {
                 Batch->Layout.WriteScalars(Destination, ScalarValues);
                 Batch->Layout.WriteUniform(Destination, "ForwardDirectLight.Direction", DirectDirection);
+                uint32 DirectOffset = 0xffffffff;
+                for (const RHIPipelineLayout::Uniform& Uniform : Batch->Layout.Uniforms)
+                {
+                    if (Uniform.Name == "ForwardDirectLight.Direction")
+                    {
+                        DirectOffset = Uniform.Offset;
+                        break;
+                    }
+                }
+                if (DirectOffset < sizeof(Slot))
+                {
+                    Log::Error("Forward previous matrices are missing from the constant layout");
+                    return false;
+                }
                 Batch->Layout.WriteUniform(Destination, "ForwardDirectLight.Color", DirectColor);
-                Batch->Layout.WriteUniform(Destination, "ForwardPointLight.Position", PointPosition);
-                Batch->Layout.WriteUniform(Destination, "ForwardPointLight.Color", PointColor);
+                const uint32 PointCapacity = PointLightCapacity(Batch->Layout);
+                if (PointCapacity == 0 && !Context.PointLights->empty())
+                {
+                    Log::Error("Forward point light uniforms are missing");
+                    return false;
+                }
+                static size_t LoggedPointLightCount = 0;
+                if (Context.PointLights->size() > PointCapacity && LoggedPointLightCount != Context.PointLights->size())
+                {
+                    Log::Warning(
+                        "Forward renderer keeps the first {} point lights and ignores {}",
+                        PointCapacity,
+                        Context.PointLights->size() - PointCapacity);
+                    LoggedPointLightCount = Context.PointLights->size();
+                }
+                const size_t PointCount = std::min(Context.PointLights->size(), static_cast<size_t>(PointCapacity));
+                for (size_t LightIndex = 0; LightIndex < PointCount; ++LightIndex)
+                {
+                    const PointLightRenderProxy& Point = (*Context.PointLights)[LightIndex];
+                    const float PointPosition[4] = {Point.Position[0], Point.Position[1], Point.Position[2], Point.Radius};
+                    const float PointColor[4] = {Point.Color[0], Point.Color[1], Point.Color[2], Point.Intensity};
+                    const std::string Prefix = "ForwardPointLight[" + std::to_string(LightIndex) + "]";
+                    Batch->Layout.WriteUniform(Destination, Prefix + ".Position", PointPosition);
+                    Batch->Layout.WriteUniform(Destination, Prefix + ".Color", PointColor);
+                }
                 Batch->Layout.WriteUniform(Destination, "ForwardSkyLight.Color", SkyColor);
                 Batch->Layout.WriteDescriptors(Destination, TextureIndices, SamplerDescriptor);
+                if (!WriteImageBasedLight(Destination, Batch->Layout, *Context.ImageBasedLight))
+                {
+                    return false;
+                }
             }
         }
         if (!Constants.empty() && !Context.ConstantBuffer->Update(0, Constants))
@@ -199,15 +298,32 @@ namespace ShadowEngine
         }
 
         Context.CommandList->Begin();
-        Context.CommandList->BeginRenderPass(Context.SwapChain->GetCurrentBackBuffer(), Context.DepthBuffer, Context.ClearColor);
-        Context.CommandList->SetViewport({0.0F, 0.0F, Width, Height, 0.0F, 1.0F});
-        Context.CommandList->SetScissor({
+        const RHIRect Window{
             0,
             0,
             static_cast<int32>(Context.SwapChain->GetWidth()),
-            static_cast<int32>(Context.SwapChain->GetHeight())});
+            static_cast<int32>(Context.SwapChain->GetHeight())};
+        Context.CommandList->BeginRenderPass(*Context.SceneColor, Context.DepthBuffer, Context.ClearColor, false, true);
+        Context.CommandList->SetViewport({0.0F, 0.0F, Width, Height, 0.0F, 1.0F});
+        Context.CommandList->SetScissor(Window);
+        Context.CommandList->SetPipeline(*Context.DepthPrepassPipeline);
+        Context.CommandList->BindShaderResources();
+        for (uint32 Index = 0; Index < static_cast<uint32>(Items.size()); ++Index)
+        {
+            const MeshBatch* Batch = FindMeshBatch(*Context.Batches, Items[Index].Mesh, Items[Index].Section);
+            Context.CommandList->SetVertexBuffer(*Batch->VertexBuffer);
+            Context.CommandList->SetIndexBuffer(*Batch->IndexBuffer);
+            Context.CommandList->SetConstantBuffer(*Context.ConstantBuffer, Index * Context.ConstantAlignment);
+            Context.CommandList->DrawIndexed(Batch->IndexCount);
+        }
+        Context.CommandList->EndRenderPass();
+
+        Context.CommandList->BeginRenderPass(*Context.SceneColor, Context.DepthBuffer, Context.ClearColor, true, false);
+        Context.CommandList->SetViewport({0.0F, 0.0F, Width, Height, 0.0F, 1.0F});
+        Context.CommandList->SetScissor(Window);
         if (!DrawSkyBackground(Context))
         {
+            Context.CommandList->End();
             return false;
         }
         for (uint32 Index = 0; Index < static_cast<uint32>(Items.size()); ++Index)
@@ -221,6 +337,35 @@ namespace ShadowEngine
             Context.CommandList->DrawIndexed(Batch->IndexCount);
         }
         Context.CommandList->EndRenderPass();
+
+        float InverseViewProjectionValues[16];
+        std::memcpy(InverseViewProjectionValues, glm::value_ptr(InverseViewProjection), sizeof(InverseViewProjectionValues));
+        float ViewProjectionValues[16];
+        std::memcpy(ViewProjectionValues, glm::value_ptr(ViewProjection), sizeof(ViewProjectionValues));
+        const float* PreviousViewProjection = Context.PreviousViewProjection != nullptr ? Context.PreviousViewProjection : ViewProjectionValues;
+        const float CameraPositionValues[3] = {CameraPosition.x, CameraPosition.y, CameraPosition.z};
+        if (!Context.Post->Draw(
+                *Context.CommandList,
+                Context.SwapChain->GetCurrentBackBuffer(),
+                *Context.DepthBuffer,
+                *Context.ConstantBuffer,
+                Items,
+                *Context.Batches,
+                InverseViewProjectionValues,
+                PreviousViewProjection,
+                CameraPositionValues,
+                Context.SwapChain->GetWidth(),
+                Context.SwapChain->GetHeight(),
+                Context.ConstantAlignment))
+        {
+            Context.CommandList->End();
+            return false;
+        }
+
+        if (Context.StoredViewProjection != nullptr)
+        {
+            std::memcpy(Context.StoredViewProjection, ViewProjectionValues, sizeof(ViewProjectionValues));
+        }
         Context.CommandList->End();
 
         Context.Device->SubmitCommandList(*Context.CommandList);

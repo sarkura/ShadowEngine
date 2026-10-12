@@ -1,0 +1,28 @@
+{
+    "Type": "Material",
+    "BlinnPhongRenderer":
+    {
+        "Vertex": "BlinnPhong/BlinnPhongVertex.slang",
+        "Fragment": "BlinnPhong/BlinnPhongFragment.slang",
+        "Material": "Material/BlinnPhongMaterial.slang",
+        "Light": "Light/BlinnPhongLight.slang",
+        "Parameters":
+        {
+            "BaseColor": {"float3": [0.3, 0.6, 0.9]},
+            "Roughness": {"float": 0.45},
+            "SpecularColor": {"float3": [1, 1, 1]}
+        }
+    },
+    "ForwardRenderer":
+    {
+        "Vertex": "Forward/ForwardVertex.slang",
+        "Fragment": "Forward/ForwardFragment.slang",
+        "Material": "Material/ForwardMaterial.slang",
+        "Light": "Light/ForwardLight.slang",
+        "Parameters":
+        {
+            "BaseColor": {"float3": [0.3, 0.3, 0.3]},
+            "Roughness": {"float": 1.0}
+        }
+    }
+}

@@ -12,19 +12,25 @@ namespace ShadowEngine
     {
         public:
             Entity& CreateEntity();
-            DirectLight& CreateDirectLight();
+            [[nodiscard]] bool CreateDirectLight();
             PointLight& CreatePointLight();
-            SkyLight& CreateSkyLight();
+            [[nodiscard]] bool CreateSkyLight();
 
             [[nodiscard]] const std::deque<Entity>& GetEntities() const;
-            [[nodiscard]] const std::deque<DirectLight>& GetDirectLights() const;
+            [[nodiscard]] bool HasDirectLight() const;
+            [[nodiscard]] const DirectLight& GetDirectLight() const;
+            [[nodiscard]] DirectLight& GetDirectLight();
             [[nodiscard]] const std::deque<PointLight>& GetPointLights() const;
-            [[nodiscard]] const std::deque<SkyLight>& GetSkyLights() const;
+            [[nodiscard]] bool HasSkyLight() const;
+            [[nodiscard]] const SkyLight& GetSkyLight() const;
+            [[nodiscard]] SkyLight& GetSkyLight();
 
         private:
             std::deque<Entity> Entities;
-            std::deque<DirectLight> DirectLights;
+            DirectLight DirectLight;
+            bool bHasDirectLight = false;
             std::deque<PointLight> PointLights;
-            std::deque<SkyLight> SkyLights;
+            SkyLight SkyLight;
+            bool bHasSkyLight = false;
     };
 }

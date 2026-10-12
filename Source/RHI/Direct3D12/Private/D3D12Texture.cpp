@@ -29,6 +29,7 @@ namespace ShadowEngine
         , RenderTargetView(InRenderTargetView)
         , DepthStencilView(InDepthStencilView)
     {
+        FaceViews[0] = InRenderTargetView;
     }
 
     std::unique_ptr<D3D12Texture> D3D12Texture::CreateDepth(
@@ -54,7 +55,7 @@ namespace ShadowEngine
         ResourceDesc.Height = InHeight;
         ResourceDesc.DepthOrArraySize = 1;
         ResourceDesc.MipLevels = 1;
-        ResourceDesc.Format = DXGI_FORMAT_D32_FLOAT;
+        ResourceDesc.Format = DXGI_FORMAT_R32_TYPELESS;
         ResourceDesc.SampleDesc.Count = 1;
         ResourceDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
         ResourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
@@ -108,6 +109,176 @@ namespace ShadowEngine
             std::move(Heap));
     }
 
+    std::unique_ptr<D3D12Texture> D3D12Texture::CreateColorTarget(
+        ID3D12Device* Device,
+        uint32 InWidth,
+        uint32 InHeight,
+        ERHIFormat InFormat,
+        std::string* ErrorMessage)
+    {
+        if (InWidth == 0 || InHeight == 0 || InFormat != ERHIFormat::R16G16B16A16_Float)
+        {
+            SetErrorMessage(ErrorMessage, "Color target requires a non-zero size and RGBA16 float");
+            return nullptr;
+        }
+
+        D3D12_HEAP_PROPERTIES HeapProperties{};
+        HeapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
+        HeapProperties.CreationNodeMask = 1;
+        HeapProperties.VisibleNodeMask = 1;
+
+        D3D12_RESOURCE_DESC ResourceDesc{};
+        ResourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        ResourceDesc.Width = InWidth;
+        ResourceDesc.Height = InHeight;
+        ResourceDesc.DepthOrArraySize = 1;
+        ResourceDesc.MipLevels = 1;
+        ResourceDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        ResourceDesc.SampleDesc.Count = 1;
+        ResourceDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        ResourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+        D3D12_CLEAR_VALUE ClearValue{};
+        ClearValue.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        ClearValue.Color[0] = 0.0F;
+        ClearValue.Color[1] = 0.0F;
+        ClearValue.Color[2] = 0.0F;
+        ClearValue.Color[3] = 1.0F;
+
+        ComPtr<ID3D12Resource> Resource;
+        HRESULT Result = Device->CreateCommittedResource(
+            &HeapProperties,
+            D3D12_HEAP_FLAG_NONE,
+            &ResourceDesc,
+            D3D12_RESOURCE_STATE_RENDER_TARGET,
+            &ClearValue,
+            IID_PPV_ARGS(Resource.GetAddressOf()));
+        if (FAILED(Result))
+        {
+            SetErrorMessage(ErrorMessage, "CreateCommittedResource failed for the color target: " + FormatHResult(Result));
+            return nullptr;
+        }
+
+        D3D12_DESCRIPTOR_HEAP_DESC HeapDesc{};
+        HeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+        HeapDesc.NumDescriptors = 1;
+        HeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+        ComPtr<ID3D12DescriptorHeap> Heap;
+        Result = Device->CreateDescriptorHeap(&HeapDesc, IID_PPV_ARGS(Heap.GetAddressOf()));
+        if (FAILED(Result))
+        {
+            SetErrorMessage(ErrorMessage, "CreateDescriptorHeap failed for the color target: " + FormatHResult(Result));
+            return nullptr;
+        }
+
+        const D3D12_CPU_DESCRIPTOR_HANDLE RenderTargetView = Heap->GetCPUDescriptorHandleForHeapStart();
+        D3D12_RENDER_TARGET_VIEW_DESC ViewDesc{};
+        ViewDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        ViewDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+        Device->CreateRenderTargetView(Resource.Get(), &ViewDesc, RenderTargetView);
+
+        return std::make_unique<D3D12Texture>(
+            std::move(Resource),
+            InWidth,
+            InHeight,
+            InFormat,
+            D3D12_RESOURCE_STATE_RENDER_TARGET,
+            RenderTargetView,
+            D3D12_CPU_DESCRIPTOR_HANDLE{},
+            std::move(Heap));
+    }
+
+    std::unique_ptr<D3D12Texture> D3D12Texture::CreateCubeTarget(
+        ID3D12Device* Device,
+        uint32 FaceSize,
+        std::string* ErrorMessage)
+    {
+        if (FaceSize == 0)
+        {
+            SetErrorMessage(ErrorMessage, "Cube target requires a non-zero face size");
+            return nullptr;
+        }
+
+        D3D12_HEAP_PROPERTIES HeapProperties{};
+        HeapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
+        HeapProperties.CreationNodeMask = 1;
+        HeapProperties.VisibleNodeMask = 1;
+
+        D3D12_RESOURCE_DESC ResourceDesc{};
+        ResourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        ResourceDesc.Width = FaceSize;
+        ResourceDesc.Height = FaceSize;
+        ResourceDesc.DepthOrArraySize = 6;
+        ResourceDesc.MipLevels = 1;
+        ResourceDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        ResourceDesc.SampleDesc.Count = 1;
+        ResourceDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        ResourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+        D3D12_CLEAR_VALUE ClearValue{};
+        ClearValue.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+
+        ComPtr<ID3D12Resource> Resource;
+        HRESULT Result = Device->CreateCommittedResource(
+            &HeapProperties,
+            D3D12_HEAP_FLAG_NONE,
+            &ResourceDesc,
+            D3D12_RESOURCE_STATE_RENDER_TARGET,
+            &ClearValue,
+            IID_PPV_ARGS(Resource.GetAddressOf()));
+        if (FAILED(Result))
+        {
+            SetErrorMessage(ErrorMessage, "CreateCommittedResource failed for the cube target: " + FormatHResult(Result));
+            return nullptr;
+        }
+
+        D3D12_DESCRIPTOR_HEAP_DESC HeapDesc{};
+        HeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+        HeapDesc.NumDescriptors = 6;
+        HeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+        ComPtr<ID3D12DescriptorHeap> Heap;
+        Result = Device->CreateDescriptorHeap(&HeapDesc, IID_PPV_ARGS(Heap.GetAddressOf()));
+        if (FAILED(Result))
+        {
+            SetErrorMessage(ErrorMessage, "CreateDescriptorHeap failed for the cube target: " + FormatHResult(Result));
+            return nullptr;
+        }
+
+        const UINT Increment = Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+        D3D12_CPU_DESCRIPTOR_HANDLE First = Heap->GetCPUDescriptorHandleForHeapStart();
+        D3D12_CPU_DESCRIPTOR_HANDLE Faces[6] = {};
+        for (uint32 Face = 0; Face < 6; ++Face)
+        {
+            Faces[Face] = First;
+            Faces[Face].ptr += static_cast<SIZE_T>(Face) * Increment;
+            D3D12_RENDER_TARGET_VIEW_DESC ViewDesc{};
+            ViewDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+            ViewDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY;
+            ViewDesc.Texture2DArray.MipSlice = 0;
+            ViewDesc.Texture2DArray.FirstArraySlice = Face;
+            ViewDesc.Texture2DArray.ArraySize = 1;
+            Device->CreateRenderTargetView(Resource.Get(), &ViewDesc, Faces[Face]);
+        }
+
+        auto Texture = std::make_unique<D3D12Texture>(
+            std::move(Resource),
+            FaceSize,
+            FaceSize,
+            ERHIFormat::R32G32B32A32_Float,
+            D3D12_RESOURCE_STATE_RENDER_TARGET,
+            Faces[0],
+            D3D12_CPU_DESCRIPTOR_HANDLE{},
+            std::move(Heap));
+        Texture->FaceCount = 6;
+        for (uint32 Face = 0; Face < 6; ++Face)
+        {
+            Texture->FaceViews[Face] = Faces[Face];
+        }
+        return Texture;
+    }
+
     std::unique_ptr<D3D12Texture> D3D12Texture::CreateSampled(
         ID3D12Device* Device,
         ID3D12CommandQueue* Queue,
@@ -115,9 +286,10 @@ namespace ShadowEngine
         const RHITextureDesc& Desc,
         std::string* ErrorMessage)
     {
-        const uint32 PixelStride = Desc.Format == ERHIFormat::R32G32B32A32_Float ? 16u : 4u;
-        if (Desc.Mips.empty() ||
-            (Desc.Format != ERHIFormat::R8G8B8A8_UNorm && Desc.Format != ERHIFormat::R32G32B32A32_Float))
+        const bool bFloat = Desc.Format == ERHIFormat::R32G32B32A32_Float;
+        const bool bRgba8 = Desc.Format == ERHIFormat::R8G8B8A8_UNorm || Desc.Format == ERHIFormat::R8G8B8A8_UNorm_sRGB;
+        const uint32 PixelStride = bFloat ? 16u : 4u;
+        if (Desc.Mips.empty() || (!bRgba8 && !bFloat))
         {
             SetErrorMessage(ErrorMessage, "Sampled texture format is unsupported");
             return nullptr;
@@ -325,6 +497,16 @@ namespace ShadowEngine
     D3D12_CPU_DESCRIPTOR_HANDLE D3D12Texture::GetRenderTargetView() const
     {
         return RenderTargetView;
+    }
+
+    D3D12_CPU_DESCRIPTOR_HANDLE D3D12Texture::GetRenderTargetView(uint32 Face) const
+    {
+        return Face < FaceCount ? FaceViews[Face] : RenderTargetView;
+    }
+
+    uint32 D3D12Texture::GetFaceCount() const
+    {
+        return FaceCount;
     }
 
     D3D12_CPU_DESCRIPTOR_HANDLE D3D12Texture::GetDepthStencilView() const

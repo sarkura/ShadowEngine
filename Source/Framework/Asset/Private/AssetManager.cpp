@@ -19,9 +19,9 @@
 #include <glm/mat4x4.hpp>
 #include <glm/geometric.hpp>
 
-#include <array>
 #include <cctype>
 #include <cstring>
+#include <string_view>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -757,11 +757,11 @@ namespace ShadowEngine
 
             for (const ShaderBinding& Binding : Reflection->Bindings)
             {
-                if (Binding.Kind == EShaderBindingKind::ConstantBuffer && Binding.Size > 512)
+                if (Binding.Kind == EShaderBindingKind::ConstantBuffer && Binding.Size > 1024)
                 {
                     SetErrorMessage(
                         ErrorMessage,
-                        "Material constant buffer exceeds 512 bytes: " + DescriptionPath.generic_string());
+                        "Material constant buffer exceeds 1024 bytes: " + DescriptionPath.generic_string());
                     return {};
                 }
             }
@@ -933,13 +933,37 @@ namespace ShadowEngine
         const std::filesystem::path& Path,
         std::string* ErrorMessage)
     {
-        if (Path.empty())
+        const std::string Name = Path.generic_string();
+        constexpr std::string_view Suffix = ".texture.json";
+        const bool bDescription = Name.size() >= Suffix.size() &&
+            Name.compare(Name.size() - Suffix.size(), Suffix.size(), Suffix) == 0;
+        if (!bDescription)
+        {
+            return LoadTextureImage(Path, Path, ETextureEncoding::Linear, ErrorMessage);
+        }
+
+        TextureDescription Description;
+        if (!DescriptionParser::LoadTextureDescription(Path, Description, ErrorMessage))
+        {
+            return {};
+        }
+
+        return LoadTextureImage(Path, Description.Source, Description.Encoding, ErrorMessage);
+    }
+
+    TextureAssetHandle AssetManager::LoadTextureImage(
+        const std::filesystem::path& RegistryPath,
+        const std::filesystem::path& ImagePath,
+        ETextureEncoding Encoding,
+        std::string* ErrorMessage)
+    {
+        if (RegistryPath.empty() || ImagePath.empty())
         {
             SetErrorMessage(ErrorMessage, "Texture path is empty");
             return {};
         }
 
-        if (const TextureAsset* Existing = Registry.FindTexture(Path))
+        if (const TextureAsset* Existing = Registry.FindTexture(RegistryPath))
         {
             for (uint32 Index = 0; Index < Textures.size(); ++Index)
             {
@@ -951,20 +975,20 @@ namespace ShadowEngine
                 }
             }
 
-            SetErrorMessage(ErrorMessage, "Texture is registered without a handle: " + Path.generic_string());
+            SetErrorMessage(ErrorMessage, "Texture is registered without a handle: " + RegistryPath.generic_string());
             return {};
         }
 
         int Width = 0;
         int Height = 0;
         int Channels = 0;
-        stbi_uc* Pixels = stbi_load(Path.generic_string().c_str(), &Width, &Height, &Channels, 4);
+        stbi_uc* Pixels = stbi_load(ImagePath.generic_string().c_str(), &Width, &Height, &Channels, 4);
         if (Pixels == nullptr)
         {
             const char* Reason = stbi_failure_reason();
             SetErrorMessage(
                 ErrorMessage,
-                "Unable to load texture " + Path.generic_string() + ": " + (Reason != nullptr ? Reason : "unknown error"));
+                "Unable to load texture " + ImagePath.generic_string() + ": " + (Reason != nullptr ? Reason : "unknown error"));
             return {};
         }
 
@@ -973,10 +997,11 @@ namespace ShadowEngine
         stbi_image_free(Pixels);
 
         std::unique_ptr<TextureAsset> Texture = TextureAsset::Create(
-            Path,
+            RegistryPath,
             static_cast<uint32>(Width),
             static_cast<uint32>(Height),
             std::move(Rgba),
+            Encoding,
             ErrorMessage);
         if (Texture == nullptr)
         {
@@ -987,17 +1012,19 @@ namespace ShadowEngine
         const TextureAsset* Loaded = Texture.get();
         if (!Registry.Register(std::move(Texture)))
         {
-            SetErrorMessage(ErrorMessage, "Unable to register texture: " + Path.generic_string());
+            SetErrorMessage(ErrorMessage, "Unable to register texture: " + RegistryPath.generic_string());
             return {};
         }
 
         Textures.push_back(Loaded);
         Log::Info(
-            "Loaded texture {} ({}x{}, {} mips)",
-            Path.generic_string(),
+            "Loaded texture {} from {} ({}x{}, {} mips, {})",
+            RegistryPath.generic_string(),
+            ImagePath.generic_string(),
             Width,
             Height,
-            MipCount);
+            MipCount,
+            Encoding == ETextureEncoding::sRGB ? "sRGB" : "Linear");
         TextureAssetHandle Handle;
         Handle.Index = static_cast<uint32>(Textures.size() - 1);
         return Handle;

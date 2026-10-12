@@ -1,7 +1,5 @@
 #include "Framework/Render/Public/BlinnPhongRenderPass.h"
 
-#include "Framework/Render/Public/SkyBackground.h"
-
 #include "Framework/Asset/Public/AssetManager.h"
 #include "Framework/Asset/Public/MeshAsset.h"
 #include "Framework/Common/Public/Log.h"
@@ -13,14 +11,12 @@
 #include "Framework/RHI/Public/RHIDevice.h"
 #include "Framework/RHI/Public/RHISwapChain.h"
 #include "Framework/RHI/Public/RHIPipelineLayout.h"
-#include "Framework/RHI/Public/RHITexture.h"
 #include "Framework/Shader/Public/ShaderManager.h"
 
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
 #include <array>
-#include <cstdint>
 #include <cstring>
 #include <map>
 #include <string>
@@ -38,16 +34,19 @@ namespace ShadowEngine
             float CameraPosition[4];
             float LightDirection[4];
             float LightColor[4];
+            float PreviousViewProjection[16];
+            float PreviousWorld[16];
         };
     }
 
     bool BlinnPhongRenderPass::Execute(const RenderQueue& Queue, const RenderPassContext& Context)
     {
-        static_assert(sizeof(GpuObjectConstants) <= 512);
+        static_assert(sizeof(GpuObjectConstants) == 368);
+        static_assert(sizeof(GpuObjectConstants) <= 1024);
         if (Context.Device == nullptr || Context.SwapChain == nullptr || Context.CommandList == nullptr ||
             Context.ConstantBuffer == nullptr || Context.DepthBuffer == nullptr || Context.Assets == nullptr ||
             Context.Shaders == nullptr || Context.View == nullptr || Context.Batches == nullptr ||
-            Context.TextureDescriptors == nullptr || Context.Samplers == nullptr || Context.Lights == nullptr)
+            Context.TextureDescriptors == nullptr || Context.Samplers == nullptr)
         {
             return false;
         }
@@ -68,9 +67,9 @@ namespace ShadowEngine
         const glm::vec3 CameraPosition = Context.View->GetPosition();
 
         DirectLightRenderProxy Light{};
-        if (!Context.Lights->empty())
+        if (Context.DirectLight != nullptr)
         {
-            Light = Context.Lights->front();
+            Light = *Context.DirectLight;
         }
 
         std::vector<uint8> Constants(Items.size() * Context.ConstantAlignment);
@@ -105,6 +104,8 @@ namespace ShadowEngine
             Slot.LightColor[1] = Light.Color[1];
             Slot.LightColor[2] = Light.Color[2];
             Slot.LightColor[3] = Light.Intensity;
+            std::memcpy(Slot.PreviousViewProjection, Slot.ViewProjection, sizeof(Slot.PreviousViewProjection));
+            std::memcpy(Slot.PreviousWorld, Slot.World, sizeof(Slot.PreviousWorld));
             MaterialParameter::TextureBinding Textures;
             std::map<std::string, std::array<float, 4>> ScalarValues;
             if (Parameter != nullptr)
@@ -179,10 +180,6 @@ namespace ShadowEngine
             0,
             static_cast<int32>(Context.SwapChain->GetWidth()),
             static_cast<int32>(Context.SwapChain->GetHeight())});
-        if (!DrawSkyBackground(Context))
-        {
-            return false;
-        }
         for (uint32 Index = 0; Index < static_cast<uint32>(Items.size()); ++Index)
         {
             const MeshBatch* Batch = FindMeshBatch(*Context.Batches, Items[Index].Mesh, Items[Index].Section);

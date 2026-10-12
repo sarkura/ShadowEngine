@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Framework/Asset/Public/Asset.h"
+#include "Framework/Asset/Public/Description.h"
 
 #include <memory>
 #include <string>
@@ -29,6 +30,7 @@ namespace ShadowEngine
                 uint32 Width,
                 uint32 Height,
                 std::vector<uint8> Pixels,
+                ETextureEncoding Encoding,
                 std::string* ErrorMessage = nullptr);
 
             static std::unique_ptr<TextureAsset> CreateFloat(
@@ -39,12 +41,18 @@ namespace ShadowEngine
                 std::string* ErrorMessage = nullptr);
 
             [[nodiscard]] ETextureFormat GetFormat() const;
+            [[nodiscard]] ETextureEncoding GetEncoding() const;
             [[nodiscard]] const std::vector<Mip>& GetMips() const;
 
         private:
-            TextureAsset(std::filesystem::path InPath, std::vector<Mip> InMips, ETextureFormat InFormat);
+            TextureAsset(
+                std::filesystem::path InPath,
+                std::vector<Mip> InMips,
+                ETextureFormat InFormat,
+                ETextureEncoding InEncoding);
 
             std::vector<Mip> Mips;
             ETextureFormat Format = ETextureFormat::RGBA8_UNorm;
+            ETextureEncoding Encoding = ETextureEncoding::Linear;
     };
 }

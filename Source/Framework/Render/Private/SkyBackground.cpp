@@ -29,6 +29,17 @@ namespace ShadowEngine
         };
     }
 
+    void ApplyProjectionJitter(glm::mat4& Projection, float JitterX, float JitterY, float Width, float Height)
+    {
+        if (Width <= 0.0F || Height <= 0.0F)
+        {
+            return;
+        }
+
+        Projection[2][0] += (2.0F * JitterX) / Width;
+        Projection[2][1] += (2.0F * JitterY) / Height;
+    }
+
     bool DrawSkyBackground(const RenderPassContext& Context)
     {
         static_assert(sizeof(GpuSkyConstants) <= 256);
@@ -42,7 +53,8 @@ namespace ShadowEngine
         const float Height = static_cast<float>(Context.SwapChain->GetHeight());
         const float Aspect = Height > 0.0F ? Width / Height : 1.0F;
         const glm::mat4 View = Context.View->ViewMatrix();
-        const glm::mat4 Projection = glm::perspectiveRH_ZO(glm::radians(45.0F), Aspect, 0.1F, 100.0F);
+        glm::mat4 Projection = glm::perspectiveRH_ZO(glm::radians(45.0F), Aspect, 0.1F, 100.0F);
+        ApplyProjectionJitter(Projection, Context.ProjectionJitterX, Context.ProjectionJitterY, Width, Height);
         const glm::mat4 InverseViewProjection = glm::inverse(Projection * View);
         const glm::vec3 CameraPosition = Context.View->GetPosition();
 

@@ -24,8 +24,12 @@ namespace ShadowEngine
             void BeginRenderPass(
                 RHITexture& RenderTarget,
                 RHITexture* DepthTarget,
-                const RHIColor& ClearColor) override;
+                const RHIColor& ClearColor,
+                bool bClearColor = true,
+                bool bClearDepth = true,
+                uint32 ArraySlice = 0) override;
             void EndRenderPass() override;
+            void UseAsShaderResource(RHITexture& Texture) override;
 
             void SetPipeline(RHIPipeline& Pipeline) override;
             void SetVertexBuffer(RHIBuffer& Buffer) override;

@@ -172,6 +172,7 @@ namespace ShadowEngine
             uint32_t (*GetFieldCount)(SlangReflectionTypeLayout*) = nullptr;
             SlangReflectionVariableLayout* (*GetFieldByIndex)(SlangReflectionTypeLayout*, unsigned) = nullptr;
             SlangReflectionTypeLayout* (*GetElementTypeLayout)(SlangReflectionTypeLayout*) = nullptr;
+            size_t (*GetElementStride)(SlangReflectionTypeLayout*, SlangParameterCategory) = nullptr;
             SlangReflectionVariableLayout* (*GetElementVarLayout)(SlangReflectionTypeLayout*) = nullptr;
             SlangReflectionVariableLayout* (*GetContainerVarLayout)(SlangReflectionTypeLayout*) = nullptr;
             char const* (*GetVariableName)(SlangReflectionVariable*) = nullptr;
@@ -206,6 +207,7 @@ namespace ShadowEngine
                     LoadSymbol("spReflectionTypeLayout_GetFieldCount", GetFieldCount) &&
                     LoadSymbol("spReflectionTypeLayout_GetFieldByIndex", GetFieldByIndex) &&
                     LoadSymbol("spReflectionTypeLayout_GetElementTypeLayout", GetElementTypeLayout) &&
+                    LoadSymbol("spReflectionTypeLayout_GetElementStride", GetElementStride) &&
                     LoadSymbol("spReflectionTypeLayout_GetElementVarLayout", GetElementVarLayout) &&
                     LoadSymbol("spReflectionTypeLayout_getContainerVarLayout", GetContainerVarLayout) &&
                     LoadSymbol("spReflectionVariable_GetName", GetVariableName) &&
@@ -322,6 +324,37 @@ namespace ShadowEngine
                 return;
             }
 
+            if (Kind == SLANG_TYPE_KIND_ARRAY)
+            {
+                SlangReflectionTypeLayout* ElementLayout = Api.GetElementTypeLayout(TypeLayout);
+                SlangReflectionType* ElementType = ElementLayout == nullptr ? nullptr : Api.GetType(ElementLayout);
+                const char* ElementTypeName = ElementType == nullptr ? nullptr : Api.GetTypeName(ElementType);
+                const size_t Count = Type == nullptr ? 0 : Api.GetElementCount(Type);
+                const size_t Stride = Api.GetElementStride(TypeLayout, SLANG_PARAMETER_CATEGORY_UNIFORM);
+                const size_t ArrayOffset = Api.GetOffset(Variable, SLANG_PARAMETER_CATEGORY_UNIFORM);
+                if (ElementLayout == nullptr || ElementTypeName == nullptr ||
+                    std::string(ElementTypeName) != "ForwardPointLight" || Count == 0 ||
+                    Count == SLANG_UNKNOWN_SIZE || Count == SLANG_UNBOUNDED_SIZE ||
+                    Stride == SLANG_UNKNOWN_SIZE || Stride == SLANG_UNBOUNDED_SIZE ||
+                    ArrayOffset == SLANG_UNKNOWN_SIZE)
+                {
+                    return;
+                }
+
+                const uint32 ArrayBase = BaseOffset + static_cast<uint32>(ArrayOffset);
+                const uint32_t FieldCount = Api.GetFieldCount(ElementLayout);
+                for (size_t Index = 0; Index < Count; ++Index)
+                {
+                    const std::string ElementParent = std::string("ForwardPointLight[") + std::to_string(Index) + "]";
+                    const uint32 ElementBase = ArrayBase + static_cast<uint32>(Index * Stride);
+                    for (uint32_t FieldIndex = 0; FieldIndex < FieldCount; ++FieldIndex)
+                    {
+                        CollectBinding(Api, Api.GetFieldByIndex(ElementLayout, FieldIndex), ElementParent, ElementBase, Out);
+                    }
+                }
+                return;
+            }
+
             const size_t FieldOffset = Api.GetOffset(Variable, SLANG_PARAMETER_CATEGORY_UNIFORM);
             if (FieldOffset == SLANG_UNKNOWN_SIZE)
             {
@@ -329,8 +362,8 @@ namespace ShadowEngine
             }
 
             const uint32 Offset = BaseOffset + static_cast<uint32>(FieldOffset);
-            const bool bLight = ParentType == "ForwardDirectLight" || ParentType == "ForwardPointLight" ||
-                ParentType == "ForwardSkyLight";
+            const bool bPointLight = ParentType == "ForwardPointLight" || ParentType.rfind("ForwardPointLight[", 0) == 0;
+            const bool bLight = ParentType == "ForwardDirectLight" || ParentType == "ForwardSkyLight" || bPointLight;
             if (bLight && IsFloatVector(Api, Type, 4))
             {
                 ShaderBinding Binding;
@@ -376,7 +409,9 @@ namespace ShadowEngine
                 return;
             }
 
-            if (!IsUInt(Api, Type) || ParentType != "MaterialDescriptorIndices")
+            const bool bDescriptorStruct =
+                ParentType == "MaterialDescriptorIndices" || ParentType == "ImageBasedLightIndices";
+            if (!IsUInt(Api, Type) || !bDescriptorStruct)
             {
                 return;
             }
@@ -389,14 +424,17 @@ namespace ShadowEngine
             ShaderBinding Binding;
             Binding.Offset = Offset;
             Binding.Size = 4;
-            if (Name == "Sampler")
+            Binding.Name = Name;
+            if (ParentType == "ImageBasedLightIndices")
             {
-                Binding.Name = "Sampler";
+                Binding.Kind = EShaderBindingKind::ResourceIndex;
+            }
+            else if (Name == "Sampler")
+            {
                 Binding.Kind = EShaderBindingKind::Sampler;
             }
             else
             {
-                Binding.Name = Name;
                 Binding.Kind = EShaderBindingKind::Texture2D;
             }
 

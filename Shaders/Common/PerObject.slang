@@ -9,4 +9,6 @@ struct PerObjectData
     float4 CameraPosition;
     float4 LightDirection;
     float4 LightColor;
+    float4x4 PreviousViewProjection;
+    float4x4 PreviousWorld;
 };

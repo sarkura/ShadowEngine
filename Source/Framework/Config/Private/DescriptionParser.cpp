@@ -415,4 +415,63 @@ namespace ShadowEngine
         Description = std::move(Parsed);
         return true;
     }
+
+    bool DescriptionParser::LoadTextureDescription(
+        const std::filesystem::path& FilePath,
+        TextureDescription& Description,
+        std::string* ErrorMessage)
+    {
+        rapidjson::Document Document;
+        if (!ParseJsonObject(FilePath, "Texture description", Document, ErrorMessage))
+        {
+            return false;
+        }
+
+        const char* const Members[] = {"Type", "Source", "Encoding"};
+        if (!RequireMembers(Document, FilePath, "Texture description", Members, 3, ErrorMessage))
+        {
+            return false;
+        }
+
+        const rapidjson::Value& Type = Document["Type"];
+        if (!Type.IsString() || std::string(Type.GetString()) != "Texture")
+        {
+            SetErrorMessage(ErrorMessage, "Texture description Type must be Texture: " + FilePath.generic_string());
+            return false;
+        }
+
+        const rapidjson::Value& Source = Document["Source"];
+        if (!Source.IsString() || Source.GetStringLength() == 0)
+        {
+            SetErrorMessage(ErrorMessage, "Texture description Source must be a path: " + FilePath.generic_string());
+            return false;
+        }
+
+        const rapidjson::Value& Encoding = Document["Encoding"];
+        if (!Encoding.IsString())
+        {
+            SetErrorMessage(ErrorMessage, "Texture description Encoding must be sRGB or Linear: " + FilePath.generic_string());
+            return false;
+        }
+
+        const std::string EncodingName = Encoding.GetString();
+        TextureDescription Parsed;
+        Parsed.Source = Source.GetString();
+        if (EncodingName == "sRGB")
+        {
+            Parsed.Encoding = ETextureEncoding::sRGB;
+        }
+        else if (EncodingName == "Linear")
+        {
+            Parsed.Encoding = ETextureEncoding::Linear;
+        }
+        else
+        {
+            SetErrorMessage(ErrorMessage, "Texture description Encoding must be sRGB or Linear: " + FilePath.generic_string());
+            return false;
+        }
+
+        Description = std::move(Parsed);
+        return true;
+    }
 }

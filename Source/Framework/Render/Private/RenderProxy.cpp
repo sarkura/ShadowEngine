@@ -40,15 +40,14 @@ namespace ShadowEngine
             Out.Meshes.push_back(std::move(Mesh));
         }
 
-        Out.DirectLights.clear();
-        Out.DirectLights.reserve(InScene.GetDirectLights().size());
-        for (const DirectLight& Item : InScene.GetDirectLights())
+        Out.bHasDirectLight = InScene.HasDirectLight();
+        Out.DirectLight = {};
+        if (Out.bHasDirectLight)
         {
-            DirectLightRenderProxy Light;
-            Item.GetDirection(Light.Direction);
-            Item.GetColor(Light.Color);
-            Light.Intensity = Item.GetIntensity();
-            Out.DirectLights.push_back(Light);
+            const DirectLight& Item = InScene.GetDirectLight();
+            Item.GetDirection(Out.DirectLight.Direction);
+            Item.GetColor(Out.DirectLight.Color);
+            Out.DirectLight.Intensity = Item.GetIntensity();
         }
 
         Out.PointLights.clear();
@@ -63,14 +62,13 @@ namespace ShadowEngine
             Out.PointLights.push_back(Light);
         }
 
-        Out.SkyLights.clear();
-        Out.SkyLights.reserve(InScene.GetSkyLights().size());
-        for (const SkyLight& Item : InScene.GetSkyLights())
+        Out.bHasSkyLight = InScene.HasSkyLight();
+        Out.SkyLight = {};
+        if (Out.bHasSkyLight)
         {
-            SkyLightRenderProxy Light;
-            Item.GetColor(Light.Color);
-            Light.Intensity = Item.GetIntensity();
-            Out.SkyLights.push_back(Light);
+            const SkyLight& Item = InScene.GetSkyLight();
+            Item.GetColor(Out.SkyLight.Color);
+            Out.SkyLight.Intensity = Item.GetIntensity();
         }
     }
 }

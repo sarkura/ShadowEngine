@@ -4,6 +4,8 @@
 #include "PerObject.slang"
 #include "SceneConstants.slang"
 #include "MaterialSurface.slang"
+#include "ForwardLights.slang"
+#include "ImageBasedLightIndices.slang"
 
 #ifndef MATERIAL_DESCRIPTOR_INDICES_DEFINED
 #define MATERIAL_DESCRIPTOR_INDICES_DEFINED
@@ -20,29 +22,13 @@ struct MaterialDescriptorIndices
 };
 #endif
 
-struct ForwardDirectLight
-{
-    float4 Direction;
-    float4 Color;
-};
-
-struct ForwardPointLight
-{
-    float4 Position;
-    float4 Color;
-};
-
-struct ForwardSkyLight
-{
-    float4 Color;
-};
-
 cbuffer SceneConstants : register(b0)
 {
     PerObjectData PerObject;
     MaterialSurfaceData Surface;
     MaterialDescriptorIndices Descriptors;
     ForwardDirectLight Direct;
-    ForwardPointLight Point;
+    ForwardPointLight Point[ForwardPointLightCapacity];
     ForwardSkyLight Sky;
+    ImageBasedLightIndices ImageBasedLight;
 };

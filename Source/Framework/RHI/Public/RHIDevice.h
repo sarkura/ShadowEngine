@@ -60,6 +60,16 @@ namespace ShadowEngine
                 uint32 Height,
                 std::string* ErrorMessage = nullptr) = 0;
 
+            virtual std::unique_ptr<RHITexture> CreateColorTarget(
+                uint32 Width,
+                uint32 Height,
+                ERHIFormat Format,
+                std::string* ErrorMessage = nullptr) = 0;
+
+            virtual std::unique_ptr<RHITexture> CreateCubeTarget(
+                uint32 FaceSize,
+                std::string* ErrorMessage = nullptr) = 0;
+
             virtual std::unique_ptr<RHITexture> CreateTexture(
                 const RHITextureDesc& Desc,
                 std::string* ErrorMessage = nullptr) = 0;
@@ -67,9 +77,17 @@ namespace ShadowEngine
             virtual std::unique_ptr<RHISampler> CreateSampler(
                 std::string* ErrorMessage = nullptr) = 0;
 
+            virtual std::unique_ptr<RHISampler> CreateClampSampler(
+                std::string* ErrorMessage = nullptr) = 0;
+
             virtual bool CreateShaderResourceView(
                 RHITexture& Texture,
                 uint32& OutIndex,
+                std::string* ErrorMessage = nullptr) = 0;
+
+            virtual bool UpdateShaderResourceView(
+                RHITexture& Texture,
+                uint32 Index,
                 std::string* ErrorMessage = nullptr) = 0;
 
             virtual std::unique_ptr<RHICommandList> CreateCommandList(

@@ -54,7 +54,10 @@ namespace ShadowEngine
     void D3D12CommandList::BeginRenderPass(
         RHITexture& RenderTarget,
         RHITexture* DepthTarget,
-        const RHIColor& ClearColor)
+        const RHIColor& ClearColor,
+        bool bClearColor,
+        bool bClearDepth,
+        uint32 ArraySlice)
     {
         auto& Texture = static_cast<D3D12Texture&>(RenderTarget);
         RenderTargetRestoreState = Texture.GetState();
@@ -68,15 +71,18 @@ namespace ShadowEngine
             Transition(*DepthTexture, D3D12_RESOURCE_STATE_DEPTH_WRITE);
         }
 
-        const D3D12_CPU_DESCRIPTOR_HANDLE RenderTargetView = Texture.GetRenderTargetView();
+        const D3D12_CPU_DESCRIPTOR_HANDLE RenderTargetView = Texture.GetRenderTargetView(ArraySlice);
         const D3D12_CPU_DESCRIPTOR_HANDLE DepthStencilView =
             DepthTexture != nullptr ? DepthTexture->GetDepthStencilView() : D3D12_CPU_DESCRIPTOR_HANDLE{};
         const D3D12_CPU_DESCRIPTOR_HANDLE* DepthStencil =
             DepthTexture != nullptr && DepthTexture->HasDepthStencil() ? &DepthStencilView : nullptr;
-        const float Color[4] = {ClearColor.R, ClearColor.G, ClearColor.B, ClearColor.A};
         CommandList->OMSetRenderTargets(1, &RenderTargetView, FALSE, DepthStencil);
-        CommandList->ClearRenderTargetView(RenderTargetView, Color, 0, nullptr);
-        if (DepthStencil != nullptr)
+        if (bClearColor)
+        {
+            const float Color[4] = {ClearColor.R, ClearColor.G, ClearColor.B, ClearColor.A};
+            CommandList->ClearRenderTargetView(RenderTargetView, Color, 0, nullptr);
+        }
+        if (bClearDepth && DepthStencil != nullptr)
         {
             CommandList->ClearDepthStencilView(
                 *DepthStencil,
@@ -86,6 +92,11 @@ namespace ShadowEngine
                 0,
                 nullptr);
         }
+    }
+
+    void D3D12CommandList::UseAsShaderResource(RHITexture& Texture)
+    {
+        Transition(static_cast<D3D12Texture&>(Texture), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     }
 
     void D3D12CommandList::EndRenderPass()

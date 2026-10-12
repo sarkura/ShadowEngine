@@ -39,6 +39,18 @@ namespace ShadowEngine
                 uint32 InHeight,
                 std::string* ErrorMessage = nullptr);
 
+            [[nodiscard]] static std::unique_ptr<D3D12Texture> CreateColorTarget(
+                ID3D12Device* Device,
+                uint32 InWidth,
+                uint32 InHeight,
+                ERHIFormat InFormat,
+                std::string* ErrorMessage = nullptr);
+
+            [[nodiscard]] static std::unique_ptr<D3D12Texture> CreateCubeTarget(
+                ID3D12Device* Device,
+                uint32 FaceSize,
+                std::string* ErrorMessage = nullptr);
+
             [[nodiscard]] uint32 GetWidth() const override;
             [[nodiscard]] uint32 GetHeight() const override;
             [[nodiscard]] uint32 GetMipCount() const override;
@@ -48,6 +60,8 @@ namespace ShadowEngine
             [[nodiscard]] D3D12_RESOURCE_STATES GetState() const;
             void SetState(D3D12_RESOURCE_STATES NewState);
             [[nodiscard]] D3D12_CPU_DESCRIPTOR_HANDLE GetRenderTargetView() const;
+            [[nodiscard]] D3D12_CPU_DESCRIPTOR_HANDLE GetRenderTargetView(uint32 Face) const;
+            [[nodiscard]] uint32 GetFaceCount() const;
             [[nodiscard]] D3D12_CPU_DESCRIPTOR_HANDLE GetDepthStencilView() const;
             [[nodiscard]] bool HasDepthStencil() const;
 
@@ -60,6 +74,8 @@ namespace ShadowEngine
             ERHIFormat Format = ERHIFormat::Unknown;
             D3D12_RESOURCE_STATES State = D3D12_RESOURCE_STATE_COMMON;
             D3D12_CPU_DESCRIPTOR_HANDLE RenderTargetView{};
+            D3D12_CPU_DESCRIPTOR_HANDLE FaceViews[6] = {};
+            uint32 FaceCount = 1;
             D3D12_CPU_DESCRIPTOR_HANDLE DepthStencilView{};
     };
 }

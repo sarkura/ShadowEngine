@@ -43,4 +43,16 @@ namespace ShadowEngine
     {
         std::vector<MaterialRendererBinding> Bindings;
     };
+
+    enum class ETextureEncoding : uint8
+    {
+        Linear,
+        sRGB
+    };
+
+    struct TextureDescription
+    {
+        std::string Source;
+        ETextureEncoding Encoding = ETextureEncoding::Linear;
+    };
 }

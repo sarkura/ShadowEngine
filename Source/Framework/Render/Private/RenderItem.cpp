@@ -25,8 +25,9 @@ namespace ShadowEngine
         RenderQueue& Queue)
     {
         Queue.Clear();
-        for (const MeshRenderProxy& MeshProxy : Proxy.Meshes)
+        for (uint32 ProxyIndex = 0; ProxyIndex < static_cast<uint32>(Proxy.Meshes.size()); ++ProxyIndex)
         {
+            const MeshRenderProxy& MeshProxy = Proxy.Meshes[ProxyIndex];
             const MeshAsset* Mesh = Assets.ResolveMesh(MeshProxy.Mesh);
             if (Mesh == nullptr)
             {
@@ -78,6 +79,7 @@ namespace ShadowEngine
                 Item.Mesh = MeshProxy.Mesh;
                 Item.Material = MaterialHandle;
                 Item.Section = SectionIndex;
+                Item.ProxyIndex = ProxyIndex;
                 std::memcpy(Item.World, MeshProxy.World, sizeof(Item.World));
                 std::memcpy(Item.NormalMatrix, MeshProxy.NormalMatrix, sizeof(Item.NormalMatrix));
                 Queue.Add(Item);
