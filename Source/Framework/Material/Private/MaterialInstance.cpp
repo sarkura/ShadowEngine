@@ -30,6 +30,32 @@ namespace ShadowEngine
         return nullptr;
     }
 
+    EMaterialSurface MaterialInstance::FindSurface(std::string_view RendererName) const
+    {
+        for (const MaterialRendererParameters& Item : Parameters)
+        {
+            if (Item.Renderer == RendererName)
+            {
+                return Item.Surface;
+            }
+        }
+
+        return EMaterialSurface::Opaque;
+    }
+
+    bool MaterialInstance::FindTwoSided(std::string_view RendererName) const
+    {
+        for (const MaterialRendererParameters& Item : Parameters)
+        {
+            if (Item.Renderer == RendererName)
+            {
+                return Item.bTwoSided;
+            }
+        }
+
+        return false;
+    }
+
     bool MaterialInstance::HasTextures() const
     {
         for (const MaterialRendererParameters& Item : Parameters)

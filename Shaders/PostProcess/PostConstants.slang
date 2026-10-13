@@ -13,13 +13,13 @@ cbuffer PostConstants : register(b0)
     float Threshold;
     float Strength;
     float CurrentWeight;
-    float Pad0;
+    float ExposureDelta;
     uint Source;
     uint Secondary;
     uint Motion;
     uint Depth;
     uint Sampler;
-    uint Pad1;
+    uint ExposureMap;
     uint Pad2;
     uint Pad3;
 };

@@ -33,5 +33,7 @@ ForwardMaterialSample EvaluateMaterial(VertexOutput Input)
     Sample.Occlusion = saturate(SampledOcclusion);
     Sample.Emissive = 0.0;
     Sample.Normal = ApplyNormalMap(Input.WorldNormal, Input.WorldPosition, Input.TexCoord, TangentNormal);
+    Sample.Opacity = 1.0;
+    Sample.CutoutThreshold = 0.0;
     return Sample;
 }

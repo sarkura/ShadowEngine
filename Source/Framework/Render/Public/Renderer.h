@@ -4,6 +4,7 @@
 #include "Framework/Render/Public/Camera.h"
 #include "Framework/Render/Public/MeshBatch.h"
 #include "Framework/Render/Public/RenderProxy.h"
+#include "Framework/Render/Public/RenderQueue.h"
 #include "Framework/RHI/Public/RHIBuffer.h"
 #include "Framework/RHI/Public/RHICommandList.h"
 #include "Framework/RHI/Public/RHIPipeline.h"
@@ -20,12 +21,13 @@
 namespace ShadowEngine
 {
     class AssetManager;
-    class RenderItemFilter;
-    class RenderQueue;
+    class RenderPass;
     class RHIDevice;
     class RHISwapChain;
     class Scene;
     class ShaderManager;
+
+    struct RenderPassContext;
 
     class Renderer : public NonCopyable
     {
@@ -44,7 +46,7 @@ namespace ShadowEngine
             void Finalize();
 
             void Sync(const Scene& InScene);
-            virtual bool RenderFrame() = 0;
+            virtual bool RenderFrame();
             bool Resize(uint32 Width, uint32 Height, std::string* ErrorMessage = nullptr);
             void UpdateCamera(float DeltaTime, float Forward, float Right, float Up, float Yaw, float Pitch);
             void SetCameraMoveSpeed(float ForwardSpeed, float RightSpeed, float UpSpeed, float DownSpeed);
@@ -65,6 +67,10 @@ namespace ShadowEngine
             }
 
             [[nodiscard]] virtual ERHIFormat GetSceneColorFormat() const;
+
+            virtual bool PrepareFrame();
+            virtual void PopulateContext(RenderPassContext& Context);
+            virtual void StoreFrameHistory();
 
             bool CollectVisibleItems(const RenderItemFilter& Filter, RenderQueue& Queue);
             void SelectVisiblePointLights(uint32 Limit, std::vector<PointLightRenderProxy>& Out) const;
@@ -89,8 +95,13 @@ namespace ShadowEngine
             RenderProxy SceneProxy;
             uint32 ConstantCapacity = 0;
             Camera ViewCamera;
+            float FrameDeltaTime = 0.0F;
+            RenderPass* FramePass = nullptr;
 
         private:
+            RenderItemFilter ItemFilter;
+            RenderQueue DrawQueue;
+
             struct ViewFrustum
             {
                 float Planes[6][4] = {};

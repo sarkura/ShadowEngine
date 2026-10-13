@@ -42,6 +42,9 @@ namespace ShadowEngine
                 !CreateFullscreenPipeline(Device, Shaders, "PostProcess/BloomExtract.slang", ERHIFormat::R16G16B16A16_Float, BloomExtractPipeline, ErrorMessage) ||
                 !CreateFullscreenPipeline(Device, Shaders, "PostProcess/BloomDownsample.slang", ERHIFormat::R16G16B16A16_Float, BloomDownsamplePipeline, ErrorMessage) ||
                 !CreateFullscreenPipeline(Device, Shaders, "PostProcess/BloomUpsample.slang", ERHIFormat::R16G16B16A16_Float, BloomUpsamplePipeline, ErrorMessage) ||
+                !CreateFullscreenPipeline(Device, Shaders, "PostProcess/ExposureLuminance.slang", ERHIFormat::R16G16B16A16_Float, ExposureLuminancePipeline, ErrorMessage) ||
+                !CreateFullscreenPipeline(Device, Shaders, "PostProcess/ExposureReduce.slang", ERHIFormat::R16G16B16A16_Float, ExposureReducePipeline, ErrorMessage) ||
+                !CreateFullscreenPipeline(Device, Shaders, "PostProcess/ExposureAdapt.slang", ERHIFormat::R16G16B16A16_Float, ExposureAdaptPipeline, ErrorMessage) ||
                 !CreateFullscreenPipeline(Device, Shaders, "PostProcess/Tonemap.slang", OutputFormat, TonemapPipeline, ErrorMessage))
             {
                 return false;
@@ -76,8 +79,12 @@ namespace ShadowEngine
             PipelineDesc.bWriteDepth = false;
             PipelineDesc.bDepthEqual = true;
             PipelineDesc.DepthFormat = ERHIFormat::D32_Float;
+            PipelineDesc.bFrontCounterClockwise = true;
+            PipelineDesc.Cull = ERHICullMode::Back;
             MeshVelocityPipeline = Device.CreateGraphicsPipeline(PipelineDesc, ErrorMessage);
-            if (MeshVelocityPipeline == nullptr)
+            PipelineDesc.Cull = ERHICullMode::None;
+            MeshVelocityTwoSidedPipeline = Device.CreateGraphicsPipeline(PipelineDesc, ErrorMessage);
+            if (MeshVelocityPipeline == nullptr || MeshVelocityTwoSidedPipeline == nullptr)
             {
                 return false;
             }
@@ -90,6 +97,17 @@ namespace ShadowEngine
             }
 
             bPipelinesReady = true;
+        }
+
+        if (ExposureLum.Texture == nullptr)
+        {
+            if (!CreateTarget(Device, ExposureLum, 16, 16, ErrorMessage) ||
+                !CreateTarget(Device, ExposureAverage, 1, 1, ErrorMessage) ||
+                !CreateTarget(Device, Exposure[0], 1, 1, ErrorMessage) ||
+                !CreateTarget(Device, Exposure[1], 1, 1, ErrorMessage))
+            {
+                return false;
+            }
         }
 
         const bool bResize = Width != InWidth || Height != InHeight || SceneColor.Texture == nullptr;
@@ -132,7 +150,9 @@ namespace ShadowEngine
             Width = InWidth;
             Height = InHeight;
             bHistoryValid = false;
+            bExposureValid = false;
             HistoryIndex = 0;
+            ExposureIndex = 0;
         }
 
         if (DepthTexture != &Depth || DepthDescriptor == 0xffffffff)
@@ -256,12 +276,15 @@ namespace ShadowEngine
         const float CameraPosition[3],
         uint32 InWidth,
         uint32 InHeight,
-        uint32 ConstantAlignment)
+        uint32 ConstantAlignment,
+        float DeltaTime)
     {
         if (SceneColor.Texture == nullptr || Motion.Texture == nullptr || CameraVelocityPipeline == nullptr ||
-            MeshVelocityPipeline == nullptr || TAAPipeline == nullptr || BloomExtractPipeline == nullptr ||
-            BloomDownsamplePipeline == nullptr || BloomUpsamplePipeline == nullptr || TonemapPipeline == nullptr ||
-            ClampSampler == nullptr)
+            MeshVelocityPipeline == nullptr || MeshVelocityTwoSidedPipeline == nullptr || TAAPipeline == nullptr ||
+            BloomExtractPipeline == nullptr ||
+            BloomDownsamplePipeline == nullptr || BloomUpsamplePipeline == nullptr ||
+            ExposureLuminancePipeline == nullptr || ExposureReducePipeline == nullptr || ExposureAdaptPipeline == nullptr ||
+            TonemapPipeline == nullptr || ClampSampler == nullptr || ExposureLum.Texture == nullptr)
         {
             Log::Error("Forward post process is not ready");
             return false;
@@ -291,7 +314,6 @@ namespace ShadowEngine
         Commands.BeginRenderPass(*Motion.Texture, &Depth, {}, false, false);
         Commands.SetViewport({0.0F, 0.0F, static_cast<float>(InWidth), static_cast<float>(InHeight), 0.0F, 1.0F});
         Commands.SetScissor({0, 0, static_cast<int32>(InWidth), static_cast<int32>(InHeight)});
-        Commands.SetPipeline(*MeshVelocityPipeline);
         Commands.BindShaderResources();
         for (uint32 Index = 0; Index < static_cast<uint32>(Items.size()); ++Index)
         {
@@ -303,6 +325,7 @@ namespace ShadowEngine
                 return false;
             }
 
+            Commands.SetPipeline(*(Batch->bTwoSided ? MeshVelocityTwoSidedPipeline : MeshVelocityPipeline));
             Commands.SetVertexBuffer(*Batch->VertexBuffer);
             Commands.SetIndexBuffer(*Batch->IndexBuffer);
             Commands.SetConstantBuffer(ObjectConstants, Index * ConstantAlignment);
@@ -322,6 +345,42 @@ namespace ShadowEngine
             return false;
         }
         Commands.UseAsShaderResource(*History[WriteIndex].Texture);
+
+        Constants.Source = History[WriteIndex].Descriptor;
+        Constants.DestSize[0] = static_cast<float>(ExposureLum.Width);
+        Constants.DestSize[1] = static_cast<float>(ExposureLum.Height);
+        if (!DrawFullscreen(
+                Commands,
+                *ExposureLum.Texture,
+                *ExposureLuminancePipeline,
+                ExposureLum.Width,
+                ExposureLum.Height,
+                Constants))
+        {
+            return false;
+        }
+        Commands.UseAsShaderResource(*ExposureLum.Texture);
+
+        Constants.Source = ExposureLum.Descriptor;
+        Constants.DestSize[0] = 1.0F;
+        Constants.DestSize[1] = 1.0F;
+        if (!DrawFullscreen(Commands, *ExposureAverage.Texture, *ExposureReducePipeline, 1, 1, Constants))
+        {
+            return false;
+        }
+        Commands.UseAsShaderResource(*ExposureAverage.Texture);
+
+        Commands.UseAsShaderResource(*Exposure[ExposureIndex].Texture);
+        const uint32 ExposureWrite = ExposureIndex ^ 1u;
+        Constants.Source = ExposureAverage.Descriptor;
+        Constants.Secondary = Exposure[ExposureIndex].Descriptor;
+        Constants.CurrentWeight = bExposureValid ? 0.0F : 1.0F;
+        Constants.ExposureDelta = DeltaTime;
+        if (!DrawFullscreen(Commands, *Exposure[ExposureWrite].Texture, *ExposureAdaptPipeline, 1, 1, Constants))
+        {
+            return false;
+        }
+        Commands.UseAsShaderResource(*Exposure[ExposureWrite].Texture);
 
         Constants.Source = History[WriteIndex].Descriptor;
         Constants.Threshold = 1.0F;
@@ -380,7 +439,7 @@ namespace ShadowEngine
         Constants.Source = History[WriteIndex].Descriptor;
         Constants.Secondary = BloomUp[0].Descriptor;
         Constants.Strength = 0.08F;
-        Constants.CurrentWeight = 1.0F;
+        Constants.ExposureMap = Exposure[ExposureWrite].Descriptor;
         Constants.DestSize[0] = static_cast<float>(InWidth);
         Constants.DestSize[1] = static_cast<float>(InHeight);
         if (!DrawFullscreen(Commands, BackBuffer, *TonemapPipeline, InWidth, InHeight, Constants))
@@ -389,7 +448,9 @@ namespace ShadowEngine
         }
 
         HistoryIndex = WriteIndex;
+        ExposureIndex = ExposureWrite;
         bHistoryValid = true;
+        bExposureValid = true;
         return true;
     }
 }

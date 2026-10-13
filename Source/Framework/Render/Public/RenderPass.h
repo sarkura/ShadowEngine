@@ -2,6 +2,7 @@
 
 #include "Framework/Common/Public/NonCopyable.h"
 #include "Framework/Render/Public/Camera.h"
+#include "Framework/Render/Public/ForwardShadows.h"
 #include "Framework/Render/Public/MeshBatch.h"
 #include "Framework/Render/Public/RenderQueue.h"
 #include "Framework/RHI/Public/RHISampler.h"
@@ -40,12 +41,17 @@ namespace ShadowEngine
         const SkyLightRenderProxy* SkyLight = nullptr;
         RHIPipeline* SkyPipeline = nullptr;
         RHIPipeline* DepthPrepassPipeline = nullptr;
+        RHIPipeline* DepthPrepassTwoSidedPipeline = nullptr;
         RHIBuffer* SkyConstants = nullptr;
         const struct ImageBasedLightBinding* ImageBasedLight = nullptr;
+        const ForwardShadowBinding* Shadow = nullptr;
+        ForwardShadows* Shadows = nullptr;
+        const std::vector<MeshRenderProxy>* ShadowCasters = nullptr;
         uint32 EnvironmentDescriptor = 0;
         uint32 EnvironmentSampler = 0;
         RHITexture* SceneColor = nullptr;
         class PostProcess* Post = nullptr;
+        float FrameDeltaTime = 0.0F;
         float ProjectionJitterX = 0.0F;
         float ProjectionJitterY = 0.0F;
         const float* PreviousViewProjection = nullptr;

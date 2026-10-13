@@ -94,6 +94,24 @@ namespace ShadowEngine
         }
     }
 
+    void D3D12CommandList::BeginDepthPass(RHITexture& DepthTarget, bool bClearDepth, uint32 ArraySlice)
+    {
+        auto& Texture = static_cast<D3D12Texture&>(DepthTarget);
+        Transition(Texture, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+        const D3D12_CPU_DESCRIPTOR_HANDLE DepthStencilView = Texture.GetDepthStencilView(ArraySlice);
+        CommandList->OMSetRenderTargets(0, nullptr, FALSE, &DepthStencilView);
+        if (bClearDepth)
+        {
+            CommandList->ClearDepthStencilView(
+                DepthStencilView,
+                D3D12_CLEAR_FLAG_DEPTH,
+                1.0F,
+                0,
+                0,
+                nullptr);
+        }
+    }
+
     void D3D12CommandList::UseAsShaderResource(RHITexture& Texture)
     {
         Transition(static_cast<D3D12Texture&>(Texture), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);

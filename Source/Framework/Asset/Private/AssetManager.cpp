@@ -723,6 +723,8 @@ namespace ShadowEngine
 
             MaterialRendererParameters ParameterSet;
             ParameterSet.Renderer = Binding.Renderer;
+            ParameterSet.Surface = Binding.Surface;
+            ParameterSet.bTwoSided = Binding.bTwoSided;
             if (!MaterialParameter::BuildBlock(Binding, ParameterSet.Parameters, ErrorMessage))
             {
                 return {};

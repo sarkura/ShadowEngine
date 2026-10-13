@@ -1,5 +1,6 @@
 #include "Framework/Render/Public/ForwardRenderPass.h"
 
+#include "Framework/Render/Public/ForwardShadows.h"
 #include "Framework/Render/Public/ImageBasedLighting.h"
 #include "Framework/Render/Public/PostProcess.h"
 #include "Framework/Render/Public/SkyBackground.h"
@@ -70,6 +71,52 @@ namespace ShadowEngine
                 Write("BrdfSampler", Binding.BrdfSampler);
         }
 
+        bool WriteShadowUniform(uint8* Destination, const RHIPipelineLayout& Layout, const char* Name, const float Value[4])
+        {
+            for (const RHIPipelineLayout::Uniform& Uniform : Layout.Uniforms)
+            {
+                if (Uniform.Name == Name)
+                {
+                    Layout.WriteUniform(Destination, Name, Value);
+                    return true;
+                }
+            }
+
+            Log::Error("Shadow binding {} is missing from the constant layout", Name);
+            return false;
+        }
+
+        bool WriteShadow(uint8* Destination, const RHIPipelineLayout& Layout, const ForwardShadowBinding& Binding)
+        {
+            const float Settings[4] = {Binding.Settings[0], Binding.Settings[1], Binding.Settings[2], Binding.Settings[3]};
+            if (!WriteShadowUniform(Destination, Layout, "ForwardShadow.DirectRow0", Binding.DirectRow[0]) ||
+                !WriteShadowUniform(Destination, Layout, "ForwardShadow.DirectRow1", Binding.DirectRow[1]) ||
+                !WriteShadowUniform(Destination, Layout, "ForwardShadow.DirectRow2", Binding.DirectRow[2]) ||
+                !WriteShadowUniform(Destination, Layout, "ForwardShadow.DirectRow3", Binding.DirectRow[3]) ||
+                !WriteShadowUniform(Destination, Layout, "ForwardShadow.Settings", Settings))
+            {
+                return false;
+            }
+
+            const auto Write = [&](const char* Name, uint32 Index) -> bool
+            {
+                if (Layout.WriteDescriptorIndex(Destination, Name, Index))
+                {
+                    return true;
+                }
+
+                Log::Error("Shadow binding {} is missing from the constant layout", Name);
+                return false;
+            };
+
+            return Write("DirectMap", Binding.DirectMap) &&
+                Write("PointMap0", Binding.PointMap[0]) &&
+                Write("PointMap1", Binding.PointMap[1]) &&
+                Write("PointMap2", Binding.PointMap[2]) &&
+                Write("PointMap3", Binding.PointMap[3]) &&
+                Write("ComparisonSampler", Binding.ComparisonSampler);
+        }
+
         struct GpuObjectConstants
         {
             float ViewProjection[16];
@@ -92,7 +139,9 @@ namespace ShadowEngine
             Context.Shaders == nullptr || Context.View == nullptr || Context.Batches == nullptr ||
             Context.TextureDescriptors == nullptr || Context.Samplers == nullptr ||
             Context.PointLights == nullptr || Context.SceneColor == nullptr ||
-            Context.DepthPrepassPipeline == nullptr || Context.ImageBasedLight == nullptr || Context.Post == nullptr)
+            Context.DepthPrepassPipeline == nullptr || Context.DepthPrepassTwoSidedPipeline == nullptr ||
+            Context.ImageBasedLight == nullptr || Context.Post == nullptr ||
+            Context.Shadow == nullptr || Context.Shadows == nullptr || Context.ShadowCasters == nullptr)
         {
             return false;
         }
@@ -285,7 +334,17 @@ namespace ShadowEngine
                 }
                 Batch->Layout.WriteUniform(Destination, "ForwardSkyLight.Color", SkyColor);
                 Batch->Layout.WriteDescriptors(Destination, TextureIndices, SamplerDescriptor);
-                if (!WriteImageBasedLight(Destination, Batch->Layout, *Context.ImageBasedLight))
+                ForwardShadowBinding ShadowBinding = *Context.Shadow;
+                if (Batch->Surface == EMaterialSurface::Translucent)
+                {
+                    ShadowBinding.DirectMap = InvalidShaderDescriptor;
+                    for (uint32& PointMap : ShadowBinding.PointMap)
+                    {
+                        PointMap = InvalidShaderDescriptor;
+                    }
+                }
+                if (!WriteImageBasedLight(Destination, Batch->Layout, *Context.ImageBasedLight) ||
+                    !WriteShadow(Destination, Batch->Layout, ShadowBinding))
                 {
                     return false;
                 }
@@ -298,19 +357,77 @@ namespace ShadowEngine
         }
 
         Context.CommandList->Begin();
+        if (!Context.Shadows->Record(*Context.CommandList, *Context.Batches, *Context.ShadowCasters))
+        {
+            Context.CommandList->End();
+            return false;
+        }
         const RHIRect Window{
             0,
             0,
             static_cast<int32>(Context.SwapChain->GetWidth()),
             static_cast<int32>(Context.SwapChain->GetHeight())};
-        Context.CommandList->BeginRenderPass(*Context.SceneColor, Context.DepthBuffer, Context.ClearColor, false, true);
-        Context.CommandList->SetViewport({0.0F, 0.0F, Width, Height, 0.0F, 1.0F});
-        Context.CommandList->SetScissor(Window);
-        Context.CommandList->SetPipeline(*Context.DepthPrepassPipeline);
-        Context.CommandList->BindShaderResources();
+        std::vector<uint32> DepthItems;
+        std::vector<uint32> TranslucentItems;
+        DepthItems.reserve(Items.size());
+        TranslucentItems.reserve(Items.size());
         for (uint32 Index = 0; Index < static_cast<uint32>(Items.size()); ++Index)
         {
             const MeshBatch* Batch = FindMeshBatch(*Context.Batches, Items[Index].Mesh, Items[Index].Section);
+            if (Batch->Surface == EMaterialSurface::Translucent)
+            {
+                TranslucentItems.push_back(Index);
+            }
+            else
+            {
+                DepthItems.push_back(Index);
+            }
+        }
+        const auto SurfaceDistance = [&](uint32 Index) -> float
+        {
+            const float* World = Items[Index].World;
+            const float OffsetX = World[12] - CameraPosition.x;
+            const float OffsetY = World[13] - CameraPosition.y;
+            const float OffsetZ = World[14] - CameraPosition.z;
+            return OffsetX * OffsetX + OffsetY * OffsetY + OffsetZ * OffsetZ;
+        };
+        std::stable_sort(TranslucentItems.begin(), TranslucentItems.end(), [&](uint32 Left, uint32 Right)
+        {
+            return SurfaceDistance(Left) > SurfaceDistance(Right);
+        });
+        const auto DrawShaded = [&](uint32 Index)
+        {
+            const MeshBatch* Batch = FindMeshBatch(*Context.Batches, Items[Index].Mesh, Items[Index].Section);
+            Context.CommandList->SetPipeline(*Batch->Pipeline);
+            Context.CommandList->BindShaderResources();
+            Context.CommandList->SetVertexBuffer(*Batch->VertexBuffer);
+            Context.CommandList->SetIndexBuffer(*Batch->IndexBuffer);
+            Context.CommandList->SetConstantBuffer(*Context.ConstantBuffer, Index * Context.ConstantAlignment);
+            Context.CommandList->DrawIndexed(Batch->IndexCount);
+        };
+
+        Context.CommandList->BeginRenderPass(*Context.SceneColor, Context.DepthBuffer, Context.ClearColor, false, true);
+        Context.CommandList->SetViewport({0.0F, 0.0F, Width, Height, 0.0F, 1.0F});
+        Context.CommandList->SetScissor(Window);
+        for (const uint32 Index : DepthItems)
+        {
+            const MeshBatch* Batch = FindMeshBatch(*Context.Batches, Items[Index].Mesh, Items[Index].Section);
+            RHIPipeline* DepthPipeline = Batch->bTwoSided ? Context.DepthPrepassTwoSidedPipeline : Context.DepthPrepassPipeline;
+            if (Batch->Surface == EMaterialSurface::Cutout)
+            {
+                if (Batch->DepthPipeline == nullptr)
+                {
+                    Log::Error("Cutout material is missing its depth pipeline");
+                    Context.CommandList->EndRenderPass();
+                    Context.CommandList->End();
+                    return false;
+                }
+
+                DepthPipeline = Batch->DepthPipeline.get();
+            }
+
+            Context.CommandList->SetPipeline(*DepthPipeline);
+            Context.CommandList->BindShaderResources();
             Context.CommandList->SetVertexBuffer(*Batch->VertexBuffer);
             Context.CommandList->SetIndexBuffer(*Batch->IndexBuffer);
             Context.CommandList->SetConstantBuffer(*Context.ConstantBuffer, Index * Context.ConstantAlignment);
@@ -326,15 +443,13 @@ namespace ShadowEngine
             Context.CommandList->End();
             return false;
         }
-        for (uint32 Index = 0; Index < static_cast<uint32>(Items.size()); ++Index)
+        for (const uint32 Index : DepthItems)
         {
-            const MeshBatch* Batch = FindMeshBatch(*Context.Batches, Items[Index].Mesh, Items[Index].Section);
-            Context.CommandList->SetPipeline(*Batch->Pipeline);
-            Context.CommandList->BindShaderResources();
-            Context.CommandList->SetVertexBuffer(*Batch->VertexBuffer);
-            Context.CommandList->SetIndexBuffer(*Batch->IndexBuffer);
-            Context.CommandList->SetConstantBuffer(*Context.ConstantBuffer, Index * Context.ConstantAlignment);
-            Context.CommandList->DrawIndexed(Batch->IndexCount);
+            DrawShaded(Index);
+        }
+        for (const uint32 Index : TranslucentItems)
+        {
+            DrawShaded(Index);
         }
         Context.CommandList->EndRenderPass();
 
@@ -356,7 +471,8 @@ namespace ShadowEngine
                 CameraPositionValues,
                 Context.SwapChain->GetWidth(),
                 Context.SwapChain->GetHeight(),
-                Context.ConstantAlignment))
+                Context.ConstantAlignment,
+                Context.FrameDeltaTime))
         {
             Context.CommandList->End();
             return false;

@@ -108,6 +108,23 @@ namespace ShadowEngine
         return CompileRecord(Records[Handle.Index], ErrorMessage);
     }
 
+    bool ShaderManager::GetCompileInputs(ShaderHandle Handle, ShaderCompileInputs& Out) const
+    {
+        if (!Handle.IsValid() || Handle.Index >= Records.size())
+        {
+            return false;
+        }
+
+        const ShaderRecord& Record = Records[Handle.Index];
+        Out.VertexPath = Record.VertexPath;
+        Out.PixelPath = Record.PixelPath;
+        Out.MaterialPath = Record.MaterialPath;
+        Out.LightPath = Record.LightPath;
+        Out.DescriptorFields = Record.DescriptorFields;
+        Out.ScalarFields = Record.ScalarFields;
+        return true;
+    }
+
     bool ShaderManager::LoadShaders(RHIDevice& Device, ShaderHandle Handle, std::string* ErrorMessage)
     {
         if (!bFormatSet)

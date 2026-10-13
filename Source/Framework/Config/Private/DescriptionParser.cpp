@@ -19,13 +19,21 @@ namespace ShadowEngine
             MaterialRendererBinding& Binding,
             std::string* ErrorMessage)
         {
-            const char* const AllowedMembers[] = {"Vertex", "Fragment", "Material", "Light", "Parameters"};
+            const bool bForward = std::string_view(RendererName) == "ForwardRenderer";
+            const char* AllowedMembers[7] = {"Vertex", "Fragment", "Material", "Light", "Parameters", nullptr, nullptr};
+            uint32 AllowedCount = 5;
+            if (bForward)
+            {
+                AllowedMembers[5] = "Surface";
+                AllowedMembers[6] = "TwoSided";
+                AllowedCount = 7;
+            }
             for (auto Member = Object.MemberBegin(); Member != Object.MemberEnd(); ++Member)
             {
                 bool bKnown = false;
-                for (const char* Name : AllowedMembers)
+                for (uint32 Index = 0; Index < AllowedCount; ++Index)
                 {
-                    if (Member->name == Name)
+                    if (Member->name == AllowedMembers[Index])
                     {
                         bKnown = true;
                         break;
@@ -41,9 +49,17 @@ namespace ShadowEngine
                 }
             }
 
-            const char* const RequiredMembers[] = {"Vertex", "Fragment", "Material", "Parameters"};
-            for (const char* Name : RequiredMembers)
+            const char* RequiredMembers[6] = {"Vertex", "Fragment", "Material", "Parameters", nullptr, nullptr};
+            uint32 RequiredCount = 4;
+            if (bForward)
             {
+                RequiredMembers[4] = "Surface";
+                RequiredMembers[5] = "TwoSided";
+                RequiredCount = 6;
+            }
+            for (uint32 Index = 0; Index < RequiredCount; ++Index)
+            {
+                const char* Name = RequiredMembers[Index];
                 if (!Object.HasMember(Name))
                 {
                     SetErrorMessage(
@@ -95,6 +111,45 @@ namespace ShadowEngine
                 }
 
                 Binding.LightShader = LightShader.GetString();
+            }
+            if (bForward)
+            {
+                const rapidjson::Value& Surface = Object["Surface"];
+                if (!Surface.IsString())
+                {
+                    SetErrorMessage(ErrorMessage, "ForwardRenderer Surface must be a string: " + FilePath.generic_string());
+                    return false;
+                }
+
+                const std::string_view SurfaceName = Surface.GetString();
+                if (SurfaceName == "Opaque")
+                {
+                    Binding.Surface = EMaterialSurface::Opaque;
+                }
+                else if (SurfaceName == "Cutout")
+                {
+                    Binding.Surface = EMaterialSurface::Cutout;
+                }
+                else if (SurfaceName == "Translucent")
+                {
+                    Binding.Surface = EMaterialSurface::Translucent;
+                }
+                else
+                {
+                    SetErrorMessage(
+                        ErrorMessage,
+                        "ForwardRenderer Surface must be Opaque, Cutout, or Translucent: " + FilePath.generic_string());
+                    return false;
+                }
+
+                const rapidjson::Value& TwoSided = Object["TwoSided"];
+                if (!TwoSided.IsBool())
+                {
+                    SetErrorMessage(ErrorMessage, "ForwardRenderer TwoSided must be a boolean: " + FilePath.generic_string());
+                    return false;
+                }
+
+                Binding.bTwoSided = TwoSided.GetBool();
             }
             if (Parameters.MemberCount() == 0)
             {

@@ -19,5 +19,7 @@ ForwardMaterialSample EvaluateMaterial(VertexOutput Input)
     Sample.Occlusion = 1.0;
     Sample.Emissive = 0.0;
     Sample.Normal = normalize(Input.WorldNormal);
+    Sample.Opacity = 1.0;
+    Sample.CutoutThreshold = 0.0;
     return Sample;
 }

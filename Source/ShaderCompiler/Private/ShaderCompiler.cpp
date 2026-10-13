@@ -363,7 +363,8 @@ namespace ShadowEngine
 
             const uint32 Offset = BaseOffset + static_cast<uint32>(FieldOffset);
             const bool bPointLight = ParentType == "ForwardPointLight" || ParentType.rfind("ForwardPointLight[", 0) == 0;
-            const bool bLight = ParentType == "ForwardDirectLight" || ParentType == "ForwardSkyLight" || bPointLight;
+            const bool bLight = ParentType == "ForwardDirectLight" || ParentType == "ForwardSkyLight" ||
+                ParentType == "ForwardShadow" || bPointLight;
             if (bLight && IsFloatVector(Api, Type, 4))
             {
                 ShaderBinding Binding;
@@ -410,7 +411,8 @@ namespace ShadowEngine
             }
 
             const bool bDescriptorStruct =
-                ParentType == "MaterialDescriptorIndices" || ParentType == "ImageBasedLightIndices";
+                ParentType == "MaterialDescriptorIndices" || ParentType == "ImageBasedLightIndices" ||
+                ParentType == "ForwardShadowIndices";
             if (!IsUInt(Api, Type) || !bDescriptorStruct)
             {
                 return;
@@ -425,7 +427,7 @@ namespace ShadowEngine
             Binding.Offset = Offset;
             Binding.Size = 4;
             Binding.Name = Name;
-            if (ParentType == "ImageBasedLightIndices")
+            if (ParentType == "ImageBasedLightIndices" || ParentType == "ForwardShadowIndices")
             {
                 Binding.Kind = EShaderBindingKind::ResourceIndex;
             }

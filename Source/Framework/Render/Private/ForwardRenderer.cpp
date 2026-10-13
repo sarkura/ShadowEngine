@@ -31,18 +31,13 @@ namespace ShadowEngine
         }
     }
 
-    bool ForwardRenderer::RenderFrame()
+    ForwardRenderer::ForwardRenderer()
     {
-        if (Assets == nullptr || ShaderLibrary == nullptr || Device == nullptr || SwapChain == nullptr || DepthBuffer == nullptr)
-        {
-            return false;
-        }
+        FramePass = &Pass;
+    }
 
-        if (!CollectVisibleItems(ItemFilter, DrawQueue))
-        {
-            return false;
-        }
-
+    bool ForwardRenderer::PrepareFrame()
+    {
         std::string Error;
         if (DepthPrepassPipeline == nullptr)
         {
@@ -77,8 +72,12 @@ namespace ShadowEngine
             PipelineDesc.bDepthEqual = false;
             PipelineDesc.bWriteColor = false;
             PipelineDesc.DepthFormat = ERHIFormat::D32_Float;
+            PipelineDesc.bFrontCounterClockwise = true;
+            PipelineDesc.Cull = ERHICullMode::Back;
             DepthPrepassPipeline = Device->CreateGraphicsPipeline(PipelineDesc, &Error);
-            if (DepthPrepassPipeline == nullptr)
+            PipelineDesc.Cull = ERHICullMode::None;
+            DepthPrepassTwoSidedPipeline = Device->CreateGraphicsPipeline(PipelineDesc, &Error);
+            if (DepthPrepassPipeline == nullptr || DepthPrepassTwoSidedPipeline == nullptr)
             {
                 Log::Error("{}", Error);
                 return false;
@@ -122,59 +121,63 @@ namespace ShadowEngine
             return false;
         }
 
-        const float JitterX = Halton(FrameIndex, 2) - 0.5F;
-        const float JitterY = Halton(FrameIndex, 3) - 0.5F;
+        if (!Shadows.Ensure(*Device, *ShaderLibrary, &Error))
+        {
+            Log::Error("{}", Error);
+            return false;
+        }
+
+        ProjectionJitterX = Halton(FrameIndex, 2) - 0.5F;
+        ProjectionJitterY = Halton(FrameIndex, 3) - 0.5F;
         ++FrameIndex;
         if (FrameIndex == 0)
         {
             FrameIndex = 1;
         }
 
-        RenderPassContext Context;
-        Context.Device = Device;
-        Context.SwapChain = SwapChain;
-        Context.CommandList = CommandList.get();
-        Context.ConstantBuffer = ConstantBuffer.get();
-        Context.DepthBuffer = DepthBuffer.get();
-        Context.Assets = Assets;
-        Context.Shaders = ShaderLibrary;
-        Context.View = &ViewCamera;
-        Context.Batches = &MeshBatches;
-        Context.TextureDescriptors = &TextureDescriptors;
-        Context.Samplers = &GpuSamplers;
-        std::vector<PointLightRenderProxy> VisiblePointLights;
         SelectVisiblePointLights(ForwardPointLightLimit, VisiblePointLights);
-        Context.DirectLight = SceneProxy.bHasDirectLight ? &SceneProxy.DirectLight : nullptr;
+        const DirectLightRenderProxy* DirectLight = SceneProxy.bHasDirectLight ? &SceneProxy.DirectLight : nullptr;
+        if (!Shadows.Prepare(MeshBatches, SceneProxy.Meshes, *Assets, DirectLight, VisiblePointLights, &Error))
+        {
+            Log::Error("{}", Error);
+            return false;
+        }
+
+        return true;
+    }
+
+    void ForwardRenderer::PopulateContext(RenderPassContext& Context)
+    {
+        Renderer::PopulateContext(Context);
         Context.PointLights = &VisiblePointLights;
         Context.SkyLight = SceneProxy.bHasSkyLight ? &SceneProxy.SkyLight : nullptr;
+        Context.Shadow = &Shadows.GetBinding();
+        Context.Shadows = &Shadows;
+        Context.ShadowCasters = &SceneProxy.Meshes;
         Context.SkyPipeline = SkyPipeline.get();
         Context.DepthPrepassPipeline = DepthPrepassPipeline.get();
+        Context.DepthPrepassTwoSidedPipeline = DepthPrepassTwoSidedPipeline.get();
         Context.SkyConstants = SkyConstantBuffer.get();
         Context.ImageBasedLight = &Lighting.GetBinding();
         Context.EnvironmentDescriptor = EnvironmentDescriptor;
         Context.EnvironmentSampler = EnvironmentSampler;
         Context.SceneColor = Post.GetSceneColor();
         Context.Post = &Post;
-        Context.ProjectionJitterX = JitterX;
-        Context.ProjectionJitterY = JitterY;
+        Context.ProjectionJitterX = ProjectionJitterX;
+        Context.ProjectionJitterY = ProjectionJitterY;
         Context.PreviousViewProjection = bHasPrevious ? PreviousViewProjection : nullptr;
         Context.PreviousWorlds = bHasPrevious ? &PreviousWorlds : nullptr;
         Context.StoredViewProjection = PreviousViewProjection;
-        Context.ClearColor = ClearColor;
-        Context.ConstantCapacity = ConstantCapacity;
-        Context.ConstantAlignment = ConstantAlignment;
-        if (!Pass.Execute(DrawQueue, Context))
-        {
-            return false;
-        }
+    }
 
+    void ForwardRenderer::StoreFrameHistory()
+    {
         PreviousWorlds.resize(SceneProxy.Meshes.size() * 16);
         for (size_t Index = 0; Index < SceneProxy.Meshes.size(); ++Index)
         {
             std::memcpy(PreviousWorlds.data() + Index * 16, SceneProxy.Meshes[Index].World, sizeof(float) * 16);
         }
         bHasPrevious = true;
-        return true;
     }
 
     const char* ForwardRenderer::GetName() const

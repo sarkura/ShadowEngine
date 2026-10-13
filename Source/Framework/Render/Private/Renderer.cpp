@@ -7,6 +7,7 @@
 #include "Framework/Material/Public/Material.h"
 #include "Framework/Material/Public/MaterialInstance.h"
 #include "Framework/Material/Public/MaterialParameter.h"
+#include "Framework/Render/Public/RenderPass.h"
 #include "Framework/Render/Public/RenderQueue.h"
 #include "Framework/RHI/Public/RHIDevice.h"
 #include "Framework/RHI/Public/RHIPipelineLayout.h"
@@ -22,7 +23,10 @@
 #include <glm/vec4.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
+#include <cstring>
+#include <map>
 #include <limits>
 #include <span>
 #include <string>
@@ -202,6 +206,64 @@ namespace ShadowEngine
     Renderer::~Renderer()
     {
         Finalize();
+    }
+
+    bool Renderer::RenderFrame()
+    {
+        if (Assets == nullptr || ShaderLibrary == nullptr || Device == nullptr || SwapChain == nullptr ||
+            DepthBuffer == nullptr || CommandList == nullptr || ConstantBuffer == nullptr || FramePass == nullptr)
+        {
+            return false;
+        }
+
+        if (!CollectVisibleItems(ItemFilter, DrawQueue))
+        {
+            return false;
+        }
+
+        if (!PrepareFrame())
+        {
+            return false;
+        }
+
+        RenderPassContext Context;
+        PopulateContext(Context);
+        if (!FramePass->Execute(DrawQueue, Context))
+        {
+            return false;
+        }
+
+        StoreFrameHistory();
+        return true;
+    }
+
+    bool Renderer::PrepareFrame()
+    {
+        return true;
+    }
+
+    void Renderer::PopulateContext(RenderPassContext& Context)
+    {
+        Context.Device = Device;
+        Context.SwapChain = SwapChain;
+        Context.CommandList = CommandList.get();
+        Context.ConstantBuffer = ConstantBuffer.get();
+        Context.DepthBuffer = DepthBuffer.get();
+        Context.Assets = Assets;
+        Context.Shaders = ShaderLibrary;
+        Context.View = &ViewCamera;
+        Context.Batches = &MeshBatches;
+        Context.TextureDescriptors = &TextureDescriptors;
+        Context.Samplers = &GpuSamplers;
+        Context.DirectLight = SceneProxy.bHasDirectLight ? &SceneProxy.DirectLight : nullptr;
+        Context.ClearColor = ClearColor;
+        Context.ConstantCapacity = ConstantCapacity;
+        Context.ConstantAlignment = ConstantAlignment;
+        Context.FrameDeltaTime = FrameDeltaTime;
+    }
+
+    void Renderer::StoreFrameHistory()
+    {
     }
 
     ERHIFormat Renderer::GetSceneColorFormat() const
@@ -421,6 +483,8 @@ namespace ShadowEngine
             }
 
             Batch.Layout = RHIPipelineLayout::FromReflection(*VertexReflection, *PixelReflection);
+            Batch.Surface = Instance->FindSurface(GetName());
+            Batch.bTwoSided = Instance->FindTwoSided(GetName());
 
             RHIGraphicsPipelineDesc PipelineDesc;
             PipelineDesc.VertexShader = Batch.VertexShader;
@@ -430,16 +494,41 @@ namespace ShadowEngine
             PipelineDesc.Topology = ERHIPrimitiveTopology::TriangleList;
             PipelineDesc.InputLayout = InputLayout;
             PipelineDesc.bEnableDepth = true;
+            PipelineDesc.Cull = Batch.bTwoSided ? ERHICullMode::None : ERHICullMode::Back;
+            PipelineDesc.bFrontCounterClockwise = true;
             if (UsesDepthPrepass())
             {
                 PipelineDesc.bWriteDepth = false;
-                PipelineDesc.bDepthEqual = true;
                 PipelineDesc.DepthFormat = ERHIFormat::D32_Float;
+                if (Batch.Surface == EMaterialSurface::Translucent)
+                {
+                    PipelineDesc.bDepthLessEqual = true;
+                    PipelineDesc.bAlphaBlend = true;
+                }
+                else
+                {
+                    PipelineDesc.bDepthEqual = true;
+                }
             }
             Batch.Pipeline = Device->CreateGraphicsPipeline(PipelineDesc, ErrorMessage);
             if (Batch.Pipeline == nullptr)
             {
                 return false;
+            }
+
+            if (UsesDepthPrepass() && Batch.Surface == EMaterialSurface::Cutout)
+            {
+                RHIGraphicsPipelineDesc DepthDesc = PipelineDesc;
+                DepthDesc.bWriteColor = false;
+                DepthDesc.bWriteDepth = true;
+                DepthDesc.bDepthEqual = false;
+                DepthDesc.bDepthLessEqual = false;
+                DepthDesc.bAlphaBlend = false;
+                Batch.DepthPipeline = Device->CreateGraphicsPipeline(DepthDesc, ErrorMessage);
+                if (Batch.DepthPipeline == nullptr)
+                {
+                    return false;
+                }
             }
 
             const MaterialParameterBlock* Parameter = Instance->FindParameters(GetName());
@@ -463,6 +552,108 @@ namespace ShadowEngine
             if (Textures.Sampler.IsValid() && UploadSampler(Textures.Sampler, ErrorMessage) == nullptr)
             {
                 return false;
+            }
+
+            if (UsesDepthPrepass() && Batch.Surface == EMaterialSurface::Cutout)
+            {
+                const auto CreateCutoutShadowPipeline = [&](const char* PixelPath) -> std::unique_ptr<RHIPipeline>
+                {
+                    ShaderCompileInputs Inputs;
+                    if (!Shaders.GetCompileInputs(*Shader, Inputs) || Inputs.MaterialPath.empty())
+                    {
+                        SetErrorMessage(ErrorMessage, "Cutout shadow shader is missing its material: " + Mesh.GetPath().generic_string());
+                        return nullptr;
+                    }
+
+                    const ShaderHandle ShadowShader = Shaders.Register(
+                        Inputs.VertexPath,
+                        PixelPath,
+                        Inputs.MaterialPath,
+                        {},
+                        Inputs.DescriptorFields,
+                        Inputs.ScalarFields);
+                    if (!ShadowShader.IsValid() || !Shaders.LoadShaders(*Device, ShadowShader, ErrorMessage))
+                    {
+                        return nullptr;
+                    }
+
+                    const ShaderReflection* ShadowVertex = Shaders.GetReflection(ShadowShader, ERHIShaderStage::Vertex);
+                    const ShaderReflection* ShadowPixel = Shaders.GetReflection(ShadowShader, ERHIShaderStage::Pixel);
+                    if (ShadowVertex == nullptr || ShadowPixel == nullptr)
+                    {
+                        SetErrorMessage(ErrorMessage, "Cutout shadow reflection is missing: " + Mesh.GetPath().generic_string());
+                        return nullptr;
+                    }
+
+                    const RHIPipelineLayout ShadowLayout = RHIPipelineLayout::FromReflection(*ShadowVertex, *ShadowPixel);
+                    RHIGraphicsPipelineDesc ShadowDesc;
+                    ShadowDesc.VertexShader = Shaders.GetVertexShader(ShadowShader);
+                    ShadowDesc.PixelShader = Shaders.GetPixelShader(ShadowShader);
+                    ShadowDesc.Layout = &ShadowLayout;
+                    ShadowDesc.RenderTargetFormat = ERHIFormat::Unknown;
+                    ShadowDesc.Topology = ERHIPrimitiveTopology::TriangleList;
+                    ShadowDesc.InputLayout = InputLayout;
+                    ShadowDesc.bEnableDepth = true;
+                    ShadowDesc.bWriteDepth = true;
+                    ShadowDesc.bWriteColor = false;
+                    ShadowDesc.DepthFormat = ERHIFormat::D32_Float;
+                    ShadowDesc.Cull = PipelineDesc.Cull;
+                    ShadowDesc.bFrontCounterClockwise = true;
+                    return Device->CreateGraphicsPipeline(ShadowDesc, ErrorMessage);
+                };
+
+                Batch.DirectionalShadowPipeline = CreateCutoutShadowPipeline("Depth/CutoutDirectionalShadow.slang");
+                Batch.PointShadowPipeline = CreateCutoutShadowPipeline("Depth/CutoutPointShadow.slang");
+                if (Batch.DirectionalShadowPipeline == nullptr || Batch.PointShadowPipeline == nullptr)
+                {
+                    return false;
+                }
+
+                constexpr uint32 ShadowMaterialBytes = 1024;
+                Batch.ShadowMaterial.assign(ShadowMaterialBytes, 0);
+                std::map<std::string, std::array<float, 4>> ScalarValues;
+                if (Parameter != nullptr)
+                {
+                    for (const auto& [Name, Scalar] : Parameter->Scalars)
+                    {
+                        ScalarValues.emplace(Name, Scalar.Value);
+                    }
+                }
+
+                std::map<std::string, uint32> TextureIndices;
+                for (const auto& [Name, Handle] : Textures.Textures)
+                {
+                    uint32 Descriptor = InvalidShaderDescriptor;
+                    if (Handle.IsValid())
+                    {
+                        const auto Found = TextureDescriptors.find(Handle.Index);
+                        if (Found == TextureDescriptors.end())
+                        {
+                            SetErrorMessage(ErrorMessage, "Cutout shadow texture is missing: " + Mesh.GetPath().generic_string());
+                            return false;
+                        }
+
+                        Descriptor = Found->second;
+                    }
+
+                    TextureIndices.emplace(Name, Descriptor);
+                }
+
+                uint32 SamplerDescriptor = InvalidShaderDescriptor;
+                if (Textures.Sampler.IsValid())
+                {
+                    const auto Sampler = GpuSamplers.find(Textures.Sampler.Index);
+                    if (Sampler == GpuSamplers.end() || Sampler->second == nullptr)
+                    {
+                        SetErrorMessage(ErrorMessage, "Cutout shadow sampler is missing: " + Mesh.GetPath().generic_string());
+                        return false;
+                    }
+
+                    SamplerDescriptor = Sampler->second->GetDescriptorIndex();
+                }
+
+                Batch.Layout.WriteScalars(Batch.ShadowMaterial.data(), ScalarValues);
+                Batch.Layout.WriteDescriptors(Batch.ShadowMaterial.data(), TextureIndices, SamplerDescriptor);
             }
 
             MeshBatches.push_back(std::move(Batch));
@@ -667,6 +858,7 @@ namespace ShadowEngine
         float Yaw,
         float Pitch)
     {
+        FrameDeltaTime = DeltaTime;
         ViewCamera.AddLook(Yaw, Pitch);
         ViewCamera.Move(DeltaTime, Forward, Right, Up);
     }

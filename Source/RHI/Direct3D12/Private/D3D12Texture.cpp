@@ -109,6 +109,98 @@ namespace ShadowEngine
             std::move(Heap));
     }
 
+    std::unique_ptr<D3D12Texture> D3D12Texture::CreateCubeDepth(
+        ID3D12Device* Device,
+        uint32 FaceSize,
+        std::string* ErrorMessage)
+    {
+        if (FaceSize == 0)
+        {
+            SetErrorMessage(ErrorMessage, "Cube depth requires a non-zero face size");
+            return nullptr;
+        }
+
+        D3D12_HEAP_PROPERTIES HeapProperties{};
+        HeapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
+        HeapProperties.CreationNodeMask = 1;
+        HeapProperties.VisibleNodeMask = 1;
+
+        D3D12_RESOURCE_DESC ResourceDesc{};
+        ResourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        ResourceDesc.Width = FaceSize;
+        ResourceDesc.Height = FaceSize;
+        ResourceDesc.DepthOrArraySize = 6;
+        ResourceDesc.MipLevels = 1;
+        ResourceDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+        ResourceDesc.SampleDesc.Count = 1;
+        ResourceDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        ResourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+        D3D12_CLEAR_VALUE ClearValue{};
+        ClearValue.Format = DXGI_FORMAT_D32_FLOAT;
+        ClearValue.DepthStencil.Depth = 1.0F;
+        ClearValue.DepthStencil.Stencil = 0;
+
+        ComPtr<ID3D12Resource> Resource;
+        HRESULT Result = Device->CreateCommittedResource(
+            &HeapProperties,
+            D3D12_HEAP_FLAG_NONE,
+            &ResourceDesc,
+            D3D12_RESOURCE_STATE_DEPTH_WRITE,
+            &ClearValue,
+            IID_PPV_ARGS(Resource.GetAddressOf()));
+        if (FAILED(Result))
+        {
+            SetErrorMessage(ErrorMessage, "CreateCommittedResource failed for the cube depth: " + FormatHResult(Result));
+            return nullptr;
+        }
+
+        D3D12_DESCRIPTOR_HEAP_DESC HeapDesc{};
+        HeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+        HeapDesc.NumDescriptors = 6;
+        HeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+        ComPtr<ID3D12DescriptorHeap> Heap;
+        Result = Device->CreateDescriptorHeap(&HeapDesc, IID_PPV_ARGS(Heap.GetAddressOf()));
+        if (FAILED(Result))
+        {
+            SetErrorMessage(ErrorMessage, "CreateDescriptorHeap failed for the cube depth: " + FormatHResult(Result));
+            return nullptr;
+        }
+
+        const UINT Increment = Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+        D3D12_CPU_DESCRIPTOR_HANDLE First = Heap->GetCPUDescriptorHandleForHeapStart();
+        D3D12_CPU_DESCRIPTOR_HANDLE Faces[6] = {};
+        for (uint32 Face = 0; Face < 6; ++Face)
+        {
+            Faces[Face] = First;
+            Faces[Face].ptr += static_cast<SIZE_T>(Face) * Increment;
+            D3D12_DEPTH_STENCIL_VIEW_DESC ViewDesc{};
+            ViewDesc.Format = DXGI_FORMAT_D32_FLOAT;
+            ViewDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DARRAY;
+            ViewDesc.Texture2DArray.MipSlice = 0;
+            ViewDesc.Texture2DArray.FirstArraySlice = Face;
+            ViewDesc.Texture2DArray.ArraySize = 1;
+            Device->CreateDepthStencilView(Resource.Get(), &ViewDesc, Faces[Face]);
+        }
+
+        auto Texture = std::make_unique<D3D12Texture>(
+            std::move(Resource),
+            FaceSize,
+            FaceSize,
+            ERHIFormat::D32_Float,
+            D3D12_RESOURCE_STATE_DEPTH_WRITE,
+            D3D12_CPU_DESCRIPTOR_HANDLE{},
+            Faces[0],
+            std::move(Heap));
+        Texture->FaceCount = 6;
+        for (uint32 Face = 0; Face < 6; ++Face)
+        {
+            Texture->FaceViews[Face] = Faces[Face];
+        }
+        return Texture;
+    }
+
     std::unique_ptr<D3D12Texture> D3D12Texture::CreateColorTarget(
         ID3D12Device* Device,
         uint32 InWidth,
@@ -511,6 +603,15 @@ namespace ShadowEngine
 
     D3D12_CPU_DESCRIPTOR_HANDLE D3D12Texture::GetDepthStencilView() const
     {
+        return DepthStencilView;
+    }
+
+    D3D12_CPU_DESCRIPTOR_HANDLE D3D12Texture::GetDepthStencilView(uint32 Face) const
+    {
+        if (FaceCount == 6 && Face < 6)
+        {
+            return FaceViews[Face];
+        }
         return DepthStencilView;
     }
 

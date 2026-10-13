@@ -29,6 +29,7 @@ namespace ShadowEngine
                 bool bClearDepth = true,
                 uint32 ArraySlice = 0) override;
             void EndRenderPass() override;
+            void BeginDepthPass(RHITexture& DepthTarget, bool bClearDepth, uint32 ArraySlice = 0) override;
             void UseAsShaderResource(RHITexture& Texture) override;
 
             void SetPipeline(RHIPipeline& Pipeline) override;

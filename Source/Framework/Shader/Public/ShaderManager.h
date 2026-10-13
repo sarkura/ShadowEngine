@@ -14,6 +14,16 @@
 
 namespace ShadowEngine
 {
+    struct ShaderCompileInputs
+    {
+        std::filesystem::path VertexPath;
+        std::filesystem::path PixelPath;
+        std::filesystem::path MaterialPath;
+        std::filesystem::path LightPath;
+        std::vector<std::string> DescriptorFields;
+        std::vector<ShaderScalarField> ScalarFields;
+    };
+
     class RHIDevice;
 
     class ShaderManager final : public NonCopyable
@@ -49,6 +59,7 @@ namespace ShadowEngine
             [[nodiscard]] RHIShader* GetPixelShader(ShaderHandle Handle) const;
             [[nodiscard]] const ShaderReflection* GetReflection(ShaderHandle Handle, ERHIShaderStage Stage) const;
             [[nodiscard]] bool HasSource(const std::filesystem::path& RelativePath) const;
+            [[nodiscard]] bool GetCompileInputs(ShaderHandle Handle, ShaderCompileInputs& Out) const;
 
         private:
             struct ShaderRecord

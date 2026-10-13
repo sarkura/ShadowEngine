@@ -8,8 +8,8 @@
         "Light": "Light/BlinnPhongLight.slang",
         "Parameters":
         {
-            "BaseColor": {"float3": [0.3, 0.6, 0.9]},
-            "Roughness": {"float": 0.45},
+            "BaseColor": {"float3": [0.3, 0.3, 0.3]},
+            "Roughness": {"float": 1.0},
             "SpecularColor": {"float3": [1, 1, 1]}
         }
     },
@@ -19,6 +19,8 @@
         "Fragment": "Forward/ForwardFragment.slang",
         "Material": "Material/ForwardMaterial.slang",
         "Light": "Light/ForwardLight.slang",
+        "Surface": "Opaque",
+        "TwoSided": false,
         "Parameters":
         {
             "BaseColor": {"float3": [0.3, 0.3, 0.3]},

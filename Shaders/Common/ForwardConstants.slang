@@ -6,6 +6,7 @@
 #include "MaterialSurface.slang"
 #include "ForwardLights.slang"
 #include "ImageBasedLightIndices.slang"
+#include "ForwardShadow.slang"
 
 cbuffer SceneConstants : register(b0)
 {
@@ -17,4 +18,6 @@ cbuffer SceneConstants : register(b0)
     ForwardPointLight Point[ForwardPointLightCapacity];
     ForwardSkyLight Sky;
     ImageBasedLightIndices ImageBasedLight;
+    ForwardShadow Shadow;
+    ForwardShadowIndices ShadowIndices;
 };

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Framework/Asset/Public/AssetHandle.h"
+#include "Framework/Asset/Public/Description.h"
 #include "Framework/RHI/Public/RHIBuffer.h"
 #include "Framework/RHI/Public/RHIPipeline.h"
 #include "Framework/RHI/Public/RHIPipelineLayout.h"
@@ -20,6 +21,12 @@ namespace ShadowEngine
         std::unique_ptr<RHIBuffer> VertexBuffer;
         std::unique_ptr<RHIBuffer> IndexBuffer;
         std::unique_ptr<RHIPipeline> Pipeline;
+        std::unique_ptr<RHIPipeline> DepthPipeline;
+        std::unique_ptr<RHIPipeline> DirectionalShadowPipeline;
+        std::unique_ptr<RHIPipeline> PointShadowPipeline;
+        std::vector<uint8> ShadowMaterial;
+        EMaterialSurface Surface = EMaterialSurface::Opaque;
+        bool bTwoSided = false;
         RHIPipelineLayout Layout;
         uint32 IndexCount = 0;
     };

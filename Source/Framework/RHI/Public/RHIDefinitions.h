@@ -82,7 +82,14 @@ namespace ShadowEngine
         bool bEnableDepth = false;
         bool bWriteDepth = true;
         bool bDepthEqual = false;
+        bool bDepthLessEqual = false;
+        bool bAlphaBlend = false;
         bool bWriteColor = true;
+        ERHICullMode Cull = ERHICullMode::None;
+        bool bFrontCounterClockwise = false;
         ERHIFormat DepthFormat = ERHIFormat::Unknown;
+        int32 DepthBias = 0;
+        float DepthBiasClamp = 0.0F;
+        float SlopeScaledDepthBias = 0.0F;
     };
 }

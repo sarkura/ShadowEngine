@@ -11,35 +11,35 @@ namespace ShadowEngine
 {
     namespace
     {
-        D3D12_BLEND_DESC MakeOpaqueBlendDesc(bool bWriteColor)
+        D3D12_BLEND_DESC MakeBlendDesc(bool bWriteColor, bool bAlphaBlend)
         {
             D3D12_BLEND_DESC Desc{};
             Desc.AlphaToCoverageEnable = FALSE;
             Desc.IndependentBlendEnable = FALSE;
 
             D3D12_RENDER_TARGET_BLEND_DESC& Target = Desc.RenderTarget[0];
-            Target.BlendEnable = FALSE;
+            Target.BlendEnable = bAlphaBlend ? TRUE : FALSE;
             Target.LogicOpEnable = FALSE;
-            Target.SrcBlend = D3D12_BLEND_ONE;
-            Target.DestBlend = D3D12_BLEND_ZERO;
+            Target.SrcBlend = bAlphaBlend ? D3D12_BLEND_SRC_ALPHA : D3D12_BLEND_ONE;
+            Target.DestBlend = bAlphaBlend ? D3D12_BLEND_INV_SRC_ALPHA : D3D12_BLEND_ZERO;
             Target.BlendOp = D3D12_BLEND_OP_ADD;
-            Target.SrcBlendAlpha = D3D12_BLEND_ONE;
-            Target.DestBlendAlpha = D3D12_BLEND_ZERO;
+            Target.SrcBlendAlpha = bAlphaBlend ? D3D12_BLEND_SRC_ALPHA : D3D12_BLEND_ONE;
+            Target.DestBlendAlpha = bAlphaBlend ? D3D12_BLEND_INV_SRC_ALPHA : D3D12_BLEND_ZERO;
             Target.BlendOpAlpha = D3D12_BLEND_OP_ADD;
             Target.LogicOp = D3D12_LOGIC_OP_NOOP;
             Target.RenderTargetWriteMask = bWriteColor ? D3D12_COLOR_WRITE_ENABLE_ALL : 0;
             return Desc;
         }
 
-        D3D12_RASTERIZER_DESC MakeRasterizerDesc()
+        D3D12_RASTERIZER_DESC MakeRasterizerDesc(const RHIGraphicsPipelineDesc& Pipeline)
         {
             D3D12_RASTERIZER_DESC Desc{};
             Desc.FillMode = D3D12_FILL_MODE_SOLID;
-            Desc.CullMode = D3D12_CULL_MODE_NONE;
-            Desc.FrontCounterClockwise = FALSE;
-            Desc.DepthBias = D3D12_DEFAULT_DEPTH_BIAS;
-            Desc.DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
-            Desc.SlopeScaledDepthBias = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
+            Desc.CullMode = Pipeline.Cull == ERHICullMode::Back ? D3D12_CULL_MODE_BACK : D3D12_CULL_MODE_NONE;
+            Desc.FrontCounterClockwise = Pipeline.bFrontCounterClockwise ? TRUE : FALSE;
+            Desc.DepthBias = Pipeline.DepthBias;
+            Desc.DepthBiasClamp = Pipeline.DepthBiasClamp;
+            Desc.SlopeScaledDepthBias = Pipeline.SlopeScaledDepthBias;
             Desc.DepthClipEnable = TRUE;
             Desc.MultisampleEnable = FALSE;
             Desc.AntialiasedLineEnable = FALSE;
@@ -48,12 +48,27 @@ namespace ShadowEngine
             return Desc;
         }
 
-        D3D12_DEPTH_STENCIL_DESC MakeDepthStencilDesc(bool bEnableDepth, bool bWriteDepth, bool bDepthEqual)
+        D3D12_DEPTH_STENCIL_DESC MakeDepthStencilDesc(
+            bool bEnableDepth,
+            bool bWriteDepth,
+            bool bDepthEqual,
+            bool bDepthLessEqual)
         {
             D3D12_DEPTH_STENCIL_DESC Desc{};
             Desc.DepthEnable = bEnableDepth ? TRUE : FALSE;
             Desc.DepthWriteMask = bEnableDepth && bWriteDepth ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
-            Desc.DepthFunc = bDepthEqual ? D3D12_COMPARISON_FUNC_EQUAL : D3D12_COMPARISON_FUNC_LESS;
+            if (bDepthEqual)
+            {
+                Desc.DepthFunc = D3D12_COMPARISON_FUNC_EQUAL;
+            }
+            else if (bDepthLessEqual)
+            {
+                Desc.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+            }
+            else
+            {
+                Desc.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+            }
             Desc.StencilEnable = FALSE;
             return Desc;
         }
@@ -117,10 +132,14 @@ namespace ShadowEngine
         PipelineDesc.pRootSignature = RootSignature.Get();
         PipelineDesc.VS = VertexShader->GetBytecode();
         PipelineDesc.PS = PixelShader->GetBytecode();
-        PipelineDesc.BlendState = MakeOpaqueBlendDesc(Desc.bWriteColor);
+        PipelineDesc.BlendState = MakeBlendDesc(Desc.bWriteColor, Desc.bAlphaBlend);
         PipelineDesc.SampleMask = UINT_MAX;
-        PipelineDesc.RasterizerState = MakeRasterizerDesc();
-        PipelineDesc.DepthStencilState = MakeDepthStencilDesc(Desc.bEnableDepth, Desc.bWriteDepth, Desc.bDepthEqual);
+        PipelineDesc.RasterizerState = MakeRasterizerDesc(Desc);
+        PipelineDesc.DepthStencilState = MakeDepthStencilDesc(
+            Desc.bEnableDepth,
+            Desc.bWriteDepth,
+            Desc.bDepthEqual,
+            Desc.bDepthLessEqual);
 
         std::vector<D3D12_INPUT_ELEMENT_DESC> InputElements;
         InputElements.reserve(Desc.InputLayout.size());
@@ -139,8 +158,9 @@ namespace ShadowEngine
         PipelineDesc.InputLayout.pInputElementDescs = InputElements.data();
         PipelineDesc.InputLayout.NumElements = static_cast<UINT>(InputElements.size());
         PipelineDesc.PrimitiveTopologyType = ToTopologyType(Desc.Topology);
-        PipelineDesc.NumRenderTargets = 1;
-        PipelineDesc.RTVFormats[0] = ToDXGIFormat(Desc.RenderTargetFormat);
+        const bool bDepthOnly = Desc.RenderTargetFormat == ERHIFormat::Unknown;
+        PipelineDesc.NumRenderTargets = bDepthOnly ? 0 : 1;
+        PipelineDesc.RTVFormats[0] = bDepthOnly ? DXGI_FORMAT_UNKNOWN : ToDXGIFormat(Desc.RenderTargetFormat);
         if (Desc.DepthFormat != ERHIFormat::Unknown)
         {
             PipelineDesc.DSVFormat = ToDXGIFormat(Desc.DepthFormat);

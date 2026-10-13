@@ -10,6 +10,8 @@ struct ForwardMaterialSample
     float Occlusion;
     float3 Emissive;
     float3 Normal;
+    float Opacity;
+    float CutoutThreshold;
 };
 
 ForwardMaterialSample EvaluateMaterial(VertexOutput Input);

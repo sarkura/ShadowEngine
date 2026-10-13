@@ -43,4 +43,10 @@ namespace ShadowEngine
         Uint16,
         Uint32
     };
+
+    enum class ERHICullMode : uint8
+    {
+        None,
+        Back
+    };
 }

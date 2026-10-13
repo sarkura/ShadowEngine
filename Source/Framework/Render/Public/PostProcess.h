@@ -45,7 +45,8 @@ namespace ShadowEngine
                 const float CameraPosition[3],
                 uint32 Width,
                 uint32 Height,
-                uint32 ConstantAlignment);
+                uint32 ConstantAlignment,
+                float DeltaTime);
 
         private:
             struct Target
@@ -75,13 +76,13 @@ namespace ShadowEngine
                 float Threshold;
                 float Strength;
                 float CurrentWeight;
-                float Pad0;
+                float ExposureDelta;
                 uint32 Source;
                 uint32 Secondary;
                 uint32 Motion;
                 uint32 Depth;
                 uint32 Sampler;
-                uint32 Pad1;
+                uint32 ExposureMap;
                 uint32 Pad2;
                 uint32 Pad3;
             };
@@ -99,12 +100,19 @@ namespace ShadowEngine
             Target History[2];
             Target BloomDown[4];
             Target BloomUp[3];
+            Target ExposureLum;
+            Target ExposureAverage;
+            Target Exposure[2];
             std::unique_ptr<RHIPipeline> CameraVelocityPipeline;
             std::unique_ptr<RHIPipeline> MeshVelocityPipeline;
+            std::unique_ptr<RHIPipeline> MeshVelocityTwoSidedPipeline;
             std::unique_ptr<RHIPipeline> TAAPipeline;
             std::unique_ptr<RHIPipeline> BloomExtractPipeline;
             std::unique_ptr<RHIPipeline> BloomDownsamplePipeline;
             std::unique_ptr<RHIPipeline> BloomUpsamplePipeline;
+            std::unique_ptr<RHIPipeline> ExposureLuminancePipeline;
+            std::unique_ptr<RHIPipeline> ExposureReducePipeline;
+            std::unique_ptr<RHIPipeline> ExposureAdaptPipeline;
             std::unique_ptr<RHIPipeline> TonemapPipeline;
             std::unique_ptr<RHIBuffer> ConstantBuffer;
             std::unique_ptr<RHISampler> ClampSampler;
@@ -113,8 +121,10 @@ namespace ShadowEngine
             uint32 Width = 0;
             uint32 Height = 0;
             uint32 HistoryIndex = 0;
+            uint32 ExposureIndex = 0;
             uint32 ConstantSlot = 0;
             bool bHistoryValid = false;
+            bool bExposureValid = false;
             bool bPipelinesReady = false;
     };
 }

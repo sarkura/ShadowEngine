@@ -6,6 +6,7 @@
 #include "MaterialSurface.slang"
 #include "ForwardLights.slang"
 #include "ImageBasedLightIndices.slang"
+#include "ForwardShadow.slang"
 
 #ifndef MATERIAL_DESCRIPTOR_INDICES_DEFINED
 #define MATERIAL_DESCRIPTOR_INDICES_DEFINED
@@ -31,4 +32,6 @@ cbuffer SceneConstants : register(b0)
     ForwardPointLight Point[ForwardPointLightCapacity];
     ForwardSkyLight Sky;
     ImageBasedLightIndices ImageBasedLight;
+    ForwardShadow Shadow;
+    ForwardShadowIndices ShadowIndices;
 };

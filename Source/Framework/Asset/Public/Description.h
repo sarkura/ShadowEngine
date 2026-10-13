@@ -27,6 +27,13 @@ namespace ShadowEngine
         float Value[4] = {};
     };
 
+    enum class EMaterialSurface : uint8
+    {
+        Opaque,
+        Cutout,
+        Translucent
+    };
+
     struct MaterialRendererBinding
     {
         std::string Renderer;
@@ -34,6 +41,8 @@ namespace ShadowEngine
         std::string PixelShader;
         std::string MaterialShader;
         std::string LightShader;
+        EMaterialSurface Surface = EMaterialSurface::Opaque;
+        bool bTwoSided = false;
         bool bHasParameters = false;
         std::vector<MaterialScalarParameter> Scalars;
         std::vector<std::pair<std::string, std::string>> Textures;

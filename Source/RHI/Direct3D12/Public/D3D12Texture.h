@@ -39,6 +39,11 @@ namespace ShadowEngine
                 uint32 InHeight,
                 std::string* ErrorMessage = nullptr);
 
+            [[nodiscard]] static std::unique_ptr<D3D12Texture> CreateCubeDepth(
+                ID3D12Device* Device,
+                uint32 FaceSize,
+                std::string* ErrorMessage = nullptr);
+
             [[nodiscard]] static std::unique_ptr<D3D12Texture> CreateColorTarget(
                 ID3D12Device* Device,
                 uint32 InWidth,
@@ -63,6 +68,7 @@ namespace ShadowEngine
             [[nodiscard]] D3D12_CPU_DESCRIPTOR_HANDLE GetRenderTargetView(uint32 Face) const;
             [[nodiscard]] uint32 GetFaceCount() const;
             [[nodiscard]] D3D12_CPU_DESCRIPTOR_HANDLE GetDepthStencilView() const;
+            [[nodiscard]] D3D12_CPU_DESCRIPTOR_HANDLE GetDepthStencilView(uint32 Face) const;
             [[nodiscard]] bool HasDepthStencil() const;
 
         private:

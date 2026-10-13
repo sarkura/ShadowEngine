@@ -28,6 +28,8 @@
         "Fragment": "Forward/ForwardFragment.slang",
         "Material": "Material/ForwardMaterial.slang",
         "Light": "Light/ForwardLight.slang",
+        "Surface": "Opaque",
+        "TwoSided": false,
         "Parameters":
         {
             "BaseColor": {"float3": [0.6, 0.3, 0.2]},

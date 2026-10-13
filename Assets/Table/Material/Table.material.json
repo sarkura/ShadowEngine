@@ -22,6 +22,8 @@
         "Fragment": "Forward/ForwardFragment.slang",
         "Material": "Material/TableForwardMaterial.slang",
         "Light": "Light/ForwardLight.slang",
+        "Surface": "Opaque",
+        "TwoSided": false,
         "Parameters":
         {
             "BaseColor": {"float3": [1, 1, 1]},

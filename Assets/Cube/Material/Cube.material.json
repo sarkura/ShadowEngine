@@ -17,12 +17,15 @@
     {
         "Vertex": "Forward/ForwardVertex.slang",
         "Fragment": "Forward/ForwardFragment.slang",
-        "Material": "Material/ForwardMaterial.slang",
+        "Material": "Material/CubeForwardMaterial.slang",
         "Light": "Light/ForwardLight.slang",
+        "Surface": "Translucent",
+        "TwoSided": false,
         "Parameters":
         {
             "BaseColor": {"float3": [0.3, 0.6, 0.9]},
-            "Roughness": {"float": 0.45}
+            "Roughness": {"float": 0.45},
+            "Alpha": {"float": 0.2}
         }
     }
 }

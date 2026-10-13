@@ -55,7 +55,7 @@
             {
                 "Transform":
                 {
-                    "Translation": [0, 2.2, -6],
+                    "Translation": [0, 1.8, -6],
                     "Rotation": [0, 0, 0],
                     "Scale": [1, 1, 1]
                 }
@@ -77,20 +77,20 @@
     [
         {
             "Type": "DirectLight",
-            "Direction": [0.2, -1.0, -0.4],
+            "Direction": [1.0, -1.0, -0.4],
             "Color": [1, 1, 1],
             "Intensity": 1.2
         },
         {
             "Type": "PointLight",
-            "Position": [2, 1, 4],
+            "Position": [2000, 1, 4],
             "Color": [1, 0.85, 0.7],
             "Intensity": 6.0,
             "Radius": 16.0
         },
         {
             "Type": "PointLight",
-            "Position": [-4, 3, 1],
+            "Position": [-4000, 3, 1],
             "Color": [0.4, 0.6, 1],
             "Intensity": 5.0,
             "Radius": 14.0
