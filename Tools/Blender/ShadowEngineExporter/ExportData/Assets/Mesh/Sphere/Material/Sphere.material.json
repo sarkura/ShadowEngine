@@ -1,0 +1,20 @@
+{
+    "Type": "Material",
+    "ForwardRenderer": {
+        "Parent": "Assets/BaseMaterial/ForwardPure.material.json",
+        "Surface": "Opaque",
+        "TwoSided": false,
+        "Parameters": {
+            "BaseColor": {
+                "float3": [
+                    0.121359,
+                    0.800007,
+                    0.078164
+                ]
+            },
+            "Roughness": {
+                "float": 0.85
+            }
+        }
+    }
+}

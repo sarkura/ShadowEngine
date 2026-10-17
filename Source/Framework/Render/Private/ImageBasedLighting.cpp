@@ -34,7 +34,7 @@ namespace ShadowEngine
         {
             if (!CreateFullscreenPipeline(Device, Shaders, "ImageBasedLighting/Irradiance.slang", IrradiancePipeline, ErrorMessage) ||
                 !CreateFullscreenPipeline(Device, Shaders, "ImageBasedLighting/Prefilter.slang", PrefilterPipeline, ErrorMessage) ||
-                !CreateFullscreenPipeline(Device, Shaders, "ImageBasedLighting/BrdfLut.slang", BrdfPipeline, ErrorMessage))
+                !CreateFullscreenPipeline(Device, Shaders, "ImageBasedLighting/BRDFLUT.slang", BrdfPipeline, ErrorMessage))
             {
                 return false;
             }

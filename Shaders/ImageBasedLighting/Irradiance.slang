@@ -1,4 +1,4 @@
-#include "IblConstants.slang"
+#include "IBLConstants.slang"
 #include "../Light/ImageBasedLighting.slang"
 
 [shader("fragment")]

@@ -23,6 +23,7 @@ BLENDER_TO_GLTF = Matrix((
 BASE_FORWARD_PURE = "Assets/BaseMaterial/ForwardPure.material.json"
 BASE_FORWARD_TEXTURE = "Assets/BaseMaterial/ForwardTexture.material.json"
 BASE_FORWARD_TRANSLUCENT = "Assets/BaseMaterial/ForwardTranslucent.material.json"
+ASSET_MESH = Path("Assets") / "Mesh"
 
 def rounded(value):
     number = round(float(value), 6)
@@ -234,7 +235,7 @@ class SHADOWENGINE_OT_export(Operator):
         return {"FINISHED"}
 
     def export_object(self, context, root, obj, name):
-        mesh_dir = Path("Assets") / name / "Mesh"
+        mesh_dir = ASSET_MESH / name / "Mesh"
         glb_relative = mesh_dir / f"{name}.glb"
         asset_relative = mesh_dir / f"{name}.asset.json"
         glb_path = root / glb_relative
@@ -286,7 +287,7 @@ class SHADOWENGINE_OT_export(Operator):
         for index, slot in enumerate(slots):
             material = None if slot is None else slot.material
             material_name = shared_model_name(material.name) if material is not None else f"{name}_{index}"
-            material_relative = Path("Assets") / name / "Material" / f"{material_name}.material.json"
+            material_relative = ASSET_MESH / name / "Material" / f"{material_name}.material.json"
             slot_warning = self.write_material(root, material_relative, material)
             if slot_warning:
                 warning = slot_warning

@@ -1,7 +1,7 @@
 {
     "Mesh":
     {
-        "Assets/Cube/Mesh/Cube.asset.json":
+        "Assets/Mesh/Cube/Mesh/Cube.asset.json":
         [
             {
                 "Transform":
@@ -28,7 +28,7 @@
                 }
             }
         ],
-        "Assets/Sphere/Mesh/Sphere.asset.json":
+        "Assets/Mesh/Sphere/Mesh/Sphere.asset.json":
         [
             {
                 "Transform":
@@ -39,7 +39,7 @@
                 }
             }
         ],
-        "Assets/Suzanne/Mesh/Suzanne.asset.json":
+        "Assets/Mesh/Suzanne/Mesh/Suzanne.asset.json":
         [
             {
                 "Transform":
@@ -50,7 +50,7 @@
                 }
             }
         ],
-        "Assets/Table/Mesh/Table.asset.json":
+        "Assets/Mesh/Table/Mesh/Table.asset.json":
         [
             {
                 "Transform":
@@ -61,7 +61,7 @@
                 }
             }
         ],
-        "Assets/Plane/Mesh/Plane.asset.json":
+        "Assets/Mesh/Plane/Mesh/Plane.asset.json":
         [
             {
                 "Transform":

@@ -1,0 +1,31 @@
+{
+    "Type": "Material",
+    "BlinnPhongRenderer":
+    {
+        "Parent": "Assets/BaseMaterial/BlinnPhongTexture.material.json",
+        "Parameters":
+        {
+            "BaseColor": {"float3": [1, 1, 1]},
+            "Roughness": {"float": 1.0},
+            "SpecularColor": {"float3": [0.3, 0.3, 0.3]},
+            "BaseColorTexture": {"texture": "Assets/Mesh/Table/Texture/Basecolor.texture.json"},
+            "RoughnessTexture": {"texture": "Assets/Mesh/Table/Texture/Roughness.texture.json"},
+            "NormalTexture": {"texture": "Assets/Mesh/Table/Texture/Normal.texture.json"}
+        }
+    },
+    "ForwardRenderer":
+    {
+        "Parent": "Assets/BaseMaterial/ForwardTexture.material.json",
+        "Parameters":
+        {
+            "BaseColor": {"float3": [1, 1, 1]},
+            "Metallic": {"float": 0.0},
+            "Roughness": {"float": 0.8},
+            "BaseColorTexture": {"texture": "Assets/Mesh/Table/Texture/Basecolor.texture.json"},
+            "RoughnessTexture": {"texture": "Assets/Mesh/Table/Texture/Roughness.texture.json"},
+            "MetallicTexture": {"texture": "Assets/Mesh/Table/Texture/Metallic.texture.json"},
+            "NormalTexture": {"texture": "Assets/Mesh/Table/Texture/Normal.texture.json"},
+            "OcclusionTexture": {"texture": "Assets/Mesh/Table/Texture/AO.texture.json"}
+        }
+    }
+}

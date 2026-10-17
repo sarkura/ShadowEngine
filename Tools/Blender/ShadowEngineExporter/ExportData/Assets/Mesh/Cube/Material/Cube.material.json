@@ -1,0 +1,23 @@
+{
+    "Type": "Material",
+    "ForwardRenderer": {
+        "Parent": "Assets/BaseMaterial/ForwardTranslucent.material.json",
+        "Surface": "Translucent",
+        "TwoSided": false,
+        "Parameters": {
+            "BaseColor": {
+                "float3": [
+                    0.800007,
+                    0.251963,
+                    0.698197
+                ]
+            },
+            "Roughness": {
+                "float": 0.711055
+            },
+            "Alpha": {
+                "float": 0.376884
+            }
+        }
+    }
+}

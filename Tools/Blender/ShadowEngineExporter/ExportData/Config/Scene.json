@@ -1,0 +1,181 @@
+{
+    "Mesh": {
+        "Assets/Mesh/Sphere/Mesh/Sphere.asset.json": [
+            {
+                "Transform": {
+                    "Translation": [
+                        -4.169939,
+                        0.125029,
+                        -2.158398
+                    ],
+                    "Rotation": [
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "Scale": [
+                        1.0,
+                        1.0,
+                        1.0
+                    ]
+                }
+            },
+            {
+                "Transform": {
+                    "Translation": [
+                        2.570846,
+                        -0.206492,
+                        -2.785758
+                    ],
+                    "Rotation": [
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "Scale": [
+                        1.0,
+                        1.0,
+                        1.0
+                    ]
+                }
+            },
+            {
+                "Transform": {
+                    "Translation": [
+                        -0.085666,
+                        0.125029,
+                        6.898125
+                    ],
+                    "Rotation": [
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "Scale": [
+                        1.0,
+                        1.0,
+                        1.0
+                    ]
+                }
+            }
+        ],
+        "Assets/Mesh/Suzanne/Mesh/Suzanne.asset.json": [
+            {
+                "Transform": {
+                    "Translation": [
+                        1.252811,
+                        -0.065951,
+                        0.45125
+                    ],
+                    "Rotation": [
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "Scale": [
+                        1.0,
+                        1.0,
+                        1.0
+                    ]
+                }
+            }
+        ],
+        "Assets/Mesh/Cube/Mesh/Cube.asset.json": [
+            {
+                "Transform": {
+                    "Translation": [
+                        -4.167908,
+                        0.452075,
+                        0.835079
+                    ],
+                    "Rotation": [
+                        0.333535,
+                        -0.154881,
+                        -0.445001
+                    ],
+                    "Scale": [
+                        1.0,
+                        1.0,
+                        1.0
+                    ]
+                }
+            }
+        ],
+        "Assets/Mesh/Plane/Mesh/Plane.asset.json": [
+            {
+                "Transform": {
+                    "Translation": [
+                        4.774566,
+                        -1.779793,
+                        0.45125
+                    ],
+                    "Rotation": [
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "Scale": [
+                        20.0,
+                        1.0,
+                        20.0
+                    ]
+                }
+            }
+        ]
+    },
+    "Light": [
+        {
+            "Type": "PointLight",
+            "Position": [
+                0.916245,
+                5.903862,
+                -1.005454
+            ],
+            "Color": [
+                0.899264,
+                0.050865,
+                1.0
+            ],
+            "Intensity": 10.0,
+            "Radius": 10.0
+        },
+        {
+            "Type": "PointLight",
+            "Position": [
+                3.0,
+                2.32,
+                -4.0
+            ],
+            "Color": [
+                0.011316,
+                0.77185,
+                1.0
+            ],
+            "Intensity": 0.1,
+            "Radius": 10.0
+        },
+        {
+            "Type": "DirectLight",
+            "Direction": [
+                0.0,
+                -0.694658,
+                -0.71934
+            ],
+            "Color": [
+                1.0,
+                1.0,
+                1.0
+            ],
+            "Intensity": 2.0
+        },
+        {
+            "Type": "SkyLight",
+            "Color": [
+                0.050876,
+                0.050876,
+                0.050876
+            ],
+            "Intensity": 1.0
+        }
+    ]
+}
