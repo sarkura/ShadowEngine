@@ -19,6 +19,7 @@
 #include <glm/mat4x4.hpp>
 #include <glm/geometric.hpp>
 
+#include <algorithm>
 #include <cctype>
 #include <cstring>
 #include <string_view>
@@ -35,8 +36,8 @@ namespace ShadowEngine
         std::vector<ShaderScalarField> ScalarFieldsFor(const MaterialRendererBinding& Binding)
         {
             std::vector<ShaderScalarField> Fields;
-            Fields.reserve(Binding.Scalars.size());
-            for (const MaterialScalarParameter& Scalar : Binding.Scalars)
+            Fields.reserve(Binding.ShaderScalars.size());
+            for (const MaterialScalarParameter& Scalar : Binding.ShaderScalars)
             {
                 ShaderScalarField Field;
                 Field.Name = Scalar.Name;
@@ -478,7 +479,9 @@ namespace ShadowEngine
     void AssetManager::Finalize()
     {
         MaterialInstances.clear();
+        MaterialInstancePaths.clear();
         Materials.clear();
+        SharedMaterialKeys.clear();
         Textures.clear();
         Meshes.clear();
         LinearSampler = {};
@@ -672,6 +675,386 @@ namespace ShadowEngine
         return Handle;
     }
 
+    namespace
+    {
+        bool MergeMaterialBinding(
+            MaterialRendererBinding& Base,
+            const MaterialRendererBinding& Child,
+            const std::string& FilePath,
+            std::string* ErrorMessage)
+        {
+            if (Child.bDefinesShader)
+            {
+                if (Base.bDefinesShader)
+                {
+                    SetErrorMessage(
+                        ErrorMessage,
+                        Child.Renderer + " instance cannot replace shader paths: " + FilePath);
+                    return false;
+                }
+
+                Base = Child;
+                return true;
+            }
+
+            if (!Base.bDefinesShader)
+            {
+                SetErrorMessage(ErrorMessage, Child.Renderer + " is missing shader paths: " + FilePath);
+                return false;
+            }
+
+            if (Child.bHasSurface)
+            {
+                Base.Surface = Child.Surface;
+                Base.bHasSurface = true;
+            }
+            if (Child.bHasTwoSided)
+            {
+                Base.bTwoSided = Child.bTwoSided;
+                Base.bHasTwoSided = true;
+            }
+
+            for (const MaterialScalarParameter& Scalar : Child.Scalars)
+            {
+                const MaterialScalarParameter* Schema = nullptr;
+                for (const MaterialScalarParameter& Defined : Base.ShaderScalars)
+                {
+                    if (Defined.Name == Scalar.Name)
+                    {
+                        Schema = &Defined;
+                        break;
+                    }
+                }
+                if (Schema == nullptr)
+                {
+                    SetErrorMessage(
+                        ErrorMessage,
+                        Scalar.Name + " is not a parameter of " + Base.Renderer + ": " + FilePath);
+                    return false;
+                }
+                if (Schema->Components != Scalar.Components)
+                {
+                    SetErrorMessage(
+                        ErrorMessage,
+                        Scalar.Name + " type does not match " + Base.Renderer + ": " + FilePath);
+                    return false;
+                }
+
+                bool bFound = false;
+                for (MaterialScalarParameter& Existing : Base.Scalars)
+                {
+                    if (Existing.Name == Scalar.Name)
+                    {
+                        Existing = Scalar;
+                        bFound = true;
+                        break;
+                    }
+                }
+                if (!bFound)
+                {
+                    Base.Scalars.push_back(Scalar);
+                }
+            }
+            for (const auto& Texture : Child.Textures)
+            {
+                bool bDeclared = false;
+                for (const auto& Defined : Base.ShaderTextures)
+                {
+                    if (Defined.first == Texture.first)
+                    {
+                        bDeclared = true;
+                        break;
+                    }
+                }
+                if (!bDeclared)
+                {
+                    SetErrorMessage(
+                        ErrorMessage,
+                        Texture.first + " is not a texture parameter of " + Base.Renderer + ": " + FilePath);
+                    return false;
+                }
+
+                bool bFound = false;
+                for (auto& Existing : Base.Textures)
+                {
+                    if (Existing.first == Texture.first)
+                    {
+                        Existing.second = Texture.second;
+                        bFound = true;
+                        break;
+                    }
+                }
+                if (!bFound)
+                {
+                    Base.Textures.push_back(Texture);
+                }
+            }
+            if (!Child.Scalars.empty() || !Child.Textures.empty())
+            {
+                Base.bHasParameters = true;
+            }
+            return true;
+        }
+
+        bool ResolveMaterialDescription(
+            const std::filesystem::path& Path,
+            MaterialDescription& Out,
+            std::vector<std::string>& Stack,
+            std::string* ErrorMessage)
+        {
+            const std::string Key = Path.generic_string();
+            for (const std::string& Seen : Stack)
+            {
+                if (Seen == Key)
+                {
+                    SetErrorMessage(ErrorMessage, "Material parent cycle: " + Key);
+                    return false;
+                }
+            }
+
+            Stack.push_back(Key);
+            struct StackScope
+            {
+                std::vector<std::string>& Stack;
+                ~StackScope()
+                {
+                    Stack.pop_back();
+                }
+            } Scope{Stack};
+
+            MaterialDescription Description;
+            if (!DescriptionParser::LoadMaterialDescription(Path, Description, ErrorMessage))
+            {
+                return false;
+            }
+
+            MaterialDescription Resolved;
+            Resolved.Bindings.reserve(Description.Bindings.size());
+            for (const MaterialRendererBinding& Binding : Description.Bindings)
+            {
+                if (Binding.Parent.empty())
+                {
+                    if (!Binding.bDefinesShader)
+                    {
+                        SetErrorMessage(ErrorMessage, Binding.Renderer + " is missing shader paths: " + Key);
+                        return false;
+                    }
+
+                    Resolved.Bindings.push_back(Binding);
+                    continue;
+                }
+
+                MaterialDescription Parent;
+                if (!ResolveMaterialDescription(Binding.Parent, Parent, Stack, ErrorMessage))
+                {
+                    return false;
+                }
+
+                const MaterialRendererBinding* Source = nullptr;
+                for (const MaterialRendererBinding& ParentBinding : Parent.Bindings)
+                {
+                    if (ParentBinding.Renderer == Binding.Renderer)
+                    {
+                        Source = &ParentBinding;
+                        break;
+                    }
+                }
+                if (Source == nullptr)
+                {
+                    SetErrorMessage(
+                        ErrorMessage,
+                        Binding.Renderer + " is missing from parent " + Binding.Parent + ": " + Key);
+                    return false;
+                }
+
+                MaterialRendererBinding Merged = *Source;
+                if (!MergeMaterialBinding(Merged, Binding, Key, ErrorMessage))
+                {
+                    return false;
+                }
+
+                Resolved.Bindings.push_back(std::move(Merged));
+            }
+
+            if (Resolved.Bindings.empty())
+            {
+                SetErrorMessage(ErrorMessage, "Material description has no renderer binding: " + Key);
+                return false;
+            }
+
+            Out = std::move(Resolved);
+            return true;
+        }
+
+        std::string MaterialShaderKey(const MaterialDescription& Description)
+        {
+            std::vector<const MaterialRendererBinding*> Ordered;
+            Ordered.reserve(Description.Bindings.size());
+            for (const MaterialRendererBinding& Binding : Description.Bindings)
+            {
+                Ordered.push_back(&Binding);
+            }
+            std::sort(
+                Ordered.begin(),
+                Ordered.end(),
+                [](const MaterialRendererBinding* Left, const MaterialRendererBinding* Right)
+                {
+                    return Left->Renderer < Right->Renderer;
+                });
+
+            std::string Key;
+            for (const MaterialRendererBinding* Binding : Ordered)
+            {
+                Key += Binding->Renderer;
+                Key += ";";
+                Key += Binding->VertexShader;
+                Key += ";";
+                Key += Binding->PixelShader;
+                Key += ";";
+                Key += Binding->MaterialShader;
+                Key += ";";
+                Key += Binding->LightShader;
+                Key += ";";
+                for (const MaterialScalarParameter& Scalar : Binding->ShaderScalars)
+                {
+                    Key += Scalar.Name;
+                    Key += ":";
+                    Key += std::to_string(Scalar.Components);
+                    Key += ",";
+                }
+                Key += ";";
+                for (const auto& Texture : Binding->ShaderTextures)
+                {
+                    Key += Texture.first;
+                    Key += ",";
+                }
+                Key += "#";
+            }
+            return Key;
+        }
+
+        bool ValidateMergedMaterial(
+            const MaterialDescription& Description,
+            const std::string& FilePath,
+            std::string* ErrorMessage)
+        {
+            if (Description.Bindings.empty())
+            {
+                SetErrorMessage(ErrorMessage, "Material description has no renderer binding: " + FilePath);
+                return false;
+            }
+
+            for (const MaterialRendererBinding& Binding : Description.Bindings)
+            {
+                if (!Binding.bDefinesShader || Binding.VertexShader.empty() || Binding.PixelShader.empty() ||
+                    Binding.MaterialShader.empty())
+                {
+                    SetErrorMessage(ErrorMessage, Binding.Renderer + " is missing shader paths: " + FilePath);
+                    return false;
+                }
+                if (Binding.Renderer == "ForwardRenderer" && (!Binding.bHasSurface || !Binding.bHasTwoSided))
+                {
+                    SetErrorMessage(
+                        ErrorMessage,
+                        "ForwardRenderer is missing Surface or TwoSided: " + FilePath);
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
+    MaterialHandle AssetManager::FindOrCreateMaterial(
+        const MaterialDescription& Description,
+        std::string* ErrorMessage)
+    {
+        const std::string Key = MaterialShaderKey(Description);
+        for (uint32 Index = 0; Index < SharedMaterialKeys.size(); ++Index)
+        {
+            if (SharedMaterialKeys[Index] == Key)
+            {
+                MaterialHandle Handle;
+                Handle.Index = Index;
+                return Handle;
+            }
+        }
+
+        if (Shaders == nullptr)
+        {
+            SetErrorMessage(ErrorMessage, "Shader manager is not set");
+            return {};
+        }
+
+        std::vector<MaterialShaderBinding> ShaderBindings;
+        ShaderBindings.reserve(Description.Bindings.size());
+        for (const MaterialRendererBinding& Binding : Description.Bindings)
+        {
+            if (!Shaders->HasSource(Binding.VertexShader) || !Shaders->HasSource(Binding.PixelShader) ||
+                !Shaders->HasSource(Binding.MaterialShader) ||
+                (!Binding.LightShader.empty() && !Shaders->HasSource(Binding.LightShader)))
+            {
+                SetErrorMessage(ErrorMessage, "Material shader is missing: " + Binding.MaterialShader);
+                return {};
+            }
+
+            std::vector<std::string> DescriptorFields;
+            DescriptorFields.reserve(Binding.ShaderTextures.size());
+            for (const auto& Texture : Binding.ShaderTextures)
+            {
+                DescriptorFields.push_back(Texture.first);
+            }
+
+            const ShaderHandle Shader = Shaders->Register(
+                Binding.VertexShader,
+                Binding.PixelShader,
+                Binding.MaterialShader,
+                Binding.LightShader,
+                DescriptorFields,
+                ScalarFieldsFor(Binding));
+            if (!Shader.IsValid() || !Shaders->Compile(Shader, ErrorMessage))
+            {
+                return {};
+            }
+
+            const ShaderReflection* Reflection = Shaders->GetReflection(Shader, ERHIShaderStage::Pixel);
+            if (Reflection == nullptr)
+            {
+                SetErrorMessage(ErrorMessage, "Shader reflection is missing: " + Binding.MaterialShader);
+                return {};
+            }
+
+            for (const ShaderBinding& Reflected : Reflection->Bindings)
+            {
+                if (Reflected.Kind == EShaderBindingKind::ConstantBuffer && Reflected.Size > 1024)
+                {
+                    SetErrorMessage(ErrorMessage, "Material constant buffer exceeds 1024 bytes: " + Binding.MaterialShader);
+                    return {};
+                }
+            }
+
+            MaterialShaderBinding ShaderBinding;
+            ShaderBinding.Renderer = Binding.Renderer;
+            ShaderBinding.Shader = Shader;
+            MaterialParameter::BuildLayout(*Reflection, ShaderBinding.Layout);
+            ShaderBindings.push_back(std::move(ShaderBinding));
+        }
+
+        MaterialHandle Handle;
+        Handle.Index = static_cast<uint32>(Materials.size());
+        auto Owned = std::make_unique<Material>(std::move(ShaderBindings));
+        Materials.push_back(Owned.get());
+        auto Asset = std::make_unique<MaterialAsset>(Key, std::move(Owned), Handle);
+        if (!Registry.Register(std::move(Asset)))
+        {
+            Materials.pop_back();
+            SetErrorMessage(ErrorMessage, "Unable to register material: " + Key);
+            return {};
+        }
+
+        SharedMaterialKeys.push_back(Key);
+        return Handle;
+    }
+
     MaterialInstanceHandle AssetManager::LoadMaterialInstance(
         const std::filesystem::path& DescriptionPath,
         std::string* ErrorMessage)
@@ -682,42 +1065,40 @@ namespace ShadowEngine
             return {};
         }
 
-        if (const MaterialAsset* Existing = Registry.FindMaterial(DescriptionPath))
+        const std::string PathKey = DescriptionPath.generic_string();
+        for (uint32 Index = 0; Index < MaterialInstancePaths.size(); ++Index)
         {
-            for (uint32 Index = 0; Index < MaterialInstances.size(); ++Index)
+            if (MaterialInstancePaths[Index] == PathKey)
             {
-                if (MaterialInstances[Index]->GetBaseMaterial().Index == Existing->GetHandle().Index)
-                {
-                    MaterialInstanceHandle Handle;
-                    Handle.Index = Index;
-                    return Handle;
-                }
+                MaterialInstanceHandle Handle;
+                Handle.Index = Index;
+                return Handle;
             }
         }
 
+        std::vector<std::string> Stack;
         MaterialDescription Description;
-        if (!DescriptionParser::LoadMaterialDescription(DescriptionPath, Description, ErrorMessage))
+        if (!ResolveMaterialDescription(DescriptionPath, Description, Stack, ErrorMessage) ||
+            !ValidateMergedMaterial(Description, PathKey, ErrorMessage))
         {
             return {};
         }
 
-        if (Shaders == nullptr)
+        const MaterialHandle BaseMaterial = FindOrCreateMaterial(Description, ErrorMessage);
+        if (!BaseMaterial.IsValid() || BaseMaterial.Index >= Materials.size())
         {
-            SetErrorMessage(ErrorMessage, "Shader manager is not set");
             return {};
         }
+        const Material* Base = Materials[BaseMaterial.Index];
 
         std::vector<MaterialRendererParameters> ParameterSets;
         ParameterSets.reserve(Description.Bindings.size());
         for (const MaterialRendererBinding& Binding : Description.Bindings)
         {
-            if (!Shaders->HasSource(Binding.VertexShader) || !Shaders->HasSource(Binding.PixelShader) ||
-                !Shaders->HasSource(Binding.MaterialShader) ||
-                (!Binding.LightShader.empty() && !Shaders->HasSource(Binding.LightShader)))
+            const MaterialParameterLayout* Layout = Base->FindLayout(Binding.Renderer);
+            if (Layout == nullptr)
             {
-                SetErrorMessage(
-                    ErrorMessage,
-                    "Material shader is missing: " + DescriptionPath.generic_string());
+                SetErrorMessage(ErrorMessage, Binding.Renderer + " layout is missing: " + PathKey);
                 return {};
             }
 
@@ -730,77 +1111,13 @@ namespace ShadowEngine
                 return {};
             }
 
-            std::vector<std::string> DescriptorFields;
-            DescriptorFields.reserve(Binding.Textures.size());
-            for (const auto& Texture : Binding.Textures)
+            for (const MaterialScalarParameter& Scalar : Binding.Scalars)
             {
-                DescriptorFields.push_back(Texture.first);
-            }
-
-            const std::vector<ShaderScalarField> ScalarFields = ScalarFieldsFor(Binding);
-            const ShaderHandle Shader = Shaders->Register(
-                Binding.VertexShader,
-                Binding.PixelShader,
-                Binding.MaterialShader,
-                Binding.LightShader,
-                DescriptorFields,
-                ScalarFields);
-            if (!Shader.IsValid() || !Shaders->Compile(Shader, ErrorMessage))
-            {
-                return {};
-            }
-
-            const ShaderReflection* Reflection = Shaders->GetReflection(Shader, ERHIShaderStage::Pixel);
-            if (Reflection == nullptr)
-            {
-                SetErrorMessage(ErrorMessage, "Shader reflection is missing: " + DescriptionPath.generic_string());
-                return {};
-            }
-
-            for (const ShaderBinding& Binding : Reflection->Bindings)
-            {
-                if (Binding.Kind == EShaderBindingKind::ConstantBuffer && Binding.Size > 1024)
+                if (!Layout->Has(Scalar.Name))
                 {
                     SetErrorMessage(
                         ErrorMessage,
-                        "Material constant buffer exceeds 1024 bytes: " + DescriptionPath.generic_string());
-                    return {};
-                }
-            }
-
-            MaterialParameterLayout ShaderLayout;
-            MaterialParameter::BuildLayout(*Reflection, ShaderLayout);
-
-            const auto ComponentCount = [](EMaterialParameterType Type) -> uint32
-            {
-                switch (Type)
-                {
-                    case EMaterialParameterType::Float:
-                        return 1;
-                    case EMaterialParameterType::Float2:
-                        return 2;
-                    case EMaterialParameterType::Float3:
-                        return 3;
-                    case EMaterialParameterType::Float4:
-                        return 4;
-                    default:
-                        return 0;
-                }
-            };
-            for (const MaterialParameterLayout::Entry& Entry : ShaderLayout.Entries)
-            {
-                const uint32 Components = ComponentCount(Entry.Type);
-                if (Components == 0)
-                {
-                    continue;
-                }
-
-                const auto Found = ParameterSet.Parameters.Scalars.find(Entry.Name);
-                if (Found == ParameterSet.Parameters.Scalars.end() || Found->second.Components != Components)
-                {
-                    SetErrorMessage(
-                        ErrorMessage,
-                        Entry.Name + " is missing from material parameters: " + DescriptionPath.generic_string());
+                        Scalar.Name + " is not a parameter of " + Binding.Renderer + ": " + PathKey);
                     return {};
                 }
             }
@@ -814,12 +1131,21 @@ namespace ShadowEngine
                         return &Texture.second;
                     }
                 }
-
                 return nullptr;
             };
+            for (const auto& Texture : Binding.Textures)
+            {
+                if (!Layout->HasTexture(Texture.first))
+                {
+                    SetErrorMessage(
+                        ErrorMessage,
+                        Texture.first + " is not a texture parameter of " + Binding.Renderer + ": " + PathKey);
+                    return {};
+                }
+            }
 
             bool bLoadedTexture = false;
-            for (const MaterialParameterLayout::Entry& Entry : ShaderLayout.Entries)
+            for (const MaterialParameterLayout::Entry& Entry : Layout->Entries)
             {
                 if (Entry.Type != EMaterialParameterType::Texture2D)
                 {
@@ -829,9 +1155,7 @@ namespace ShadowEngine
                 const std::string* Path = FindTexturePath(Entry.Name);
                 if (Path == nullptr || Path->empty())
                 {
-                    SetErrorMessage(
-                        ErrorMessage,
-                        Entry.Name + " is missing from material parameters: " + DescriptionPath.generic_string());
+                    SetErrorMessage(ErrorMessage, Entry.Name + " is missing from material parameters: " + PathKey);
                     return {};
                 }
 
@@ -845,77 +1169,24 @@ namespace ShadowEngine
                 bLoadedTexture = true;
             }
 
-            if (ShaderLayout.Has("Sampler") || bLoadedTexture)
+            if (Layout->Has("Sampler") || bLoadedTexture)
             {
                 MaterialParameter::SetSampler(ParameterSet.Parameters, DefaultSampler());
             }
 
-            if (!MaterialParameter::HasResources(ParameterSet.Parameters, ShaderLayout))
+            if (!MaterialParameter::HasResources(ParameterSet.Parameters, *Layout))
             {
                 SetErrorMessage(
                     ErrorMessage,
-                    Binding.Renderer + " parameters do not match the shader parameter layout: " +
-                        DescriptionPath.generic_string());
+                    Binding.Renderer + " parameters do not match the shader parameter layout: " + PathKey);
                 return {};
             }
 
             ParameterSets.push_back(std::move(ParameterSet));
         }
 
-        MaterialHandle BaseMaterial;
-        if (const MaterialAsset* Existing = Registry.FindMaterial(DescriptionPath))
-        {
-            BaseMaterial = Existing->GetHandle();
-        }
-        else
-        {
-            std::vector<MaterialShaderBinding> ShaderBindings;
-            ShaderBindings.reserve(Description.Bindings.size());
-            for (const MaterialRendererBinding& Binding : Description.Bindings)
-            {
-                std::vector<std::string> DescriptorFields;
-                DescriptorFields.reserve(Binding.Textures.size());
-                for (const auto& Texture : Binding.Textures)
-                {
-                    DescriptorFields.push_back(Texture.first);
-                }
-
-                const ShaderHandle Shader = Shaders->Register(
-                    Binding.VertexShader,
-                    Binding.PixelShader,
-                    Binding.MaterialShader,
-                    Binding.LightShader,
-                    DescriptorFields,
-                    ScalarFieldsFor(Binding));
-                if (!Shader.IsValid())
-                {
-                    SetErrorMessage(ErrorMessage, "Unable to register shader: " + Binding.VertexShader);
-                    return {};
-                }
-
-                MaterialShaderBinding ShaderBinding;
-                ShaderBinding.Renderer = Binding.Renderer;
-                ShaderBinding.Shader = Shader;
-                ShaderBindings.push_back(std::move(ShaderBinding));
-            }
-
-            BaseMaterial.Index = static_cast<uint32>(Materials.size());
-            auto Owned = std::make_unique<Material>(std::move(ShaderBindings));
-            Materials.push_back(Owned.get());
-            auto Asset = std::make_unique<MaterialAsset>(
-                DescriptionPath,
-                std::move(Owned),
-                BaseMaterial);
-            if (!Registry.Register(std::move(Asset)))
-            {
-                Materials.pop_back();
-                SetErrorMessage(ErrorMessage, "Unable to register material: " + DescriptionPath.generic_string());
-                return {};
-            }
-        }
-
-        MaterialInstances.push_back(
-            std::make_unique<MaterialInstance>(BaseMaterial, std::move(ParameterSets)));
+        MaterialInstances.push_back(std::make_unique<MaterialInstance>(BaseMaterial, std::move(ParameterSets)));
+        MaterialInstancePaths.push_back(PathKey);
         MaterialInstanceHandle Handle;
         Handle.Index = static_cast<uint32>(MaterialInstances.size() - 1);
         return Handle;

@@ -1,0 +1,9 @@
+{
+    "Type": "Material",
+    "DebugRenderer":
+    {
+        "Vertex": "DebugRenderer/DebugRendererVertex.slang",
+        "Fragment": "DebugRenderer/DebugRendererFragment.slang",
+        "Material": "Material/DebugRendererMaterial.slang"
+    }
+}

@@ -21,4 +21,17 @@ namespace ShadowEngine
 
         return nullptr;
     }
+
+    const MaterialParameterLayout* Material::FindLayout(std::string_view RendererName) const
+    {
+        for (const MaterialShaderBinding& Binding : Shaders)
+        {
+            if (Binding.Renderer == RendererName)
+            {
+                return &Binding.Layout;
+            }
+        }
+
+        return nullptr;
+    }
 }

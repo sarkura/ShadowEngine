@@ -1,0 +1,7 @@
+{
+    "Type": "Material",
+    "BlinnPhongRenderer":
+    {
+        "Parent": "Assets/BaseMaterial/BlinnPhongPure.material.json"
+    }
+}

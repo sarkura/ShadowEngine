@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Framework/Asset/Public/Description.h"
 #include "Framework/Asset/Public/AssetHandle.h"
 #include "Framework/Asset/Public/AssetRegistry.h"
 #include "Framework/Asset/Public/MeshAsset.h"
@@ -48,6 +49,10 @@ namespace ShadowEngine
                 const std::filesystem::path& DescriptionPath,
                 std::string* ErrorMessage);
 
+            MaterialHandle FindOrCreateMaterial(
+                const MaterialDescription& Description,
+                std::string* ErrorMessage);
+
             TextureAssetHandle LoadTexture(
                 const std::filesystem::path& Path,
                 std::string* ErrorMessage);
@@ -65,7 +70,9 @@ namespace ShadowEngine
             std::vector<const MeshAsset*> Meshes;
             std::vector<const TextureAsset*> Textures;
             std::vector<Material*> Materials;
+            std::vector<std::string> SharedMaterialKeys;
             std::vector<std::unique_ptr<MaterialInstance>> MaterialInstances;
+            std::vector<std::string> MaterialInstancePaths;
             SamplerHandle LinearSampler;
             TextureAssetHandle EnvironmentMap;
     };

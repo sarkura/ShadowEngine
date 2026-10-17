@@ -1,0 +1,18 @@
+{
+    "Type": "Material",
+    "ForwardRenderer":
+    {
+        "Vertex": "Forward/ForwardVertex.slang",
+        "Fragment": "Forward/ForwardFragment.slang",
+        "Material": "Material/ForwardTranslucentMaterial.slang",
+        "Light": "Light/ForwardLight.slang",
+        "Surface": "Translucent",
+        "TwoSided": false,
+        "Parameters":
+        {
+            "BaseColor": "float3",
+            "Roughness": "float",
+            "Alpha": "float"
+        }
+    }
+}

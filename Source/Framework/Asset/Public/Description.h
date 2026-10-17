@@ -37,15 +37,21 @@ namespace ShadowEngine
     struct MaterialRendererBinding
     {
         std::string Renderer;
+        std::string Parent;
         std::string VertexShader;
         std::string PixelShader;
         std::string MaterialShader;
         std::string LightShader;
         EMaterialSurface Surface = EMaterialSurface::Opaque;
         bool bTwoSided = false;
+        bool bHasSurface = false;
+        bool bHasTwoSided = false;
+        bool bDefinesShader = false;
         bool bHasParameters = false;
         std::vector<MaterialScalarParameter> Scalars;
         std::vector<std::pair<std::string, std::string>> Textures;
+        std::vector<MaterialScalarParameter> ShaderScalars;
+        std::vector<std::pair<std::string, std::string>> ShaderTextures;
     };
 
     struct MaterialDescription

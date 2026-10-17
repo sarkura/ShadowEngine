@@ -3,7 +3,6 @@
 struct MaterialSurfaceData
 {
     float3 BaseColor;
-    float Metallic;
     float Roughness;
     float3 SpecularColor;
 };

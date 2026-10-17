@@ -1,0 +1,16 @@
+{
+    "Type": "Material",
+    "BlinnPhongRenderer":
+    {
+        "Vertex": "BlinnPhong/BlinnPhongVertex.slang",
+        "Fragment": "BlinnPhong/BlinnPhongFragment.slang",
+        "Material": "Material/BlinnPhongPureMaterial.slang",
+        "Light": "Light/BlinnPhongLight.slang",
+        "Parameters":
+        {
+            "BaseColor": "float3",
+            "Roughness": "float",
+            "SpecularColor": "float3"
+        }
+    }
+}

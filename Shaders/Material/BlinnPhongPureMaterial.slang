@@ -4,22 +4,19 @@ struct MaterialSurfaceData
 {
     float3 BaseColor;
     float Roughness;
+    float3 SpecularColor;
 };
 #endif
 
-#include "../Common/ForwardConstants.slang"
-#include "ForwardMaterialSample.slang"
+#include "../Common/BlinnPhongConstants.slang"
+#include "BlinnPhongMaterialSample.slang"
 
-ForwardMaterialSample EvaluateMaterial(VertexOutput Input)
+BlinnPhongMaterialSample EvaluateMaterial(VertexOutput Input)
 {
-    ForwardMaterialSample Sample;
+    BlinnPhongMaterialSample Sample;
     Sample.Albedo = saturate(Surface.BaseColor.rgb);
-    Sample.Metallic = 0.0;
     Sample.Roughness = saturate(Surface.Roughness);
-    Sample.Occlusion = 1.0;
-    Sample.Emissive = 0.0;
+    Sample.SpecularColor = Surface.SpecularColor.rgb;
     Sample.Normal = normalize(Input.WorldNormal);
-    Sample.Opacity = 1.0;
-    Sample.CutoutThreshold = 0.0;
     return Sample;
 }

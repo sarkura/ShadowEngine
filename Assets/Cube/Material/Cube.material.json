@@ -2,10 +2,7 @@
     "Type": "Material",
     "BlinnPhongRenderer":
     {
-        "Vertex": "BlinnPhong/BlinnPhongVertex.slang",
-        "Fragment": "BlinnPhong/BlinnPhongFragment.slang",
-        "Material": "Material/BlinnPhongMaterial.slang",
-        "Light": "Light/BlinnPhongLight.slang",
+        "Parent": "Assets/BaseMaterial/BlinnPhongPure.material.json",
         "Parameters":
         {
             "BaseColor": {"float3": [0.3, 0.6, 0.9]},
@@ -15,12 +12,7 @@
     },
     "ForwardRenderer":
     {
-        "Vertex": "Forward/ForwardVertex.slang",
-        "Fragment": "Forward/ForwardFragment.slang",
-        "Material": "Material/CubeForwardMaterial.slang",
-        "Light": "Light/ForwardLight.slang",
-        "Surface": "Translucent",
-        "TwoSided": false,
+        "Parent": "Assets/BaseMaterial/ForwardTranslucent.material.json",
         "Parameters":
         {
             "BaseColor": {"float3": [0.3, 0.6, 0.9]},

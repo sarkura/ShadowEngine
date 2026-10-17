@@ -20,13 +20,14 @@ namespace ShadowEngine
             std::string* ErrorMessage)
         {
             const bool bForward = std::string_view(RendererName) == "ForwardRenderer";
-            const char* AllowedMembers[7] = {"Vertex", "Fragment", "Material", "Light", "Parameters", nullptr, nullptr};
-            uint32 AllowedCount = 5;
+            const char* AllowedMembers[8] = {
+                "Vertex", "Fragment", "Material", "Light", "Parameters", "Parent", nullptr, nullptr};
+            uint32 AllowedCount = 6;
             if (bForward)
             {
-                AllowedMembers[5] = "Surface";
-                AllowedMembers[6] = "TwoSided";
-                AllowedCount = 7;
+                AllowedMembers[6] = "Surface";
+                AllowedMembers[7] = "TwoSided";
+                AllowedCount = 8;
             }
             for (auto Member = Object.MemberBegin(); Member != Object.MemberEnd(); ++Member)
             {
@@ -49,58 +50,55 @@ namespace ShadowEngine
                 }
             }
 
-            const char* RequiredMembers[6] = {"Vertex", "Fragment", "Material", "Parameters", nullptr, nullptr};
-            uint32 RequiredCount = 4;
-            if (bForward)
+            Binding.Renderer = RendererName;
+            if (Object.HasMember("Parent"))
             {
-                RequiredMembers[4] = "Surface";
-                RequiredMembers[5] = "TwoSided";
-                RequiredCount = 6;
-            }
-            for (uint32 Index = 0; Index < RequiredCount; ++Index)
-            {
-                const char* Name = RequiredMembers[Index];
-                if (!Object.HasMember(Name))
+                const rapidjson::Value& Parent = Object["Parent"];
+                if (!Parent.IsString() || Parent.GetStringLength() == 0)
                 {
                     SetErrorMessage(
                         ErrorMessage,
-                        std::string(RendererName) + " is missing '" + Name + "': " + FilePath.generic_string());
+                        std::string(RendererName) + " Parent must be a path: " + FilePath.generic_string());
                     return false;
                 }
-            }
 
-            const rapidjson::Value& VertexShader = Object["Vertex"];
-            if (!VertexShader.IsString() || VertexShader.GetStringLength() == 0)
+                Binding.Parent = Parent.GetString();
+            }
+            if (Object.HasMember("Vertex"))
             {
-                SetErrorMessage(ErrorMessage, std::string(RendererName) + " Vertex must be a path: " + FilePath.generic_string());
-                return false;
+                const rapidjson::Value& VertexShader = Object["Vertex"];
+                if (!VertexShader.IsString() || VertexShader.GetStringLength() == 0)
+                {
+                    SetErrorMessage(ErrorMessage, std::string(RendererName) + " Vertex must be a path: " + FilePath.generic_string());
+                    return false;
+                }
+
+                Binding.VertexShader = VertexShader.GetString();
             }
 
-            const rapidjson::Value& PixelShader = Object["Fragment"];
-            if (!PixelShader.IsString() || PixelShader.GetStringLength() == 0)
+            if (Object.HasMember("Fragment"))
             {
-                SetErrorMessage(ErrorMessage, std::string(RendererName) + " Fragment must be a path: " + FilePath.generic_string());
-                return false;
+                const rapidjson::Value& PixelShader = Object["Fragment"];
+                if (!PixelShader.IsString() || PixelShader.GetStringLength() == 0)
+                {
+                    SetErrorMessage(ErrorMessage, std::string(RendererName) + " Fragment must be a path: " + FilePath.generic_string());
+                    return false;
+                }
+
+                Binding.PixelShader = PixelShader.GetString();
             }
 
-            const rapidjson::Value& MaterialShader = Object["Material"];
-            if (!MaterialShader.IsString() || MaterialShader.GetStringLength() == 0)
+            if (Object.HasMember("Material"))
             {
-                SetErrorMessage(ErrorMessage, std::string(RendererName) + " Material must be a path: " + FilePath.generic_string());
-                return false;
-            }
+                const rapidjson::Value& MaterialShader = Object["Material"];
+                if (!MaterialShader.IsString() || MaterialShader.GetStringLength() == 0)
+                {
+                    SetErrorMessage(ErrorMessage, std::string(RendererName) + " Material must be a path: " + FilePath.generic_string());
+                    return false;
+                }
 
-            const rapidjson::Value& Parameters = Object["Parameters"];
-            if (!Parameters.IsObject())
-            {
-                SetErrorMessage(ErrorMessage, std::string(RendererName) + " Parameters must be an object: " + FilePath.generic_string());
-                return false;
+                Binding.MaterialShader = MaterialShader.GetString();
             }
-
-            Binding.Renderer = RendererName;
-            Binding.VertexShader = VertexShader.GetString();
-            Binding.PixelShader = PixelShader.GetString();
-            Binding.MaterialShader = MaterialShader.GetString();
             if (Object.HasMember("Light"))
             {
                 const rapidjson::Value& LightShader = Object["Light"];
@@ -112,9 +110,10 @@ namespace ShadowEngine
 
                 Binding.LightShader = LightShader.GetString();
             }
-            if (bForward)
+            if (bForward && Object.HasMember("Surface"))
             {
                 const rapidjson::Value& Surface = Object["Surface"];
+                Binding.bHasSurface = true;
                 if (!Surface.IsString())
                 {
                     SetErrorMessage(ErrorMessage, "ForwardRenderer Surface must be a string: " + FilePath.generic_string());
@@ -142,6 +141,9 @@ namespace ShadowEngine
                     return false;
                 }
 
+            }
+            if (bForward && Object.HasMember("TwoSided"))
+            {
                 const rapidjson::Value& TwoSided = Object["TwoSided"];
                 if (!TwoSided.IsBool())
                 {
@@ -150,9 +152,42 @@ namespace ShadowEngine
                 }
 
                 Binding.bTwoSided = TwoSided.GetBool();
+                Binding.bHasTwoSided = true;
+            }
+
+            const bool bHasShaderPaths = !Binding.VertexShader.empty() || !Binding.PixelShader.empty() ||
+                !Binding.MaterialShader.empty();
+            if (bHasShaderPaths &&
+                (Binding.VertexShader.empty() || Binding.PixelShader.empty() || Binding.MaterialShader.empty()))
+            {
+                SetErrorMessage(
+                    ErrorMessage,
+                    std::string(RendererName) + " shader paths must include Vertex, Fragment, and Material: " +
+                        FilePath.generic_string());
+                return false;
+            }
+
+            if (!Object.HasMember("Parameters"))
+            {
+                if (bHasShaderPaths)
+                {
+                    Binding.bDefinesShader = true;
+                }
+                return true;
+            }
+
+            const rapidjson::Value& Parameters = Object["Parameters"];
+            if (!Parameters.IsObject())
+            {
+                SetErrorMessage(ErrorMessage, std::string(RendererName) + " Parameters must be an object: " + FilePath.generic_string());
+                return false;
             }
             if (Parameters.MemberCount() == 0)
             {
+                if (bHasShaderPaths)
+                {
+                    Binding.bDefinesShader = true;
+                }
                 return true;
             }
 
@@ -214,6 +249,46 @@ namespace ShadowEngine
                         ErrorMessage,
                         "Material parameter '" + Name + "' is not a valid name: " + FilePath.generic_string());
                     return false;
+                }
+
+                if (Member->value.IsString())
+                {
+                    const std::string TypeName = Member->value.GetString();
+                    if (TypeName == "texture")
+                    {
+                        Binding.ShaderTextures.emplace_back(Name, "");
+                        continue;
+                    }
+
+                    MaterialScalarParameter Scalar;
+                    Scalar.Name = Name;
+                    if (TypeName == "float")
+                    {
+                        Scalar.Components = 1;
+                    }
+                    else if (TypeName == "float2")
+                    {
+                        Scalar.Components = 2;
+                    }
+                    else if (TypeName == "float3")
+                    {
+                        Scalar.Components = 3;
+                    }
+                    else if (TypeName == "float4")
+                    {
+                        Scalar.Components = 4;
+                    }
+                    else
+                    {
+                        SetErrorMessage(
+                            ErrorMessage,
+                            "Material parameter '" + Name + "' has unsupported type '" + TypeName + "': " +
+                                FilePath.generic_string());
+                        return false;
+                    }
+
+                    Binding.ShaderScalars.push_back(std::move(Scalar));
+                    continue;
                 }
 
                 if (!Member->value.IsObject() || Member->value.MemberCount() != 1)
@@ -294,6 +369,15 @@ namespace ShadowEngine
             }
 
             Binding.bHasParameters = true;
+            if (bHasShaderPaths)
+            {
+                Binding.bDefinesShader = true;
+                if (Binding.ShaderScalars.empty() && Binding.ShaderTextures.empty())
+                {
+                    Binding.ShaderScalars = Binding.Scalars;
+                    Binding.ShaderTextures = Binding.Textures;
+                }
+            }
             return true;
         }
     }

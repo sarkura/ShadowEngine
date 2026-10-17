@@ -2,19 +2,11 @@
     "Type": "Material",
     "DebugRenderer":
     {
-        "Vertex": "DebugRenderer/DebugRendererVertex.slang",
-        "Fragment": "DebugRenderer/DebugRendererFragment.slang",
-        "Material": "Material/DebugRendererMaterial.slang",
-        "Parameters":
-        {
-        }
+        "Parent": "Assets/BaseMaterial/Debug.material.json"
     },
     "BlinnPhongRenderer":
     {
-        "Vertex": "BlinnPhong/BlinnPhongVertex.slang",
-        "Fragment": "BlinnPhong/BlinnPhongFragment.slang",
-        "Material": "Material/BlinnPhongMaterial.slang",
-        "Light": "Light/BlinnPhongLight.slang",
+        "Parent": "Assets/BaseMaterial/BlinnPhongPure.material.json",
         "Parameters":
         {
             "BaseColor": {"float3": [0.6, 0.3, 0.2]},
@@ -24,12 +16,7 @@
     },
     "ForwardRenderer":
     {
-        "Vertex": "Forward/ForwardVertex.slang",
-        "Fragment": "Forward/ForwardFragment.slang",
-        "Material": "Material/ForwardMaterial.slang",
-        "Light": "Light/ForwardLight.slang",
-        "Surface": "Opaque",
-        "TwoSided": false,
+        "Parent": "Assets/BaseMaterial/ForwardPure.material.json",
         "Parameters":
         {
             "BaseColor": {"float3": [0.6, 0.3, 0.2]},

@@ -1,0 +1,16 @@
+schema_version = "1.0.0"
+
+id = "ShadowEngineExporter"
+version = "1.0.0"
+name = "ShadowEngine Exporter"
+tagline = "Export meshes, materials, and lights for ShadowEngine"
+maintainer = "ShadowEngine"
+type = "add-on"
+tags = ["Import-Export"]
+blender_version_min = "5.2.0"
+license = [
+  "SPDX:Apache-2.0",
+]
+
+[permissions]
+files = "Write glTF meshes, material descriptions, textures, and a scene file"
