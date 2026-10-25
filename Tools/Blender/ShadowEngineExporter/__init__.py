@@ -20,9 +20,9 @@ BLENDER_TO_GLTF = Matrix((
     (0.0, 0.0, 0.0, 1.0),
 ))
 
-BASE_FORWARD_PURE = "Assets/BaseMaterial/ForwardPure.material.json"
-BASE_FORWARD_TEXTURE = "Assets/BaseMaterial/ForwardTexture.material.json"
-BASE_FORWARD_TRANSLUCENT = "Assets/BaseMaterial/ForwardTranslucent.material.json"
+BASE_FORWARD_PURE = "Assets/BaseMaterial/Pure.material.json"
+BASE_FORWARD_TEXTURE = "Assets/BaseMaterial/Texture.material.json"
+BASE_FORWARD_TRANSLUCENT = "Assets/BaseMaterial/Translucent.material.json"
 ASSET_MESH = Path("Assets") / "Mesh"
 
 def rounded(value):
@@ -360,7 +360,7 @@ class SHADOWENGINE_OT_export(Operator):
 
         write_json(root / material_relative, {
             "Type": "Material",
-            "ForwardRenderer": {
+            "Principled": {
                 "Parent": parent,
                 "Surface": surface,
                 "TwoSided": two_sided,

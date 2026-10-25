@@ -624,6 +624,11 @@ namespace ShadowEngine
                             }
                             Source += "};\n";
                         }
+                        if (!Request.ConstantsPath.empty())
+                        {
+                            const std::filesystem::path Constants = std::filesystem::absolute(Request.ConstantsPath);
+                            Source += "#include \"" + Constants.generic_string() + "\"\n";
+                        }
                         if (!Request.ImplementationPath.empty())
                         {
                             const std::filesystem::path Implementation =

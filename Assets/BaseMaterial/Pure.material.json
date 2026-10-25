@@ -1,0 +1,15 @@
+{
+    "Type": "Material",
+    "Principled":
+    {
+        "Vertex": "Principled/PrincipledVertex.slang",
+        "Material": "Material/PureMaterial.slang",
+        "Surface": "Opaque",
+        "TwoSided": false,
+        "Parameters":
+        {
+            "BaseColor": "float3",
+            "Roughness": "float"
+        }
+    }
+}

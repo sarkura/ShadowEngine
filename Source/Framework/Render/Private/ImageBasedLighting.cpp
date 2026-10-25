@@ -156,7 +156,7 @@ namespace ShadowEngine
         PipelineDesc.VertexShader = Shaders.GetVertexShader(Shader);
         PipelineDesc.PixelShader = Shaders.GetPixelShader(Shader);
         PipelineDesc.Layout = &Layout;
-        PipelineDesc.RenderTargetFormat = ERHIFormat::R16G16B16A16_Float;
+        PipelineDesc.RenderTargetFormats[0] = ERHIFormat::R16G16B16A16_Float;
         PipelineDesc.Topology = ERHIPrimitiveTopology::TriangleList;
         PipelineDesc.bEnableDepth = false;
         Out = Device.CreateGraphicsPipeline(PipelineDesc, ErrorMessage);

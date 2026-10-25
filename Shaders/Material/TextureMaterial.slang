@@ -8,14 +8,13 @@ struct MaterialSurfaceData
 };
 #endif
 
-#include "../Common/ForwardTexturedConstants.slang"
-#include "ForwardMaterialSample.slang"
+#include "MaterialSample.slang"
 #include "../Common/NormalMapping.slang"
 #include "../Common/DescriptorHeap.slang"
 
-ForwardMaterialSample EvaluateMaterial(VertexOutput Input)
+MaterialSample EvaluateMaterial(VertexOutput Input)
 {
-    ForwardMaterialSample Sample;
+    MaterialSample Sample;
     const Texture2D BaseColorTexture = LoadResourceDescriptor<Texture2D>(Descriptors.BaseColorTexture);
     const Texture2D RoughnessTexture = LoadResourceDescriptor<Texture2D>(Descriptors.RoughnessTexture);
     const Texture2D MetallicTexture = LoadResourceDescriptor<Texture2D>(Descriptors.MetallicTexture);

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../Material/ForwardMaterialSample.slang"
+#include "../Material/MaterialSample.slang"
 
 struct ForwardLightSample
 {
@@ -9,4 +9,4 @@ struct ForwardLightSample
     float3 Sky;
 };
 
-ForwardLightSample EvaluateLight(ForwardMaterialSample Material, VertexOutput Input);
+ForwardLightSample EvaluateLight(MaterialSample Material, VertexOutput Input);

@@ -31,7 +31,7 @@ float3 ShadeGgx(
     return (Diffuse + Specular) * Radiance * NdotL;
 }
 
-float3 ShadeDirectional(ForwardMaterialSample Material, float3 Normal, float3 ToView, float3 WorldPosition)
+float3 ShadeDirectional(MaterialSample Material, float3 Normal, float3 ToView, float3 WorldPosition)
 {
     if (Direct.Color.a <= 0.0)
     {
@@ -49,7 +49,7 @@ float3 ShadeDirectional(ForwardMaterialSample Material, float3 Normal, float3 To
     return ShadeGgx(Material.Albedo, Material.Metallic, Material.Roughness, Normal, ToView, ToLight, Radiance);
 }
 
-float3 ShadePoint(ForwardPointLight Light, int LightIndex, ForwardMaterialSample Material, float3 Normal, float3 WorldPosition, float3 ToView)
+float3 ShadePoint(ForwardPointLight Light, int LightIndex, MaterialSample Material, float3 Normal, float3 WorldPosition, float3 ToView)
 {
     if (Light.Color.a <= 0.0)
     {
@@ -80,7 +80,7 @@ float3 ShadePoint(ForwardPointLight Light, int LightIndex, ForwardMaterialSample
     return ShadeGgx(Material.Albedo, Material.Metallic, Material.Roughness, Normal, ToView, ToLight, Radiance);
 }
 
-ForwardLightSample EvaluateLight(ForwardMaterialSample Material, VertexOutput Input)
+ForwardLightSample EvaluateLight(MaterialSample Material, VertexOutput Input)
 {
     const float3 Normal = normalize(Material.Normal);
     const float3 ToView = normalize(PerObject.CameraPosition.xyz - Input.WorldPosition);

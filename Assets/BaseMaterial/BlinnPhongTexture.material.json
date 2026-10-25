@@ -1,6 +1,6 @@
 {
     "Type": "Material",
-    "BlinnPhongRenderer":
+    "BlinnPhong":
     {
         "Vertex": "BlinnPhong/BlinnPhongVertex.slang",
         "Fragment": "BlinnPhong/BlinnPhongFragment.slang",

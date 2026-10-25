@@ -220,8 +220,30 @@ namespace ShadowEngine
             return false;
         }
 
+        const auto ConstantsForMaterial = [&](const std::filesystem::path& PixelPath, bool bTextured) -> std::filesystem::path
+        {
+            const std::string Name = PixelPath.generic_string();
+            const char* Relative = nullptr;
+            if (Name.find("ForwardFragment") != std::string::npos)
+            {
+                Relative = bTextured ? "Common/ForwardTexturedConstants.slang" : "Common/ForwardConstants.slang";
+            }
+            else if (Name.find("GBufferFragment") != std::string::npos || Name.find("Cutout") != std::string::npos)
+            {
+                Relative = bTextured ? "Common/PrincipledTexturedConstants.slang" : "Common/PrincipledConstants.slang";
+            }
+            if (Relative == nullptr)
+            {
+                return {};
+            }
+            return ShaderDirectory / Relative;
+        };
+
         ShaderCompileRequest PixelRequest;
         PixelRequest.SourcePath = ShaderDirectory / Record.PixelPath;
+        PixelRequest.ConstantsPath = Record.MaterialPath.empty()
+            ? std::filesystem::path()
+            : ConstantsForMaterial(Record.PixelPath, !Record.DescriptorFields.empty());
         PixelRequest.ImplementationPath = Record.MaterialPath.empty() ? std::filesystem::path() : ShaderDirectory / Record.MaterialPath;
         PixelRequest.LightPath = Record.LightPath.empty() ? std::filesystem::path() : ShaderDirectory / Record.LightPath;
         PixelRequest.EntryPoint = "PixelMain";

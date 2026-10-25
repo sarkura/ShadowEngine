@@ -25,6 +25,7 @@ namespace ShadowEngine
         std::filesystem::path SourcePath;
         std::filesystem::path ImplementationPath;
         std::filesystem::path LightPath;
+        std::filesystem::path ConstantsPath;
         std::string EntryPoint;
         std::vector<std::string> DescriptorFields;
         std::vector<ShaderScalarField> ScalarFields;

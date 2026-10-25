@@ -886,6 +886,60 @@ namespace ShadowEngine
             return true;
         }
 
+        bool ExpandPrincipledSurface(MaterialDescription& Description, const std::string& FilePath, std::string* ErrorMessage)
+        {
+            std::vector<MaterialRendererBinding> Expanded;
+            Expanded.reserve(Description.Bindings.size() * 2);
+            for (const MaterialRendererBinding& Binding : Description.Bindings)
+            {
+                if (Binding.Renderer == "BlinnPhong" || Binding.Renderer == "Debug")
+                {
+                    MaterialRendererBinding Mapped = Binding;
+                    Mapped.Renderer = Binding.Renderer == "BlinnPhong" ? "BlinnPhongRenderer" : "DebugRenderer";
+                    Expanded.push_back(std::move(Mapped));
+                    continue;
+                }
+
+                if (Binding.Renderer != "Principled")
+                {
+                    Expanded.push_back(Binding);
+                    continue;
+                }
+
+                if (!Binding.PixelShader.empty() || !Binding.LightShader.empty())
+                {
+                    SetErrorMessage(ErrorMessage, "Principled does not store a fragment or light shader: " + FilePath);
+                    return false;
+                }
+
+                MaterialRendererBinding Forward = Binding;
+                Forward.Renderer = "ForwardRenderer";
+                MaterialRendererBinding Deferred = Binding;
+                Deferred.Renderer = "DeferredRenderer";
+                if (Binding.bDefinesShader)
+                {
+                    Forward.PixelShader = "Forward/ForwardFragment.slang";
+                    Forward.LightShader = "Light/ForwardLight.slang";
+                    if (Binding.Surface == EMaterialSurface::Translucent)
+                    {
+                        Deferred.PixelShader = Forward.PixelShader;
+                        Deferred.LightShader = Forward.LightShader;
+                    }
+                    else
+                    {
+                        Deferred.PixelShader = "Deferred/GBufferFragment.slang";
+                        Deferred.LightShader.clear();
+                    }
+                }
+
+                Expanded.push_back(std::move(Forward));
+                Expanded.push_back(std::move(Deferred));
+            }
+
+            Description.Bindings = std::move(Expanded);
+            return true;
+        }
+
         std::string MaterialShaderKey(const MaterialDescription& Description)
         {
             std::vector<const MaterialRendererBinding*> Ordered;
@@ -952,11 +1006,12 @@ namespace ShadowEngine
                     SetErrorMessage(ErrorMessage, Binding.Renderer + " is missing shader paths: " + FilePath);
                     return false;
                 }
-                if (Binding.Renderer == "ForwardRenderer" && (!Binding.bHasSurface || !Binding.bHasTwoSided))
+                if ((Binding.Renderer == "ForwardRenderer" || Binding.Renderer == "DeferredRenderer") &&
+                    (!Binding.bHasSurface || !Binding.bHasTwoSided))
                 {
                     SetErrorMessage(
                         ErrorMessage,
-                        "ForwardRenderer is missing Surface or TwoSided: " + FilePath);
+                        Binding.Renderer + " is missing Surface or TwoSided: " + FilePath);
                     return false;
                 }
             }
@@ -1079,6 +1134,7 @@ namespace ShadowEngine
         std::vector<std::string> Stack;
         MaterialDescription Description;
         if (!ResolveMaterialDescription(DescriptionPath, Description, Stack, ErrorMessage) ||
+            !ExpandPrincipledSurface(Description, PathKey, ErrorMessage) ||
             !ValidateMergedMaterial(Description, PathKey, ErrorMessage))
         {
             return {};

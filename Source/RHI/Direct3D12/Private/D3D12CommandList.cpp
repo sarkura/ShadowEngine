@@ -52,17 +52,28 @@ namespace ShadowEngine
     }
 
     void D3D12CommandList::BeginRenderPass(
-        RHITexture& RenderTarget,
+        std::span<RHITexture*> ColorTargets,
         RHITexture* DepthTarget,
         const RHIColor& ClearColor,
         bool bClearColor,
         bool bClearDepth,
         uint32 ArraySlice)
     {
-        auto& Texture = static_cast<D3D12Texture&>(RenderTarget);
-        RenderTargetRestoreState = Texture.GetState();
-        Transition(Texture, D3D12_RESOURCE_STATE_RENDER_TARGET);
-        CurrentRenderTarget = &Texture;
+        CurrentRenderTargetCount = static_cast<uint32>(ColorTargets.size());
+        if (CurrentRenderTargetCount > 8)
+        {
+            CurrentRenderTargetCount = 8;
+        }
+
+        D3D12_CPU_DESCRIPTOR_HANDLE RenderTargetViews[8] = {};
+        for (uint32 Index = 0; Index < CurrentRenderTargetCount; ++Index)
+        {
+            auto& Texture = static_cast<D3D12Texture&>(*ColorTargets[Index]);
+            RenderTargetRestoreStates[Index] = Texture.GetState();
+            Transition(Texture, D3D12_RESOURCE_STATE_RENDER_TARGET);
+            CurrentRenderTargets[Index] = &Texture;
+            RenderTargetViews[Index] = Texture.GetRenderTargetView(ArraySlice);
+        }
 
         D3D12Texture* DepthTexture = nullptr;
         if (DepthTarget != nullptr)
@@ -71,16 +82,22 @@ namespace ShadowEngine
             Transition(*DepthTexture, D3D12_RESOURCE_STATE_DEPTH_WRITE);
         }
 
-        const D3D12_CPU_DESCRIPTOR_HANDLE RenderTargetView = Texture.GetRenderTargetView(ArraySlice);
         const D3D12_CPU_DESCRIPTOR_HANDLE DepthStencilView =
             DepthTexture != nullptr ? DepthTexture->GetDepthStencilView() : D3D12_CPU_DESCRIPTOR_HANDLE{};
         const D3D12_CPU_DESCRIPTOR_HANDLE* DepthStencil =
             DepthTexture != nullptr && DepthTexture->HasDepthStencil() ? &DepthStencilView : nullptr;
-        CommandList->OMSetRenderTargets(1, &RenderTargetView, FALSE, DepthStencil);
+        CommandList->OMSetRenderTargets(
+            CurrentRenderTargetCount,
+            CurrentRenderTargetCount > 0 ? RenderTargetViews : nullptr,
+            FALSE,
+            DepthStencil);
         if (bClearColor)
         {
             const float Color[4] = {ClearColor.R, ClearColor.G, ClearColor.B, ClearColor.A};
-            CommandList->ClearRenderTargetView(RenderTargetView, Color, 0, nullptr);
+            for (uint32 Index = 0; Index < CurrentRenderTargetCount; ++Index)
+            {
+                CommandList->ClearRenderTargetView(RenderTargetViews[Index], Color, 0, nullptr);
+            }
         }
         if (bClearDepth && DepthStencil != nullptr)
         {
@@ -119,11 +136,15 @@ namespace ShadowEngine
 
     void D3D12CommandList::EndRenderPass()
     {
-        if (CurrentRenderTarget != nullptr)
+        for (uint32 Index = 0; Index < CurrentRenderTargetCount; ++Index)
         {
-            Transition(*CurrentRenderTarget, RenderTargetRestoreState);
-            CurrentRenderTarget = nullptr;
+            if (CurrentRenderTargets[Index] != nullptr)
+            {
+                Transition(*CurrentRenderTargets[Index], RenderTargetRestoreStates[Index]);
+                CurrentRenderTargets[Index] = nullptr;
+            }
         }
+        CurrentRenderTargetCount = 0;
     }
 
     void D3D12CommandList::SetPipeline(RHIPipeline& Pipeline)

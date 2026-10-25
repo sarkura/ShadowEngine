@@ -7,6 +7,7 @@
 #include "Framework/Engine/Public/EngineModules.h"
 #include "Framework/Render/Public/BlinnPhongRenderer.h"
 #include "Framework/Render/Public/DebugRenderer.h"
+#include "Framework/Render/Public/DeferredRenderer.h"
 #include "Framework/Render/Public/ForwardRenderer.h"
 #include "Framework/Scene/Public/Light.h"
 #include "Framework/Scene/Public/Scene.h"
@@ -187,6 +188,10 @@ namespace ShadowEngine
         else if (RendererName == "ForwardRenderer")
         {
             MainRenderer = std::make_unique<ForwardRenderer>();
+        }
+        else if (RendererName == "DeferredRenderer")
+        {
+            MainRenderer = std::make_unique<DeferredRenderer>();
         }
         else
         {

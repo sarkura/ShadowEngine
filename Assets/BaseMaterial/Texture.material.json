@@ -1,11 +1,9 @@
 {
     "Type": "Material",
-    "ForwardRenderer":
+    "Principled":
     {
-        "Vertex": "Forward/ForwardVertex.slang",
-        "Fragment": "Forward/ForwardFragment.slang",
-        "Material": "Material/ForwardTextureMaterial.slang",
-        "Light": "Light/ForwardLight.slang",
+        "Vertex": "Principled/PrincipledVertex.slang",
+        "Material": "Material/TextureMaterial.slang",
         "Surface": "Opaque",
         "TwoSided": false,
         "Parameters":

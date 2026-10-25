@@ -53,7 +53,7 @@ namespace ShadowEngine
             PipelineDesc.VertexShader = Shaders.GetVertexShader(Shader);
             PipelineDesc.PixelShader = Shaders.GetPixelShader(Shader);
             PipelineDesc.Layout = &Layout;
-            PipelineDesc.RenderTargetFormat = ERHIFormat::R32G32B32A32_Float;
+            PipelineDesc.RenderTargetFormats[0] = ERHIFormat::R32G32B32A32_Float;
             PipelineDesc.Topology = ERHIPrimitiveTopology::TriangleList;
             PipelineDesc.bEnableDepth = false;
             Pipeline = Device.CreateGraphicsPipeline(PipelineDesc, ErrorMessage);

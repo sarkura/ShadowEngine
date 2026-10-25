@@ -7,12 +7,11 @@ struct MaterialSurfaceData
 };
 #endif
 
-#include "../Common/ForwardConstants.slang"
-#include "ForwardMaterialSample.slang"
+#include "MaterialSample.slang"
 
-ForwardMaterialSample EvaluateMaterial(VertexOutput Input)
+MaterialSample EvaluateMaterial(VertexOutput Input)
 {
-    ForwardMaterialSample Sample;
+    MaterialSample Sample;
     Sample.Albedo = saturate(Surface.BaseColor.rgb);
     Sample.Metallic = 0.0;
     Sample.Roughness = saturate(Surface.Roughness);

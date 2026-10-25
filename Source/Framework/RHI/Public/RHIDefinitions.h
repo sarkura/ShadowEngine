@@ -76,7 +76,8 @@ namespace ShadowEngine
         RHIShader* VertexShader = nullptr;
         RHIShader* PixelShader = nullptr;
         const RHIPipelineLayout* Layout = nullptr;
-        ERHIFormat RenderTargetFormat = ERHIFormat::R8G8B8A8_UNorm;
+        ERHIFormat RenderTargetFormats[8] = {ERHIFormat::R8G8B8A8_UNorm};
+        uint32 RenderTargetCount = 1;
         ERHIPrimitiveTopology Topology = ERHIPrimitiveTopology::TriangleList;
         std::span<const RHIInputElement> InputLayout;
         bool bEnableDepth = false;

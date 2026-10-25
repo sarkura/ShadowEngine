@@ -58,7 +58,7 @@ The folder then contains:
 
 - `Config\Scene.json`: where each model sits, how it is rotated, and the lights
 - `Assets\Mesh\<name>\Mesh\`: the model and its `.asset.json`
-- `Assets\Mesh\<name>\Material\`: one material file per model. It contains `ForwardRenderer` only. `Parent` inside that object points at `ForwardPure`, `ForwardTexture`, or `ForwardTranslucent` under the repository `Assets\BaseMaterial`. The file stores `Surface`, `TwoSided`, and the parameter values. Shader paths and parameter types stay on those base materials, which are not part of this export
+- `Assets\Mesh\<name>\Material\`: one material file per model. It contains `Principled` only. `Parent` inside that object points at `Pure`, `Texture`, or `Translucent` under the repository `Assets\BaseMaterial`. The file stores `Surface`, `TwoSided`, and the parameter values. Shader paths and parameter types stay on those base materials, which are not part of this export
 - `Assets\Mesh\<name>\Texture\`: present only when a material uses images
 
 `.gitkeep` is an empty file that keeps this folder in Git. Leave it in place.
@@ -70,4 +70,4 @@ The engine reads `Config\Scene.json` and the `Assets\` paths inside it from the 
 - `ExportData\Assets\Mesh` onto the repository `Assets\Mesh`
 - `ExportData\Config\Scene.json` onto the repository `Config\Scene.json`
 
-Leave `Engine.json`, `Renderer.json`, and `GlobalTexture.json` where they are. `Renderer.json` stays on `ForwardRenderer`, because the exported materials contain that binding. Run the engine from the repository root. The camera starts at `(0, 4, 14)` and looks toward the origin.
+Leave `Engine.json`, `Renderer.json`, and `GlobalTexture.json` where they are. `Principled` materials are read by both `ForwardRenderer` and `DeferredRenderer`. Run the engine from the repository root. The camera starts at `(0, 4, 14)` and looks toward the origin.

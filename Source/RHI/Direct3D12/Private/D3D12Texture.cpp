@@ -208,11 +208,14 @@ namespace ShadowEngine
         ERHIFormat InFormat,
         std::string* ErrorMessage)
     {
-        if (InWidth == 0 || InHeight == 0 || InFormat != ERHIFormat::R16G16B16A16_Float)
+        if (InWidth == 0 || InHeight == 0 ||
+            (InFormat != ERHIFormat::R16G16B16A16_Float && InFormat != ERHIFormat::R8G8B8A8_UNorm))
         {
-            SetErrorMessage(ErrorMessage, "Color target requires a non-zero size and RGBA16 float");
+            SetErrorMessage(ErrorMessage, "Color target requires a non-zero size and RGBA8 or RGBA16 float");
             return nullptr;
         }
+
+        const DXGI_FORMAT Format = ToDXGIFormat(InFormat);
 
         D3D12_HEAP_PROPERTIES HeapProperties{};
         HeapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
@@ -225,13 +228,13 @@ namespace ShadowEngine
         ResourceDesc.Height = InHeight;
         ResourceDesc.DepthOrArraySize = 1;
         ResourceDesc.MipLevels = 1;
-        ResourceDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        ResourceDesc.Format = Format;
         ResourceDesc.SampleDesc.Count = 1;
         ResourceDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
         ResourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
         D3D12_CLEAR_VALUE ClearValue{};
-        ClearValue.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        ClearValue.Format = Format;
         ClearValue.Color[0] = 0.0F;
         ClearValue.Color[1] = 0.0F;
         ClearValue.Color[2] = 0.0F;
@@ -266,7 +269,7 @@ namespace ShadowEngine
 
         const D3D12_CPU_DESCRIPTOR_HANDLE RenderTargetView = Heap->GetCPUDescriptorHandleForHeapStart();
         D3D12_RENDER_TARGET_VIEW_DESC ViewDesc{};
-        ViewDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        ViewDesc.Format = Format;
         ViewDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
         Device->CreateRenderTargetView(Resource.Get(), &ViewDesc, RenderTargetView);
 

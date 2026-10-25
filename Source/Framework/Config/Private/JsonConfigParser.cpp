@@ -670,9 +670,9 @@ namespace ShadowEngine
         std::string* ErrorMessage)
     {
         if (Setting.Renderer != "BlinnPhongRenderer" && Setting.Renderer != "DebugRenderer" &&
-            Setting.Renderer != "ForwardRenderer")
+            Setting.Renderer != "ForwardRenderer" && Setting.Renderer != "DeferredRenderer")
         {
-            SetError(ErrorMessage, "Renderer must be BlinnPhongRenderer, DebugRenderer, or ForwardRenderer");
+            SetError(ErrorMessage, "Renderer must be BlinnPhongRenderer, DebugRenderer, ForwardRenderer, or DeferredRenderer");
             return false;
         }
 

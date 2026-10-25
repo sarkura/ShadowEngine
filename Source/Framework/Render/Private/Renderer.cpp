@@ -485,18 +485,35 @@ namespace ShadowEngine
             Batch.Layout = RHIPipelineLayout::FromReflection(*VertexReflection, *PixelReflection);
             Batch.Surface = Instance->FindSurface(GetName());
             Batch.bTwoSided = Instance->FindTwoSided(GetName());
+            const bool bDeferred = std::strcmp(GetName(), "DeferredRenderer") == 0;
 
             RHIGraphicsPipelineDesc PipelineDesc;
             PipelineDesc.VertexShader = Batch.VertexShader;
             PipelineDesc.PixelShader = Batch.PixelShader;
             PipelineDesc.Layout = &Batch.Layout;
-            PipelineDesc.RenderTargetFormat = GetSceneColorFormat();
+            PipelineDesc.RenderTargetFormats[0] = GetSceneColorFormat();
             PipelineDesc.Topology = ERHIPrimitiveTopology::TriangleList;
             PipelineDesc.InputLayout = InputLayout;
             PipelineDesc.bEnableDepth = true;
             PipelineDesc.Cull = Batch.bTwoSided ? ERHICullMode::None : ERHICullMode::Back;
             PipelineDesc.bFrontCounterClockwise = true;
-            if (UsesDepthPrepass())
+            if (bDeferred && Batch.Surface != EMaterialSurface::Translucent)
+            {
+                PipelineDesc.RenderTargetFormats[0] = ERHIFormat::R8G8B8A8_UNorm;
+                PipelineDesc.RenderTargetFormats[1] = ERHIFormat::R16G16B16A16_Float;
+                PipelineDesc.RenderTargetFormats[2] = ERHIFormat::R8G8B8A8_UNorm;
+                PipelineDesc.RenderTargetCount = 3;
+                PipelineDesc.bWriteDepth = true;
+                PipelineDesc.DepthFormat = ERHIFormat::D32_Float;
+            }
+            else if (bDeferred)
+            {
+                PipelineDesc.bWriteDepth = false;
+                PipelineDesc.bDepthLessEqual = true;
+                PipelineDesc.bAlphaBlend = true;
+                PipelineDesc.DepthFormat = ERHIFormat::D32_Float;
+            }
+            else if (UsesDepthPrepass())
             {
                 PipelineDesc.bWriteDepth = false;
                 PipelineDesc.DepthFormat = ERHIFormat::D32_Float;
@@ -554,7 +571,7 @@ namespace ShadowEngine
                 return false;
             }
 
-            if (UsesDepthPrepass() && Batch.Surface == EMaterialSurface::Cutout)
+            if ((UsesDepthPrepass() || bDeferred) && Batch.Surface == EMaterialSurface::Cutout)
             {
                 const auto CreateCutoutShadowPipeline = [&](const char* PixelPath) -> std::unique_ptr<RHIPipeline>
                 {
@@ -590,7 +607,7 @@ namespace ShadowEngine
                     ShadowDesc.VertexShader = Shaders.GetVertexShader(ShadowShader);
                     ShadowDesc.PixelShader = Shaders.GetPixelShader(ShadowShader);
                     ShadowDesc.Layout = &ShadowLayout;
-                    ShadowDesc.RenderTargetFormat = ERHIFormat::Unknown;
+                    ShadowDesc.RenderTargetCount = 0;
                     ShadowDesc.Topology = ERHIPrimitiveTopology::TriangleList;
                     ShadowDesc.InputLayout = InputLayout;
                     ShadowDesc.bEnableDepth = true;
@@ -808,7 +825,7 @@ namespace ShadowEngine
         PipelineDesc.VertexShader = Shaders.GetVertexShader(SkyShader);
         PipelineDesc.PixelShader = Shaders.GetPixelShader(SkyShader);
         PipelineDesc.Layout = &SkyLayout;
-        PipelineDesc.RenderTargetFormat = GetSceneColorFormat();
+        PipelineDesc.RenderTargetFormats[0] = GetSceneColorFormat();
         PipelineDesc.Topology = ERHIPrimitiveTopology::TriangleList;
         PipelineDesc.bEnableDepth = false;
         PipelineDesc.DepthFormat = ERHIFormat::D32_Float;

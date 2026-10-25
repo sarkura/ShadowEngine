@@ -1,6 +1,6 @@
 {
     "Type": "Material",
-    "BlinnPhongRenderer":
+    "BlinnPhong":
     {
         "Parent": "Assets/BaseMaterial/BlinnPhongTexture.material.json",
         "Parameters":
@@ -13,9 +13,9 @@
             "NormalTexture": {"texture": "Assets/Mesh/Table/Texture/Normal.texture.json"}
         }
     },
-    "ForwardRenderer":
+    "Principled":
     {
-        "Parent": "Assets/BaseMaterial/ForwardTexture.material.json",
+        "Parent": "Assets/BaseMaterial/Texture.material.json",
         "Parameters":
         {
             "BaseColor": {"float3": [1, 1, 1]},

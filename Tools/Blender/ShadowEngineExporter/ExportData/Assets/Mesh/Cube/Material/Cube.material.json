@@ -1,7 +1,7 @@
 {
     "Type": "Material",
-    "ForwardRenderer": {
-        "Parent": "Assets/BaseMaterial/ForwardTranslucent.material.json",
+    "Principled": {
+        "Parent": "Assets/BaseMaterial/Translucent.material.json",
         "Surface": "Translucent",
         "TwoSided": false,
         "Parameters": {

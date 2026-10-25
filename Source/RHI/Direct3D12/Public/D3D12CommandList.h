@@ -3,6 +3,7 @@
 #include "Framework/RHI/Public/RHICommandList.h"
 #include "RHI/Direct3D12/Public/D3D12Common.h"
 
+#include <span>
 #include <string>
 
 namespace ShadowEngine
@@ -22,7 +23,7 @@ namespace ShadowEngine
             void End() override;
 
             void BeginRenderPass(
-                RHITexture& RenderTarget,
+                std::span<RHITexture*> ColorTargets,
                 RHITexture* DepthTarget,
                 const RHIColor& ClearColor,
                 bool bClearColor = true,
@@ -52,7 +53,8 @@ namespace ShadowEngine
             ID3D12DescriptorHeap* ResourceHeap = nullptr;
             ID3D12DescriptorHeap* SamplerHeap = nullptr;
 
-            D3D12Texture* CurrentRenderTarget = nullptr;
-            D3D12_RESOURCE_STATES RenderTargetRestoreState = D3D12_RESOURCE_STATE_COMMON;
+            D3D12Texture* CurrentRenderTargets[8] = {};
+            D3D12_RESOURCE_STATES RenderTargetRestoreStates[8] = {};
+            uint32 CurrentRenderTargetCount = 0;
     };
 }

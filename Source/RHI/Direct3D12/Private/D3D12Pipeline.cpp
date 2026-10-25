@@ -158,9 +158,16 @@ namespace ShadowEngine
         PipelineDesc.InputLayout.pInputElementDescs = InputElements.data();
         PipelineDesc.InputLayout.NumElements = static_cast<UINT>(InputElements.size());
         PipelineDesc.PrimitiveTopologyType = ToTopologyType(Desc.Topology);
-        const bool bDepthOnly = Desc.RenderTargetFormat == ERHIFormat::Unknown;
-        PipelineDesc.NumRenderTargets = bDepthOnly ? 0 : 1;
-        PipelineDesc.RTVFormats[0] = bDepthOnly ? DXGI_FORMAT_UNKNOWN : ToDXGIFormat(Desc.RenderTargetFormat);
+        if (Desc.RenderTargetCount > 8)
+        {
+            SetErrorMessage(ErrorMessage, "A pipeline supports at most 8 color targets");
+            return false;
+        }
+        PipelineDesc.NumRenderTargets = Desc.RenderTargetCount;
+        for (uint32 Index = 0; Index < Desc.RenderTargetCount; ++Index)
+        {
+            PipelineDesc.RTVFormats[Index] = ToDXGIFormat(Desc.RenderTargetFormats[Index]);
+        }
         if (Desc.DepthFormat != ERHIFormat::Unknown)
         {
             PipelineDesc.DSVFormat = ToDXGIFormat(Desc.DepthFormat);

@@ -1,9 +1,9 @@
-#include "../Material/ForwardMaterialSample.slang"
+#include "../Material/MaterialSample.slang"
 
 [shader("fragment")]
 float PixelMain(VertexOutput Input) : SV_Depth
 {
-    const ForwardMaterialSample Material = EvaluateMaterial(Input);
+    const MaterialSample Material = EvaluateMaterial(Input);
     if (Material.CutoutThreshold > 0.0)
     {
         clip(Material.Opacity - Material.CutoutThreshold);

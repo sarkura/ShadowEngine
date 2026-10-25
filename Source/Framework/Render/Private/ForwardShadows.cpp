@@ -309,7 +309,7 @@ namespace ShadowEngine
         PipelineDesc.VertexShader = Shaders.GetVertexShader(Shader);
         PipelineDesc.PixelShader = Shaders.GetPixelShader(Shader);
         PipelineDesc.Layout = &Layout;
-        PipelineDesc.RenderTargetFormat = ERHIFormat::Unknown;
+        PipelineDesc.RenderTargetCount = 0;
         PipelineDesc.Topology = ERHIPrimitiveTopology::TriangleList;
         PipelineDesc.InputLayout = InputLayout;
         PipelineDesc.bEnableDepth = true;

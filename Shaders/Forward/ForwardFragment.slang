@@ -1,10 +1,10 @@
-#include "../Material/ForwardMaterialSample.slang"
+#include "../Material/MaterialSample.slang"
 #include "../Light/ForwardLightSample.slang"
 
 [shader("fragment")]
 float4 PixelMain(VertexOutput Input, bool bFrontFace : SV_IsFrontFace) : SV_Target
 {
-    ForwardMaterialSample Material = EvaluateMaterial(Input);
+    MaterialSample Material = EvaluateMaterial(Input);
     if (!bFrontFace)
     {
         Material.Normal = -Material.Normal;

@@ -1,6 +1,6 @@
 {
     "Type": "Material",
-    "BlinnPhongRenderer":
+    "BlinnPhong":
     {
         "Parent": "Assets/BaseMaterial/BlinnPhongPure.material.json",
         "Parameters":
@@ -10,9 +10,9 @@
             "SpecularColor": {"float3": [1, 1, 1]}
         }
     },
-    "ForwardRenderer":
+    "Principled":
     {
-        "Parent": "Assets/BaseMaterial/ForwardPure.material.json",
+        "Parent": "Assets/BaseMaterial/Pure.material.json",
         "Parameters":
         {
             "BaseColor": {"float3": [0.3, 0.3, 0.3]},

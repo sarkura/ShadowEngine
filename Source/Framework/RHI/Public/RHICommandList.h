@@ -3,6 +3,8 @@
 #include "Framework/Common/Public/NonCopyable.h"
 #include "Framework/RHI/Public/RHITypes.h"
 
+#include <span>
+
 namespace ShadowEngine
 {
     class RHIBuffer;
@@ -18,12 +20,30 @@ namespace ShadowEngine
             virtual void End() = 0;
 
             virtual void BeginRenderPass(
-                RHITexture& RenderTarget,
+                std::span<RHITexture*> ColorTargets,
                 RHITexture* DepthTarget,
                 const RHIColor& ClearColor,
                 bool bClearColor = true,
                 bool bClearDepth = true,
                 uint32 ArraySlice = 0) = 0;
+
+            void BeginRenderPass(
+                RHITexture& RenderTarget,
+                RHITexture* DepthTarget,
+                const RHIColor& ClearColor,
+                bool bClearColor = true,
+                bool bClearDepth = true,
+                uint32 ArraySlice = 0)
+            {
+                RHITexture* Targets[] = {&RenderTarget};
+                BeginRenderPass(
+                    std::span<RHITexture*>(Targets, 1),
+                    DepthTarget,
+                    ClearColor,
+                    bClearColor,
+                    bClearDepth,
+                    ArraySlice);
+            }
             virtual void EndRenderPass() = 0;
             virtual void BeginDepthPass(RHITexture& DepthTarget, bool bClearDepth, uint32 ArraySlice = 0) = 0;
             virtual void UseAsShaderResource(RHITexture& Texture) = 0;

@@ -2,7 +2,7 @@
 
 #include "../Common/SceneConstants.slang"
 
-struct ForwardMaterialSample
+struct MaterialSample
 {
     float3 Albedo;
     float Metallic;
@@ -14,4 +14,4 @@ struct ForwardMaterialSample
     float CutoutThreshold;
 };
 
-ForwardMaterialSample EvaluateMaterial(VertexOutput Input);
+MaterialSample EvaluateMaterial(VertexOutput Input);

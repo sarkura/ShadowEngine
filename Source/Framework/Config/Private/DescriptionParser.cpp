@@ -19,15 +19,36 @@ namespace ShadowEngine
             MaterialRendererBinding& Binding,
             std::string* ErrorMessage)
         {
+            const bool bPrincipled = std::string_view(RendererName) == "Principled";
             const bool bForward = std::string_view(RendererName) == "ForwardRenderer";
-            const char* AllowedMembers[8] = {
-                "Vertex", "Fragment", "Material", "Light", "Parameters", "Parent", nullptr, nullptr};
-            uint32 AllowedCount = 6;
-            if (bForward)
+            const bool bSurface = bPrincipled || bForward;
+            const char* AllowedMembers[8] = {};
+            uint32 AllowedCount = 0;
+            if (bPrincipled)
             {
-                AllowedMembers[6] = "Surface";
-                AllowedMembers[7] = "TwoSided";
-                AllowedCount = 8;
+                AllowedMembers[0] = "Vertex";
+                AllowedMembers[1] = "Material";
+                AllowedMembers[2] = "Parameters";
+                AllowedMembers[3] = "Parent";
+                AllowedMembers[4] = "Surface";
+                AllowedMembers[5] = "TwoSided";
+                AllowedCount = 6;
+            }
+            else
+            {
+                AllowedMembers[0] = "Vertex";
+                AllowedMembers[1] = "Fragment";
+                AllowedMembers[2] = "Material";
+                AllowedMembers[3] = "Light";
+                AllowedMembers[4] = "Parameters";
+                AllowedMembers[5] = "Parent";
+                AllowedCount = 6;
+                if (bForward)
+                {
+                    AllowedMembers[6] = "Surface";
+                    AllowedMembers[7] = "TwoSided";
+                    AllowedCount = 8;
+                }
             }
             for (auto Member = Object.MemberBegin(); Member != Object.MemberEnd(); ++Member)
             {
@@ -110,13 +131,13 @@ namespace ShadowEngine
 
                 Binding.LightShader = LightShader.GetString();
             }
-            if (bForward && Object.HasMember("Surface"))
+            if (bSurface && Object.HasMember("Surface"))
             {
                 const rapidjson::Value& Surface = Object["Surface"];
                 Binding.bHasSurface = true;
                 if (!Surface.IsString())
                 {
-                    SetErrorMessage(ErrorMessage, "ForwardRenderer Surface must be a string: " + FilePath.generic_string());
+                    SetErrorMessage(ErrorMessage, std::string(RendererName) + " Surface must be a string: " + FilePath.generic_string());
                     return false;
                 }
 
@@ -137,17 +158,17 @@ namespace ShadowEngine
                 {
                     SetErrorMessage(
                         ErrorMessage,
-                        "ForwardRenderer Surface must be Opaque, Cutout, or Translucent: " + FilePath.generic_string());
+                        std::string(RendererName) + " Surface must be Opaque, Cutout, or Translucent: " + FilePath.generic_string());
                     return false;
                 }
 
             }
-            if (bForward && Object.HasMember("TwoSided"))
+            if (bSurface && Object.HasMember("TwoSided"))
             {
                 const rapidjson::Value& TwoSided = Object["TwoSided"];
                 if (!TwoSided.IsBool())
                 {
-                    SetErrorMessage(ErrorMessage, "ForwardRenderer TwoSided must be a boolean: " + FilePath.generic_string());
+                    SetErrorMessage(ErrorMessage, std::string(RendererName) + " TwoSided must be a boolean: " + FilePath.generic_string());
                     return false;
                 }
 
@@ -157,7 +178,19 @@ namespace ShadowEngine
 
             const bool bHasShaderPaths = !Binding.VertexShader.empty() || !Binding.PixelShader.empty() ||
                 !Binding.MaterialShader.empty();
-            if (bHasShaderPaths &&
+            if (bPrincipled)
+            {
+                if ((!Binding.VertexShader.empty() || !Binding.MaterialShader.empty()) &&
+                    (Binding.VertexShader.empty() || Binding.MaterialShader.empty()))
+                {
+                    SetErrorMessage(
+                        ErrorMessage,
+                        std::string(RendererName) + " shader paths must include Vertex and Material: " +
+                            FilePath.generic_string());
+                    return false;
+                }
+            }
+            else if (bHasShaderPaths &&
                 (Binding.VertexShader.empty() || Binding.PixelShader.empty() || Binding.MaterialShader.empty()))
             {
                 SetErrorMessage(
@@ -501,7 +534,7 @@ namespace ShadowEngine
             return false;
         }
 
-        const char* const RendererNames[] = {"BlinnPhongRenderer", "DebugRenderer", "ForwardRenderer"};
+        const char* const RendererNames[] = {"BlinnPhong", "Debug", "Principled"};
         MaterialDescription Parsed;
         for (auto Member = Document.MemberBegin(); Member != Document.MemberEnd(); ++Member)
         {

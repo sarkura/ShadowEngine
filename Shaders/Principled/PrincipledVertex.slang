@@ -1,4 +1,10 @@
-#include "../Common/ForwardConstants.slang"
+#include "../Common/PerObject.slang"
+#include "../Common/SceneConstants.slang"
+
+cbuffer SceneConstants : register(b0)
+{
+    PerObjectData PerObject;
+};
 
 [shader("vertex")]
 VertexOutput VertexMain(VertexInput Input)

@@ -64,7 +64,7 @@ namespace ShadowEngine
             PipelineDesc.VertexShader = ShaderLibrary->GetVertexShader(DepthShader);
             PipelineDesc.PixelShader = ShaderLibrary->GetPixelShader(DepthShader);
             PipelineDesc.Layout = &Layout;
-            PipelineDesc.RenderTargetFormat = ERHIFormat::R16G16B16A16_Float;
+            PipelineDesc.RenderTargetFormats[0] = ERHIFormat::R16G16B16A16_Float;
             PipelineDesc.Topology = ERHIPrimitiveTopology::TriangleList;
             PipelineDesc.InputLayout = InputLayout;
             PipelineDesc.bEnableDepth = true;

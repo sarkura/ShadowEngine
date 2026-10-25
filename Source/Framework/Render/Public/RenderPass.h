@@ -50,6 +50,16 @@ namespace ShadowEngine
         uint32 EnvironmentDescriptor = 0;
         uint32 EnvironmentSampler = 0;
         RHITexture* SceneColor = nullptr;
+        RHITexture* GBufferA = nullptr;
+        RHITexture* GBufferB = nullptr;
+        RHITexture* GBufferC = nullptr;
+        RHIPipeline* DeferredLightPipeline = nullptr;
+        RHIBuffer* DeferredLightConstants = nullptr;
+        uint32 GBufferADescriptor = 0xffffffff;
+        uint32 GBufferBDescriptor = 0xffffffff;
+        uint32 GBufferCDescriptor = 0xffffffff;
+        uint32 GBufferDepthDescriptor = 0xffffffff;
+        uint32 GBufferSampler = 0xffffffff;
         class PostProcess* Post = nullptr;
         float FrameDeltaTime = 0.0F;
         float ProjectionJitterX = 0.0F;
