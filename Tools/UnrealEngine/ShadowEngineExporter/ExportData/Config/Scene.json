@@ -1,0 +1,151 @@
+{
+	"Mesh":
+	{
+		"Assets/Mesh/Plane/Mesh/Plane.asset.json": [
+			{
+				"Transform":
+				{
+					"Translation": [
+						0,
+						0,
+						0
+					],
+					"Rotation": [
+						0,
+						0,
+						0
+					],
+					"Scale": [
+						100,
+						1,
+						100
+					]
+				}
+			}
+		],
+		"Assets/Mesh/Sphere/Mesh/Sphere.asset.json": [
+			{
+				"Transform":
+				{
+					"Translation": [
+						0.90000000000000002,
+						0.80000000000000004,
+						-1
+					],
+					"Rotation": [
+						0,
+						0,
+						0
+					],
+					"Scale": [
+						1,
+						1,
+						1
+					]
+				}
+			},
+			{
+				"Transform":
+				{
+					"Translation": [
+						1.1000000000000001,
+						1,
+						-3.2000000000000002
+					],
+					"Rotation": [
+						0,
+						0,
+						0
+					],
+					"Scale": [
+						2,
+						2,
+						2
+					]
+				}
+			}
+		],
+		"Assets/Mesh/Cube/Mesh/Cube.asset.json": [
+			{
+				"Transform":
+				{
+					"Translation": [
+						0.59999999999999998,
+						1.2,
+						1.3999999999999999
+					],
+					"Rotation": [
+						0,
+						0,
+						0
+					],
+					"Scale": [
+						1.5,
+						1.5,
+						1.5
+					]
+				}
+			},
+			{
+				"Transform":
+				{
+					"Translation": [
+						-0.90000000000000002,
+						1.1000000000000001,
+						-1.3
+					],
+					"Rotation": [
+						0,
+						0,
+						0
+					],
+					"Scale": [
+						1,
+						1,
+						1
+					]
+				}
+			}
+		]
+	},
+	"Light": [
+		{
+			"Type": "DirectLight",
+			"Direction": [
+				0.638741,
+				-0.76060000000000005,
+				-0.116178
+			],
+			"Color": [
+				1,
+				1,
+				1
+			],
+			"Intensity": 8
+		},
+		{
+			"Type": "SkyLight",
+			"Color": [
+				1,
+				1,
+				1
+			],
+			"Intensity": 1
+		},
+		{
+			"Type": "PointLight",
+			"Position": [
+				-0.90000000000000002,
+				1.3999999999999999,
+				-5.7000000000000002
+			],
+			"Color": [
+				1,
+				1,
+				1
+			],
+			"Intensity": 0.12,
+			"Radius": 10
+		}
+	]
+}

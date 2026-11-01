@@ -1,0 +1,27 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "ShadowEngine Exporter",
+	"Description": "Exports StaticMesh actors and lights as a ShadowEngine scene bundle.",
+	"Category": "Export",
+	"CreatedBy": "ShadowEngine",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"EnabledByDefault": true,
+	"Modules": [
+		{
+			"Name": "ShadowEngineExporter",
+			"Type": "Editor",
+			"LoadingPhase": "PostEngineInit"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "GLTFExporter",
+			"Enabled": true
+		}
+	]
+}

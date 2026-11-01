@@ -1,5 +1,5 @@
 {
-    "Renderer": "ForwardRenderer",
+    "Renderer": "DeferredRenderer",
     "DefaultMaterial": "Assets/EngineAsset/DefaultAsset.material.json",
     "RHISetting":
     {

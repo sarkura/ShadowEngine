@@ -1,0 +1,28 @@
+{
+	"Type": "Material",
+	"Principled":
+	{
+		"Parent": "Assets/BaseMaterial/Translucent.material.json",
+		"Surface": "Translucent",
+		"TwoSided": false,
+		"Parameters":
+		{
+			"BaseColor":
+			{
+				"float3": [
+					1,
+					0.54588000000000003,
+					0.75975400000000004
+				]
+			},
+			"Roughness":
+			{
+				"float": 0.59999999999999998
+			},
+			"Alpha":
+			{
+				"float": 0.5
+			}
+		}
+	}
+}
