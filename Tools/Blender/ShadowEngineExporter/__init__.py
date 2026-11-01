@@ -20,9 +20,10 @@ BLENDER_TO_GLTF = Matrix((
     (0.0, 0.0, 0.0, 1.0),
 ))
 
-BASE_FORWARD_PURE = "Assets/BaseMaterial/Pure.material.json"
-BASE_FORWARD_TEXTURE = "Assets/BaseMaterial/Texture.material.json"
-BASE_FORWARD_TRANSLUCENT = "Assets/BaseMaterial/Translucent.material.json"
+ADDON_DIR = Path(__file__).resolve().parent
+PARENT_BLEND = ADDON_DIR / "Content" / "ShadowEngineMaterials.blend"
+PARENT_CONFIG = ADDON_DIR / "Config" / "ParentMaterials.json"
+DEFAULT_MATERIAL = "Assets/EngineAsset/DefaultAsset.material.json"
 ASSET_MESH = Path("Assets") / "Mesh"
 
 def rounded(value):
@@ -65,15 +66,6 @@ def write_json(path, payload):
     path.write_text(json.dumps(payload, indent=4) + "\n", encoding="utf-8")
 
 
-def socket_value(node, *names):
-    if node is None:
-        return None
-    for name in names:
-        if name in node.inputs:
-            return node.inputs[name]
-    return None
-
-
 def linked_image(socket, depth=0):
     if socket is None or not socket.is_linked or depth > 4:
         return None
@@ -85,22 +77,66 @@ def linked_image(socket, depth=0):
     return None
 
 
-def principled_node(material):
+def load_parent_map():
+    payload = json.loads(PARENT_CONFIG.read_text(encoding="utf-8"))
+    parents = {}
+    for key, entry in payload.get("Principled", {}).items():
+        blender_name = entry.get("Blender", "")
+        shadow = entry.get("ShadowEngine", "")
+        if not blender_name or not shadow:
+            continue
+        parents[blender_name] = {
+            "kind": key,
+            "shadow": shadow,
+            "surface": "Translucent" if key == "Translucent" else "Opaque",
+        }
+    return parents
+
+
+def ensure_parent_groups():
+    if not PARENT_BLEND.is_file():
+        return
+    existing = set(bpy.data.node_groups.keys())
+    with bpy.data.libraries.load(str(PARENT_BLEND), link=False) as (data_from, data_to):
+        data_to.node_groups = [name for name in data_from.node_groups if name not in existing]
+
+
+def parent_group(material, parents):
     if material is None or not material.use_nodes or material.node_tree is None:
-        return None
+        return None, None
     for node in material.node_tree.nodes:
-        if node.type == "BSDF_PRINCIPLED":
-            return node
-    return None
+        if node.type != "OUTPUT_MATERIAL" or not node.is_active_output:
+            continue
+        surface = node.inputs.get("Surface")
+        if surface is None or not surface.is_linked:
+            return None, None
+        source = surface.links[0].from_node
+        if source.type == "GROUP" and source.node_tree is not None and source.node_tree.name in parents:
+            return source, parents[source.node_tree.name]
+    return None, None
 
 
-def scalar_default(socket, fallback):
-    if socket is None:
-        return fallback
+def unlinked_color(node, name):
+    socket = node.inputs.get(name)
+    if socket is None or socket.is_linked:
+        return None
+    return tuple(socket.default_value[:3])
+
+
+def unlinked_float(node, name):
+    socket = node.inputs.get(name)
+    if socket is None or socket.is_linked:
+        return None
     value = socket.default_value
     if hasattr(value, "__len__"):
-        return float(value[0])
+        return None
     return float(value)
+
+
+def texture_encoding(image, color_map):
+    if color_map and image.colorspace_settings.name == "sRGB":
+        return "sRGB"
+    return "Linear"
 
 
 def to_engine_transform(matrix_world):
@@ -141,18 +177,6 @@ def save_image_copy(image, destination):
     return target
 
 
-def write_solid_image(destination, pixel):
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    image = bpy.data.images.new(destination.stem, 1, 1, alpha=True, float_buffer=False)
-    image.colorspace_settings.name = "Non-Color"
-    image.pixels = (pixel[0], pixel[1], pixel[2], pixel[3])
-    image.filepath_raw = str(destination)
-    image.file_format = "PNG"
-    image.save()
-    bpy.data.images.remove(image)
-    return destination
-
-
 def texture_document(image_path, encoding):
     return {
         "Type": "Texture",
@@ -188,6 +212,15 @@ class SHADOWENGINE_OT_export(Operator):
         return context.mode == "OBJECT"
 
     def execute(self, context):
+        try:
+            parents = load_parent_map()
+        except (OSError, json.JSONDecodeError) as error:
+            self.report({"ERROR"}, f"Could not read ParentMaterials.json: {error}")
+            return {"CANCELLED"}
+        if not parents:
+            self.report({"ERROR"}, "ParentMaterials.json has no Principled parents.")
+            return {"CANCELLED"}
+
         root = Path(__file__).resolve().parent / "ExportData"
         clear_export_directory(root)
 
@@ -204,7 +237,7 @@ class SHADOWENGINE_OT_export(Operator):
                 if re.search(r"\.\d{3}$", obj.name) is None:
                     source = obj
                     break
-            asset_path, warning = self.export_object(context, root, source, name)
+            asset_path, warning = self.export_object(context, root, source, name, parents)
             if asset_path is None:
                 self.report({"ERROR"}, warning)
                 return {"CANCELLED"}
@@ -234,7 +267,7 @@ class SHADOWENGINE_OT_export(Operator):
         self.report({"INFO"}, message)
         return {"FINISHED"}
 
-    def export_object(self, context, root, obj, name):
+    def export_object(self, context, root, obj, name, parents):
         mesh_dir = ASSET_MESH / name / "Mesh"
         glb_relative = mesh_dir / f"{name}.glb"
         asset_relative = mesh_dir / f"{name}.asset.json"
@@ -283,17 +316,17 @@ class SHADOWENGINE_OT_export(Operator):
         if not slots:
             slots = [None]
         materials = []
-        warning = ""
+        warnings = []
         for index, slot in enumerate(slots):
             material = None if slot is None else slot.material
             material_name = shared_model_name(material.name) if material is not None else f"{name}_{index}"
             material_relative = ASSET_MESH / name / "Material" / f"{material_name}.material.json"
-            slot_warning = self.write_material(root, material_relative, material)
+            material_path, slot_warning = self.write_material(root, material_relative, material, parents)
             if slot_warning:
-                warning = slot_warning
+                warnings.append(slot_warning)
             materials.append({
                 "slot": index,
-                "material": relative_asset(material_relative),
+                "material": material_path,
             })
 
         write_json(root / asset_relative, {
@@ -301,127 +334,75 @@ class SHADOWENGINE_OT_export(Operator):
             "source": relative_asset(glb_relative),
             "materials": materials,
         })
-        return relative_asset(asset_relative), warning
+        return relative_asset(asset_relative), " ".join(warnings)
 
-    def write_material(self, root, material_relative, material):
-        principled = principled_node(material)
-        base_socket = socket_value(principled, "Base Color")
-        roughness_socket = socket_value(principled, "Roughness")
-        metallic_socket = socket_value(principled, "Metallic")
-        alpha_socket = socket_value(principled, "Alpha")
-        normal_socket = socket_value(principled, "Normal")
-        base_color = base_socket.default_value if base_socket is not None else (0.8, 0.8, 0.8, 1.0)
-        roughness = scalar_default(roughness_socket, 0.5)
-        metallic = scalar_default(metallic_socket, 0.0)
-        alpha = scalar_default(alpha_socket, 1.0)
-        surface = "Opaque"
-        if material is not None and "Surface" in material:
-            requested = str(material["Surface"])
-            if requested in {"Opaque", "Cutout", "Translucent"}:
-                surface = requested
-        elif alpha < 0.999:
-            surface = "Translucent"
-        two_sided = bool(material["TwoSided"]) if material is not None and "TwoSided" in material else False
-
-        warning = ""
-        base_image = linked_image(base_socket)
-        if surface != "Opaque":
-            if base_image is not None:
-                warning = f"{material.name} keeps Surface {surface}, so its textures are not exported."
-            parameters = {
-                "BaseColor": {"float3": color3(base_color)},
-                "Roughness": {"float": rounded(roughness)},
-                "Alpha": {"float": rounded(alpha)},
-            }
-            parent = BASE_FORWARD_TRANSLUCENT
-            if surface == "Cutout":
-                warning = (
-                    f"{material.name} is Cutout, but the shared material shader does not clip yet."
-                )
-        elif base_image is not None:
-            parent = BASE_FORWARD_TEXTURE
-            parameters = self.textured_parameters(
-                root,
-                material_relative.parent.parent / "Texture",
-                base_image,
-                base_color,
-                roughness,
-                metallic,
-                roughness_socket,
-                metallic_socket,
-                normal_socket,
+    def write_material(self, root, material_relative, material, parents):
+        label = material.name if material is not None else "empty"
+        group, parent = parent_group(material, parents)
+        if group is None:
+            return DEFAULT_MATERIAL, (
+                f"{label} does not use a Principled parent group. The default material is used."
             )
-        else:
-            parent = BASE_FORWARD_PURE
-            parameters = {
-                "BaseColor": {"float3": color3(base_color)},
-                "Roughness": {"float": rounded(roughness)},
-            }
+
+        base_color = unlinked_color(group, "BaseColor")
+        roughness = unlinked_float(group, "Roughness")
+        if base_color is None or roughness is None:
+            return DEFAULT_MATERIAL, (
+                f"{label} is missing BaseColor or Roughness on {group.node_tree.name}. "
+                "The default material is used."
+            )
+
+        parameters = {
+            "BaseColor": {"float3": color3(base_color)},
+            "Roughness": {"float": rounded(roughness)},
+        }
+        if parent["kind"] == "Texture":
+            metallic = unlinked_float(group, "Metallic")
+            if metallic is None:
+                return DEFAULT_MATERIAL, (
+                    f"{label} is missing Metallic on {group.node_tree.name}. The default material is used."
+                )
+            parameters["Metallic"] = {"float": rounded(metallic)}
+            texture_dir = material_relative.parent.parent / "Texture"
+            for socket_name, color_map in (
+                ("BaseColorTexture", True),
+                ("RoughnessTexture", False),
+                ("MetallicTexture", False),
+                ("NormalTexture", False),
+                ("OcclusionTexture", False),
+            ):
+                image = linked_image(group.inputs.get(socket_name))
+                if image is None:
+                    return DEFAULT_MATERIAL, (
+                        f"{label} is missing {socket_name} on {group.node_tree.name}. "
+                        "The default material is used."
+                    )
+                saved = save_image_copy(image, root / texture_dir / clean_name(image.name))
+                relative_image = saved.relative_to(root)
+                description = relative_image.with_suffix(".texture.json")
+                write_json(
+                    root / description,
+                    texture_document(relative_image, texture_encoding(image, color_map)),
+                )
+                parameters[socket_name] = {"texture": relative_asset(description)}
+        elif parent["kind"] == "Translucent":
+            alpha = unlinked_float(group, "Alpha")
+            if alpha is None:
+                return DEFAULT_MATERIAL, (
+                    f"{label} is missing Alpha on {group.node_tree.name}. The default material is used."
+                )
+            parameters["Alpha"] = {"float": rounded(alpha)}
 
         write_json(root / material_relative, {
             "Type": "Material",
             "Principled": {
-                "Parent": parent,
-                "Surface": surface,
-                "TwoSided": two_sided,
+                "Parent": parent["shadow"],
+                "Surface": parent["surface"],
+                "TwoSided": False,
                 "Parameters": parameters,
             },
         })
-        return warning
-
-    def textured_parameters(
-        self,
-        root,
-        texture_dir,
-        base_image,
-        base_color,
-        roughness,
-        metallic,
-        roughness_socket,
-        metallic_socket,
-        normal_socket,
-    ):
-        absolute_dir = root / texture_dir
-        white = self.ensure_solid(root, texture_dir / "White.png", (1.0, 1.0, 1.0, 1.0))
-        flat_normal = self.ensure_solid(root, texture_dir / "FlatNormal.png", (0.5, 0.5, 1.0, 1.0))
-        base_path = save_image_copy(base_image, absolute_dir / clean_name(base_image.name))
-        roughness_image = linked_image(roughness_socket)
-        metallic_image = linked_image(metallic_socket)
-        normal_image = linked_image(normal_socket)
-        roughness_path = (
-            save_image_copy(roughness_image, absolute_dir / clean_name(roughness_image.name))
-            if roughness_image is not None else white
-        )
-        metallic_path = (
-            save_image_copy(metallic_image, absolute_dir / clean_name(metallic_image.name))
-            if metallic_image is not None else white
-        )
-        normal_path = (
-            save_image_copy(normal_image, absolute_dir / clean_name(normal_image.name))
-            if normal_image is not None else flat_normal
-        )
-
-        def texture_json(image_path, encoding):
-            description = image_path.with_suffix(".texture.json")
-            write_json(root / description, texture_document(image_path, encoding))
-            return relative_asset(description)
-
-        return {
-            "BaseColor": {"float3": color3(base_color)},
-            "Metallic": {"float": rounded(metallic)},
-            "Roughness": {"float": rounded(roughness)},
-            "BaseColorTexture": {"texture": texture_json(base_path.relative_to(root), "sRGB")},
-            "RoughnessTexture": {"texture": texture_json(roughness_path.relative_to(root), "Linear")},
-            "MetallicTexture": {"texture": texture_json(metallic_path.relative_to(root), "Linear")},
-            "NormalTexture": {"texture": texture_json(normal_path.relative_to(root), "Linear")},
-            "OcclusionTexture": {"texture": texture_json(white.relative_to(root), "Linear")},
-        }
-
-    def ensure_solid(self, root, relative_path, pixel):
-        absolute = root / relative_path
-        if not absolute.is_file():
-            write_solid_image(absolute, pixel)
-        return absolute
+        return relative_asset(material_relative), ""
 
     def export_lights(self, context):
         lights = []
@@ -548,6 +529,7 @@ def register():
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.TOPBAR_MT_file_export.append(menu_export)
+    ensure_parent_groups()
 
 
 def unregister():

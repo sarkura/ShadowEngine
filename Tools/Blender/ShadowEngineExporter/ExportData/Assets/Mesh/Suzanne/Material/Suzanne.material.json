@@ -1,19 +1,37 @@
 {
     "Type": "Material",
     "Principled": {
-        "Parent": "Assets/BaseMaterial/Pure.material.json",
+        "Parent": "Assets/BaseMaterial/Texture.material.json",
         "Surface": "Opaque",
         "TwoSided": false,
         "Parameters": {
             "BaseColor": {
                 "float3": [
-                    0.021594,
-                    0.694853,
-                    0.800016
+                    0.320271,
+                    1.0,
+                    0.182998
                 ]
             },
             "Roughness": {
-                "float": 0.786432
+                "float": 0.85
+            },
+            "Metallic": {
+                "float": 0.05
+            },
+            "BaseColorTexture": {
+                "texture": "Assets/Mesh/Suzanne/Texture/T_Default_sRGB_PNG.texture.json"
+            },
+            "RoughnessTexture": {
+                "texture": "Assets/Mesh/Suzanne/Texture/T_Default_Linear_PNG.texture.json"
+            },
+            "MetallicTexture": {
+                "texture": "Assets/Mesh/Suzanne/Texture/T_Default_Linear_PNG.texture.json"
+            },
+            "NormalTexture": {
+                "texture": "Assets/Mesh/Suzanne/Texture/T_DefaultNormal_PNG.texture.json"
+            },
+            "OcclusionTexture": {
+                "texture": "Assets/Mesh/Suzanne/Texture/T_Default_Linear_PNG.texture.json"
             }
         }
     }

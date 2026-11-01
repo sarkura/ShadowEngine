@@ -1,0 +1,16 @@
+{
+    "Principled": {
+        "Pure": {
+            "ShadowEngine": "Assets/BaseMaterial/Pure.material.json",
+            "Blender": "ShadowEngine_Pure"
+        },
+        "Texture": {
+            "ShadowEngine": "Assets/BaseMaterial/Texture.material.json",
+            "Blender": "ShadowEngine_Texture"
+        },
+        "Translucent": {
+            "ShadowEngine": "Assets/BaseMaterial/Translucent.material.json",
+            "Blender": "ShadowEngine_Translucent"
+        }
+    }
+}

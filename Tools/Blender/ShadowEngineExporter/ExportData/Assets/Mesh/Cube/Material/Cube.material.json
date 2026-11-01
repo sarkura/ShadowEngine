@@ -7,16 +7,16 @@
         "Parameters": {
             "BaseColor": {
                 "float3": [
+                    0.039825,
                     0.800007,
-                    0.251963,
-                    0.698197
+                    0.0
                 ]
             },
             "Roughness": {
-                "float": 0.711055
+                "float": 0.25
             },
             "Alpha": {
-                "float": 0.376884
+                "float": 0.7
             }
         }
     }
