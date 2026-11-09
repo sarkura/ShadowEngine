@@ -16,7 +16,6 @@ namespace ShadowEngine
             void Tick(float DeltaTime) override;
 
             void OnWindowResized(uint32 Width, uint32 Height);
-            void OnWindowMoved();
             void OnKey(uint32 Key, bool bDown, bool bRepeat);
             void OnMouseDown();
             void OnFocusLost();
@@ -27,16 +26,10 @@ namespace ShadowEngine
             void ClearKeys();
             void SampleMouseLook(float& Yaw, float& Pitch);
             float AdvanceTime();
-            void UpdateFpsOverlay(float DeltaTime);
-            void PlaceFpsOverlay();
-            void DrawFpsOverlay(int Fps);
-            void ToggleFps();
 
             void* WindowHandle = nullptr;
             void* ModuleHandle = nullptr;
-            void* FpsWindow = nullptr;
-            void* FpsFont = nullptr;
-            bool bShowFps = true;
+            bool bImGuiPlatform = false;
             bool bMouseCaptured = false;
             bool bCursorHidden = false;
             bool bKeyForward = false;
@@ -47,8 +40,5 @@ namespace ShadowEngine
             bool bKeyDown = false;
             int64 TimeFrequency = 0;
             int64 TimeLast = 0;
-            float FpsAccumulated = 0.0F;
-            int FpsFrames = 0;
-            int DisplayedFps = 0;
     };
 }

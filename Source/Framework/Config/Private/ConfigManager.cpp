@@ -134,4 +134,44 @@ namespace ShadowEngine
         Viewport = std::move(Setting);
         return true;
     }
+
+    void ConfigManager::SubmitDeferredUISetting(UIConfigSetting::DeferredUIParameter Setting)
+    {
+        UserInterface.SubmitDeferred(std::move(Setting));
+    }
+
+    void ConfigManager::SubmitForwardUISetting(UIConfigSetting::ForwardUIParameter Setting)
+    {
+        UserInterface.SubmitForward(std::move(Setting));
+    }
+
+    UIConfigSetting::DeferredUIParameter ConfigManager::GetDeferredUISetting() const
+    {
+        return UserInterface.GetDeferred();
+    }
+
+    UIConfigSetting::ForwardUIParameter ConfigManager::GetForwardUISetting() const
+    {
+        return UserInterface.GetForward();
+    }
+
+    void ConfigManager::SubmitBlinnPhongUISetting(UIConfigSetting::BlinnPhongUIParameter Setting)
+    {
+        UserInterface.SubmitBlinnPhong(std::move(Setting));
+    }
+
+    void ConfigManager::SubmitDebugUISetting(UIConfigSetting::DebugUIParameter Setting)
+    {
+        UserInterface.SubmitDebug(std::move(Setting));
+    }
+
+    UIConfigSetting::BlinnPhongUIParameter ConfigManager::GetBlinnPhongUISetting() const
+    {
+        return UserInterface.GetBlinnPhong();
+    }
+
+    UIConfigSetting::DebugUIParameter ConfigManager::GetDebugUISetting() const
+    {
+        return UserInterface.GetDebug();
+    }
 }

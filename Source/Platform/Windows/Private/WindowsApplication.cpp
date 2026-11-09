@@ -2,20 +2,22 @@
 
 #include "Framework/Common/Public/Log.h"
 #include "Framework/Config/Public/ConfigManager.h"
+#include "Framework/UI/Public/UIManager.h"
 
 #include <string>
 
 #include <windows.h>
+
+#include <imgui.h>
+#include <imgui_impl_win32.h>
+
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam);
 
 namespace ShadowEngine
 {
     namespace
     {
         constexpr wchar_t WindowClassName[] = L"ShadowEngineWindowClass";
-        constexpr wchar_t FpsClassName[] = L"ShadowEngineFpsWindow";
-        constexpr int FpsWidth = 88;
-        constexpr int FpsHeight = 32;
-        constexpr int FpsMargin = 12;
         constexpr float LookRadiansPerSpeed = 0.00025F;
         constexpr float MaxFrameTime = 0.1F;
 
@@ -37,6 +39,23 @@ namespace ShadowEngine
             auto* Application = reinterpret_cast<WindowsApplication*>(
                 GetWindowLongPtrW(Window, GWLP_USERDATA));
 
+            if ((Message == WM_KEYDOWN || Message == WM_KEYUP) && WParam == 'U')
+            {
+                if (Application != nullptr)
+                {
+                    const bool bRepeat = (LParam & (static_cast<LPARAM>(1) << 30)) != 0;
+                    Application->OnKey(static_cast<uint32>(WParam), Message == WM_KEYDOWN, bRepeat);
+                }
+                return 0;
+            }
+
+            if (UIManager::Get().IsVisible() &&
+                ImGui::GetCurrentContext() != nullptr &&
+                ImGui_ImplWin32_WndProcHandler(Window, Message, WParam, LParam) != 0)
+            {
+                return 1;
+            }
+
             switch (Message)
             {
                 case WM_SIZE:
@@ -47,13 +66,6 @@ namespace ShadowEngine
                             static_cast<uint32>(HIWORD(LParam)));
                     }
                     return 0;
-
-                case WM_MOVE:
-                    if (Application != nullptr)
-                    {
-                        Application->OnWindowMoved();
-                    }
-                    break;
 
                 case WM_LBUTTONDOWN:
                     if (Application != nullptr)
@@ -131,17 +143,6 @@ namespace ShadowEngine
             return -1;
         }
 
-        WNDCLASSEXW FpsClass{};
-        FpsClass.cbSize = sizeof(FpsClass);
-        FpsClass.lpfnWndProc = DefWindowProcW;
-        FpsClass.hInstance = Instance;
-        FpsClass.lpszClassName = FpsClassName;
-        if (RegisterClassExW(&FpsClass) == 0)
-        {
-            UnregisterClassW(WindowClassName, Instance);
-            return -1;
-        }
-
         RECT WindowRectangle{
             0,
             0,
@@ -153,7 +154,6 @@ namespace ShadowEngine
                 FALSE,
                 0))
         {
-            UnregisterClassW(FpsClassName, Instance);
             UnregisterClassW(WindowClassName, Instance);
             return -1;
         }
@@ -174,49 +174,11 @@ namespace ShadowEngine
 
         if (Window == nullptr)
         {
-            UnregisterClassW(FpsClassName, Instance);
             UnregisterClassW(WindowClassName, Instance);
             return -1;
         }
 
         WindowHandle = Window;
-
-        const HWND Overlay = CreateWindowExW(
-            WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
-            FpsClassName,
-            L"",
-            WS_POPUP,
-            0,
-            0,
-            FpsWidth,
-            FpsHeight,
-            Window,
-            nullptr,
-            Instance,
-            nullptr);
-        FpsWindow = Overlay;
-        if (Overlay != nullptr)
-        {
-            FpsFont = CreateFontW(
-                -22,
-                0,
-                0,
-                0,
-                FW_NORMAL,
-                FALSE,
-                FALSE,
-                FALSE,
-                DEFAULT_CHARSET,
-                OUT_DEFAULT_PRECIS,
-                CLIP_DEFAULT_PRECIS,
-                CLEARTYPE_QUALITY,
-                DEFAULT_PITCH | FF_DONTCARE,
-                L"Segoe UI");
-        }
-        else
-        {
-            Log::Error("FPS overlay window was not created");
-        }
 
         ShowWindow(Window, SW_SHOW);
         UpdateWindow(Window);
@@ -242,6 +204,17 @@ namespace ShadowEngine
             return -1;
         }
 
+        if (ImGui::GetCurrentContext() != nullptr)
+        {
+            if (ImGui_ImplWin32_Init(Window) == false)
+            {
+                Log::Error("ImGui Win32 initialization failed");
+                Finalize();
+                return -1;
+            }
+            bImGuiPlatform = true;
+        }
+
         if (IsIconic(Window))
         {
             EngineInstance.Resize(0, 0);
@@ -255,34 +228,35 @@ namespace ShadowEngine
         TimeLast = Now.QuadPart;
 
         SetForegroundWindow(Window);
-        CaptureMouse();
-        if (Overlay != nullptr)
+        if (!UIManager::Get().IsVisible())
         {
-            DrawFpsOverlay(0);
-            ShowWindow(Overlay, SW_SHOWNOACTIVATE);
+            CaptureMouse();
         }
 
-        Log::Info("Camera ready (WASD move, Q up, E down, mouse look, U toggles FPS, Esc releases mouse)");
+        Log::Info("Camera ready (WASD move, E up, Q down, Esc releases the mouse, click the view to look, U toggles the panel)");
         return 0;
     }
 
     void WindowsApplication::OnWindowResized(uint32 Width, uint32 Height)
     {
         EngineInstance.Resize(Width, Height);
-        PlaceFpsOverlay();
         EngineInstance.Tick(0.0F);
-    }
-
-    void WindowsApplication::OnWindowMoved()
-    {
-        PlaceFpsOverlay();
     }
 
     void WindowsApplication::OnKey(uint32 Key, bool bDown, bool bRepeat)
     {
-        if (bDown && !bRepeat && Key == 'U')
+        if (bDown && !bRepeat && Key == 'U' && UIManager::Get().IsActive())
         {
-            ToggleFps();
+            UIManager::Get().ToggleVisible();
+            if (UIManager::Get().IsVisible())
+            {
+                ReleaseMouse();
+                ClearKeys();
+            }
+            else
+            {
+                CaptureMouse();
+            }
         }
         if (bDown && !bRepeat && Key == VK_ESCAPE)
         {
@@ -305,10 +279,10 @@ namespace ShadowEngine
                 bKeyRight = bPressed;
                 break;
             case 'Q':
-                bKeyUp = bPressed;
+                bKeyDown = bPressed;
                 break;
             case 'E':
-                bKeyDown = bPressed;
+                bKeyUp = bPressed;
                 break;
             default:
                 break;
@@ -317,10 +291,12 @@ namespace ShadowEngine
 
     void WindowsApplication::OnMouseDown()
     {
-        if (!bMouseCaptured)
+        if (UIManager::Get().IsVisible() || bMouseCaptured)
         {
-            CaptureMouse();
+            return;
         }
+
+        CaptureMouse();
     }
 
     void WindowsApplication::OnFocusLost()
@@ -439,168 +415,14 @@ namespace ShadowEngine
         return DeltaTime;
     }
 
-    void WindowsApplication::UpdateFpsOverlay(float DeltaTime)
-    {
-        if (FpsWindow == nullptr)
-        {
-            return;
-        }
-
-        FpsAccumulated += DeltaTime;
-        ++FpsFrames;
-        if (FpsAccumulated < 0.25F)
-        {
-            return;
-        }
-
-        const int Fps = static_cast<int>(static_cast<float>(FpsFrames) / FpsAccumulated + 0.5F);
-        FpsAccumulated = 0.0F;
-        FpsFrames = 0;
-        if (Fps == DisplayedFps)
-        {
-            return;
-        }
-
-        DisplayedFps = Fps;
-        if (bShowFps)
-        {
-            DrawFpsOverlay(Fps);
-        }
-    }
-
-    void WindowsApplication::PlaceFpsOverlay()
-    {
-        const HWND Overlay = static_cast<HWND>(FpsWindow);
-        const HWND Window = static_cast<HWND>(WindowHandle);
-        if (Overlay == nullptr || Window == nullptr || !bShowFps)
-        {
-            return;
-        }
-
-        POINT Origin{FpsMargin, FpsMargin};
-        ClientToScreen(Window, &Origin);
-        UpdateLayeredWindow(Overlay, nullptr, &Origin, nullptr, nullptr, nullptr, 0, nullptr, 0);
-    }
-
-    void WindowsApplication::DrawFpsOverlay(int Fps)
-    {
-        const HWND Overlay = static_cast<HWND>(FpsWindow);
-        const HWND Window = static_cast<HWND>(WindowHandle);
-        if (Overlay == nullptr || Window == nullptr)
-        {
-            return;
-        }
-
-        HDC Screen = GetDC(nullptr);
-        HDC Memory = CreateCompatibleDC(Screen);
-        BITMAPINFO Info{};
-        Info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-        Info.bmiHeader.biWidth = FpsWidth;
-        Info.bmiHeader.biHeight = -FpsHeight;
-        Info.bmiHeader.biPlanes = 1;
-        Info.bmiHeader.biBitCount = 32;
-        Info.bmiHeader.biCompression = BI_RGB;
-
-        void* Bits = nullptr;
-        HBITMAP Bitmap = CreateDIBSection(Screen, &Info, DIB_RGB_COLORS, &Bits, nullptr, 0);
-        if (Bitmap == nullptr || Bits == nullptr)
-        {
-            if (Bitmap != nullptr)
-            {
-                DeleteObject(Bitmap);
-            }
-            DeleteDC(Memory);
-            ReleaseDC(nullptr, Screen);
-            return;
-        }
-
-        const HGDIOBJ PreviousBitmap = SelectObject(Memory, Bitmap);
-        RECT TextRect{8, 0, FpsWidth - 4, FpsHeight};
-        HBRUSH Brush = CreateSolidBrush(RGB(0, 0, 0));
-        RECT FillRectArea{0, 0, FpsWidth, FpsHeight};
-        ::FillRect(Memory, &FillRectArea, Brush);
-        DeleteObject(Brush);
-
-        SetBkMode(Memory, TRANSPARENT);
-        SetTextColor(Memory, RGB(255, 255, 255));
-        if (FpsFont != nullptr)
-        {
-            SelectObject(Memory, static_cast<HFONT>(FpsFont));
-        }
-
-        wchar_t Text[16] = {};
-        wsprintfW(Text, L"%d", Fps);
-        DrawTextW(Memory, Text, -1, &TextRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-
-        auto* Pixels = static_cast<uint32*>(Bits);
-        const int PixelCount = FpsWidth * FpsHeight;
-        for (int Index = 0; Index < PixelCount; ++Index)
-        {
-            const uint32 Pixel = Pixels[Index];
-            const uint8 Blue = static_cast<uint8>(Pixel & 0xFF);
-            const uint8 Green = static_cast<uint8>((Pixel >> 8) & 0xFF);
-            const uint8 Red = static_cast<uint8>((Pixel >> 16) & 0xFF);
-            const uint8 Alpha = (Red > 128 || Green > 128 || Blue > 128) ? 255 : 160;
-            const uint8 OutRed = static_cast<uint8>(Red * Alpha / 255);
-            const uint8 OutGreen = static_cast<uint8>(Green * Alpha / 255);
-            const uint8 OutBlue = static_cast<uint8>(Blue * Alpha / 255);
-            Pixels[Index] = (static_cast<uint32>(Alpha) << 24) |
-                            (static_cast<uint32>(OutRed) << 16) |
-                            (static_cast<uint32>(OutGreen) << 8) |
-                            OutBlue;
-        }
-
-        POINT Origin{FpsMargin, FpsMargin};
-        ClientToScreen(Window, &Origin);
-        SIZE Size{FpsWidth, FpsHeight};
-        POINT Source{0, 0};
-        BLENDFUNCTION Blend{};
-        Blend.BlendOp = AC_SRC_OVER;
-        Blend.SourceConstantAlpha = 255;
-        Blend.AlphaFormat = AC_SRC_ALPHA;
-        UpdateLayeredWindow(Overlay, Screen, &Origin, &Size, Memory, &Source, 0, &Blend, ULW_ALPHA);
-
-        SelectObject(Memory, PreviousBitmap);
-        DeleteObject(Bitmap);
-        DeleteDC(Memory);
-        ReleaseDC(nullptr, Screen);
-    }
-
-    void WindowsApplication::ToggleFps()
-    {
-        bShowFps = !bShowFps;
-        const HWND Overlay = static_cast<HWND>(FpsWindow);
-        if (Overlay == nullptr)
-        {
-            return;
-        }
-
-        if (bShowFps)
-        {
-            DrawFpsOverlay(DisplayedFps);
-            ShowWindow(Overlay, SW_SHOWNOACTIVATE);
-        }
-        else
-        {
-            ShowWindow(Overlay, SW_HIDE);
-        }
-    }
-
     void WindowsApplication::Finalize()
     {
         ReleaseMouse();
 
-        const HWND Overlay = static_cast<HWND>(FpsWindow);
-        if (Overlay != nullptr && IsWindow(Overlay))
+        if (bImGuiPlatform)
         {
-            DestroyWindow(Overlay);
-        }
-        FpsWindow = nullptr;
-
-        if (FpsFont != nullptr)
-        {
-            DeleteObject(static_cast<HFONT>(FpsFont));
-            FpsFont = nullptr;
+            ImGui_ImplWin32_Shutdown();
+            bImGuiPlatform = false;
         }
 
         BaseApplication::Finalize();
@@ -614,7 +436,6 @@ namespace ShadowEngine
         const HINSTANCE Instance = static_cast<HINSTANCE>(ModuleHandle);
         if (Instance != nullptr)
         {
-            UnregisterClassW(FpsClassName, Instance);
             UnregisterClassW(WindowClassName, Instance);
         }
 
@@ -655,37 +476,39 @@ namespace ShadowEngine
         float Up = 0.0F;
         float Yaw = 0.0F;
         float Pitch = 0.0F;
-        if (bKeyForward)
+        if (!UIManager::Get().IsVisible())
         {
-            Forward += 1.0F;
-        }
-        if (bKeyBack)
-        {
-            Forward -= 1.0F;
-        }
-        if (bKeyRight)
-        {
-            Right += 1.0F;
-        }
-        if (bKeyLeft)
-        {
-            Right -= 1.0F;
-        }
-        if (bKeyUp)
-        {
-            Up += 1.0F;
-        }
-        if (bKeyDown)
-        {
-            Up -= 1.0F;
-        }
-        if (bMouseCaptured)
-        {
-            SampleMouseLook(Yaw, Pitch);
+            if (bKeyForward)
+            {
+                Forward += 1.0F;
+            }
+            if (bKeyBack)
+            {
+                Forward -= 1.0F;
+            }
+            if (bKeyRight)
+            {
+                Right += 1.0F;
+            }
+            if (bKeyLeft)
+            {
+                Right -= 1.0F;
+            }
+            if (bKeyUp)
+            {
+                Up += 1.0F;
+            }
+            if (bKeyDown)
+            {
+                Up -= 1.0F;
+            }
+            if (bMouseCaptured)
+            {
+                SampleMouseLook(Yaw, Pitch);
+            }
         }
 
         EngineInstance.SetCameraMotion(Forward, Right, Up, Yaw, Pitch);
-        UpdateFpsOverlay(FrameTime);
         BaseApplication::Tick(FrameTime);
     }
 

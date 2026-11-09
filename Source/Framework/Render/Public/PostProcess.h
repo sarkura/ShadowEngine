@@ -85,6 +85,14 @@ namespace ShadowEngine
                 uint32 ExposureMap;
                 uint32 Pad2;
                 uint32 Pad3;
+                float ExposureMiddleGrey;
+                float ExposureMinimum;
+                float ExposureMaximum;
+                float ExposureAdaptSpeed;
+                float BloomLimit;
+                float ReservedFloat;
+                uint32 PostFlags;
+                uint32 ReservedUint;
             };
 
             bool DrawFullscreen(

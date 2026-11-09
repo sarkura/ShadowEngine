@@ -9,6 +9,7 @@
 #include "Framework/RHI/Public/RHIBuffer.h"
 #include "Framework/RHI/Public/RHICommandList.h"
 #include "Framework/RHI/Public/RHIDevice.h"
+#include "Framework/Render/Public/UIRender.h"
 #include "Framework/RHI/Public/RHISwapChain.h"
 #include "Framework/RHI/Public/RHIPipelineLayout.h"
 #include "Framework/Shader/Public/ShaderManager.h"
@@ -191,6 +192,10 @@ namespace ShadowEngine
             Context.CommandList->DrawIndexed(Batch->IndexCount);
         }
         Context.CommandList->EndRenderPass();
+        if (Context.Interface != nullptr)
+        {
+            Context.Interface->Draw(*Context.CommandList, Context.SwapChain->GetCurrentBackBuffer());
+        }
         Context.CommandList->End();
 
         Context.Device->SubmitCommandList(*Context.CommandList);

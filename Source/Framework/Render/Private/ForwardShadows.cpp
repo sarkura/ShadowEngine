@@ -3,6 +3,7 @@
 #include "Framework/Asset/Public/AssetManager.h"
 #include "Framework/Asset/Public/MeshAsset.h"
 #include "Framework/Common/Public/Log.h"
+#include "Framework/UI/Public/UIManager.h"
 #include "Framework/RHI/Public/RHIBuffer.h"
 #include "Framework/RHI/Public/RHICommandList.h"
 #include "Framework/RHI/Public/RHIDefinitions.h"
@@ -418,11 +419,12 @@ namespace ShadowEngine
             Active = false;
         }
 
+        const UIManager::LightState LightSettings = UIManager::Get().GetState().Light;
         const float Settings[4] = {
             1.0F / static_cast<float>(DirectionalShadowSize),
             0.02F,
             2.0F / static_cast<float>(PointShadowFaceSize),
-            PointDepthBias};
+            LightSettings.PointShadowDepthBias};
         Binding = {};
         Binding.DirectMap = InvalidShaderDescriptor;
         Binding.ComparisonSampler = ComparisonDescriptor;
@@ -433,7 +435,7 @@ namespace ShadowEngine
         }
 
         float WorldTexel = 0.0F;
-        if (DirectLight != nullptr && DirectLight->Intensity > 0.0F &&
+        if (LightSettings.bDirectionalShadow && DirectLight != nullptr && DirectLight->Intensity > 0.0F &&
             FitDirectionalClip(Batches, Casters, Assets, *DirectLight, DirectClip, WorldTexel))
         {
             const glm::mat4 Clip = glm::make_mat4(DirectClip);
@@ -445,11 +447,13 @@ namespace ShadowEngine
                 Binding.DirectRow[Row][3] = Clip[3][Row];
             }
             Binding.DirectMap = DirectDescriptor;
-            Binding.Settings[1] = std::max(WorldTexel * 3.0F, 0.01F);
+            Binding.Settings[1] = std::max(WorldTexel * 3.0F, LightSettings.ShadowNormalBias);
             bDirectActive = true;
         }
 
-        const size_t PointCount = std::min(PointLights.size(), static_cast<size_t>(4));
+        const size_t PointCount = LightSettings.bPointShadow
+            ? std::min(PointLights.size(), static_cast<size_t>(4))
+            : 0;
         for (size_t Index = 0; Index < PointCount; ++Index)
         {
             if (PointLights[Index].Intensity <= 0.0F || PointLights[Index].Radius <= 0.0F)

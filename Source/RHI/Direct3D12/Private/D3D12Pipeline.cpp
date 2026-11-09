@@ -103,6 +103,8 @@ namespace ShadowEngine
                     return DXGI_FORMAT_R32G32_FLOAT;
                 case ERHIVertexFormat::Float32x3:
                     return DXGI_FORMAT_R32G32B32_FLOAT;
+                case ERHIVertexFormat::UNorm8x4:
+                    return DXGI_FORMAT_R8G8B8A8_UNORM;
             }
 
             return DXGI_FORMAT_UNKNOWN;

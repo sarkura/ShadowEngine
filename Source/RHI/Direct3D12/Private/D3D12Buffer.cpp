@@ -177,9 +177,8 @@ namespace ShadowEngine
             return false;
         }
 
-        std::memcpy(Mapped, Desc.Data.data(), Desc.Data.size());
-        Resource->Unmap(0, nullptr);
-
+        MappedData = static_cast<uint8*>(Mapped);
+        std::memcpy(MappedData, Desc.Data.data(), Desc.Data.size());
         Size = static_cast<uint32>(Desc.Data.size());
         return true;
     }

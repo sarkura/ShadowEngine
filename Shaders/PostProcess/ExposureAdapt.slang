@@ -1,10 +1,5 @@
 #include "PostConstants.slang"
 
-static const float ExposureMiddleGrey = 0.18;
-static const float ExposureMinimum = 0.05;
-static const float ExposureMaximum = 8.0;
-static const float ExposureAdaptSpeed = 2.0;
-
 [shader("fragment")]
 float4 PixelMain(float4 Position : SV_Position) : SV_Target
 {

@@ -5,6 +5,7 @@
 #include "Framework/Render/Public/MeshBatch.h"
 #include "Framework/Render/Public/RenderProxy.h"
 #include "Framework/Render/Public/RenderQueue.h"
+#include "Framework/Render/Public/UIRender.h"
 #include "Framework/RHI/Public/RHIBuffer.h"
 #include "Framework/RHI/Public/RHICommandList.h"
 #include "Framework/RHI/Public/RHIPipeline.h"
@@ -97,6 +98,7 @@ namespace ShadowEngine
             Camera ViewCamera;
             float FrameDeltaTime = 0.0F;
             RenderPass* FramePass = nullptr;
+            UIRender Interface;
 
         private:
             RenderItemFilter ItemFilter;

@@ -4,6 +4,7 @@
 #include "Framework/Asset/Public/MeshAsset.h"
 #include "Framework/Asset/Public/TextureAsset.h"
 #include "Framework/Common/Public/Log.h"
+#include "Framework/UI/Public/UIManager.h"
 #include "Framework/Material/Public/Material.h"
 #include "Framework/Material/Public/MaterialInstance.h"
 #include "Framework/Material/Public/MaterialParameter.h"
@@ -216,6 +217,8 @@ namespace ShadowEngine
             return false;
         }
 
+        UIManager::Get().BeginFrame();
+
         if (!CollectVisibleItems(ItemFilter, DrawQueue))
         {
             return false;
@@ -223,6 +226,13 @@ namespace ShadowEngine
 
         if (!PrepareFrame())
         {
+            return false;
+        }
+
+        std::string Error;
+        if (!Interface.Ensure(*Device, *ShaderLibrary, &Error))
+        {
+            Log::Error("{}", Error);
             return false;
         }
 
@@ -260,6 +270,7 @@ namespace ShadowEngine
         Context.ConstantCapacity = ConstantCapacity;
         Context.ConstantAlignment = ConstantAlignment;
         Context.FrameDeltaTime = FrameDeltaTime;
+        Context.Interface = &Interface;
     }
 
     void Renderer::StoreFrameHistory()

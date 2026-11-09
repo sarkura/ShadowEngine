@@ -22,4 +22,16 @@ cbuffer PostConstants : register(b0)
     uint ExposureMap;
     uint Pad2;
     uint Pad3;
+    float ExposureMiddleGrey;
+    float ExposureMinimum;
+    float ExposureMaximum;
+    float ExposureAdaptSpeed;
+    float BloomLimit;
+    float ReservedFloat;
+    uint PostFlags;
+    uint ReservedUint;
 };
+
+static const uint PostFlagAutoExposure = 1;
+static const uint PostFlagBloom = 2;
+static const uint PostFlagDither = 4;

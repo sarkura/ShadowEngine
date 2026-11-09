@@ -170,18 +170,6 @@ target_link_libraries(RHIVulkan PUBLIC Framework)
 set(SHADOW_RHI_TARGETS RHIVulkan)
 
 if(WIN32)
-    # Dear ImGui DX12 backend
-    add_library(ImGuiDX12 STATIC
-        ${SHADOW_THIRDPARTY_DIR}/Imgui/backends/imgui_impl_dx12.cpp
-    )
-    target_include_directories(ImGuiDX12 SYSTEM PUBLIC
-        ${SHADOW_THIRDPARTY_DIR}/Imgui/backends
-    )
-    target_link_libraries(ImGuiDX12
-        PUBLIC ImGui
-        PRIVATE d3d12 dxgi d3dcompiler
-    )
-
     # Direct3D12
     file(GLOB_RECURSE RHI_D3D12_SOURCES CONFIGURE_DEPENDS
         "${SHADOW_SOURCE_DIR}/RHI/Direct3D12/*.cpp"
@@ -190,7 +178,7 @@ if(WIN32)
     target_compile_definitions(RHID3D12 PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(RHID3D12
         PUBLIC Framework
-        PRIVATE ImGuiDX12 d3d12 dxgi dxguid
+        PRIVATE d3d12 dxgi dxguid
     )
 
     list(APPEND SHADOW_RHI_TARGETS RHID3D12)

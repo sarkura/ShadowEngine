@@ -1,6 +1,7 @@
 #include "Framework/Render/Public/PostProcess.h"
 
 #include "Framework/Common/Public/Log.h"
+#include "Framework/UI/Public/UIManager.h"
 #include "Framework/Render/Public/MeshBatch.h"
 #include "Framework/Render/Public/RenderItem.h"
 #include "Framework/RHI/Public/RHIBuffer.h"
@@ -28,7 +29,7 @@ namespace ShadowEngine
         ERHIFormat OutputFormat,
         std::string* ErrorMessage)
     {
-        static_assert(sizeof(PostGpuConstants) == 208);
+        static_assert(sizeof(PostGpuConstants) == 240);
         if (InWidth == 0 || InHeight == 0)
         {
             SetErrorMessage(ErrorMessage, "Post process requires a non-zero viewport");
@@ -244,6 +245,8 @@ namespace ShadowEngine
         uint32 TargetHeight,
         const PostGpuConstants& Constants)
     {
+        static_assert(sizeof(PostGpuConstants) == 240);
+        static_assert(sizeof(PostGpuConstants) <= 256);
         const std::span<const uint8> Bytes(reinterpret_cast<const uint8*>(&Constants), sizeof(Constants));
         if (ConstantBuffer == nullptr || ConstantSlot >= 16 || !ConstantBuffer->Update(ConstantSlot * 256, Bytes))
         {
@@ -290,6 +293,16 @@ namespace ShadowEngine
             return false;
         }
 
+        const UIManager::State Interface = UIManager::Get().GetState();
+        if (!Interface.Post.bTAA)
+        {
+            bHistoryValid = false;
+        }
+        if (!Interface.Post.bAutoExposure)
+        {
+            bExposureValid = false;
+        }
+
         Commands.UseAsShaderResource(*SceneColor.Texture);
         Commands.UseAsShaderResource(Depth);
         ConstantSlot = 0;
@@ -303,143 +316,177 @@ namespace ShadowEngine
         Constants.Sampler = ClampSampler->GetDescriptorIndex();
         Constants.Depth = DepthDescriptor;
         Constants.Motion = Motion.Descriptor;
-        Constants.DestSize[0] = static_cast<float>(InWidth);
-        Constants.DestSize[1] = static_cast<float>(InHeight);
-        Constants.Source = SceneColor.Descriptor;
-        if (!DrawFullscreen(Commands, *Motion.Texture, *CameraVelocityPipeline, InWidth, InHeight, Constants))
+        Constants.ExposureMiddleGrey = Interface.Post.ExposureMiddleGrey;
+        Constants.ExposureMinimum = Interface.Post.ExposureMinimum;
+        Constants.ExposureMaximum = Interface.Post.ExposureMaximum;
+        Constants.ExposureAdaptSpeed = Interface.Post.ExposureAdaptSpeed;
+        Constants.BloomLimit = Interface.Post.BloomLimit;
+        if (Interface.Post.bAutoExposure)
         {
-            return false;
+            Constants.PostFlags |= 1u;
+        }
+        if (Interface.Post.bBloom)
+        {
+            Constants.PostFlags |= 2u;
+        }
+        if (Interface.Post.bTonemapDither)
+        {
+            Constants.PostFlags |= 4u;
         }
 
-        Commands.BeginRenderPass(*Motion.Texture, &Depth, {}, false, false);
-        Commands.SetViewport({0.0F, 0.0F, static_cast<float>(InWidth), static_cast<float>(InHeight), 0.0F, 1.0F});
-        Commands.SetScissor({0, 0, static_cast<int32>(InWidth), static_cast<int32>(InHeight)});
-        Commands.BindShaderResources();
-        for (uint32 Index = 0; Index < static_cast<uint32>(Items.size()); ++Index)
+        uint32 ResolvedColor = SceneColor.Descriptor;
+        if (Interface.Post.bTAA)
         {
-            const MeshBatch* Batch = FindMeshBatch(Batches, Items[Index].Mesh, Items[Index].Section);
-            if (Batch == nullptr || Batch->VertexBuffer == nullptr || Batch->IndexBuffer == nullptr)
+            Constants.DestSize[0] = static_cast<float>(InWidth);
+            Constants.DestSize[1] = static_cast<float>(InHeight);
+            Constants.Source = SceneColor.Descriptor;
+            if (!DrawFullscreen(Commands, *Motion.Texture, *CameraVelocityPipeline, InWidth, InHeight, Constants))
             {
-                Log::Error("Forward velocity is missing a mesh");
-                Commands.EndRenderPass();
                 return false;
             }
 
-            Commands.SetPipeline(*(Batch->bTwoSided ? MeshVelocityTwoSidedPipeline : MeshVelocityPipeline));
-            Commands.SetVertexBuffer(*Batch->VertexBuffer);
-            Commands.SetIndexBuffer(*Batch->IndexBuffer);
-            Commands.SetConstantBuffer(ObjectConstants, Index * ConstantAlignment);
-            Commands.DrawIndexed(Batch->IndexCount);
-        }
-        Commands.EndRenderPass();
-        Commands.UseAsShaderResource(*Motion.Texture);
+            Commands.BeginRenderPass(*Motion.Texture, &Depth, {}, false, false);
+            Commands.SetViewport({0.0F, 0.0F, static_cast<float>(InWidth), static_cast<float>(InHeight), 0.0F, 1.0F});
+            Commands.SetScissor({0, 0, static_cast<int32>(InWidth), static_cast<int32>(InHeight)});
+            Commands.BindShaderResources();
+            for (uint32 Index = 0; Index < static_cast<uint32>(Items.size()); ++Index)
+            {
+                const MeshBatch* Batch = FindMeshBatch(Batches, Items[Index].Mesh, Items[Index].Section);
+                if (Batch == nullptr || Batch->VertexBuffer == nullptr || Batch->IndexBuffer == nullptr)
+                {
+                    Log::Error("Forward velocity is missing a mesh");
+                    Commands.EndRenderPass();
+                    return false;
+                }
 
-        const uint32 WriteIndex = HistoryIndex ^ 1u;
-        Constants.Source = SceneColor.Descriptor;
-        Constants.Secondary = History[HistoryIndex].Descriptor;
-        Constants.CurrentWeight = bHistoryValid ? 0.1F : 1.0F;
-        Constants.DestSize[0] = static_cast<float>(InWidth);
-        Constants.DestSize[1] = static_cast<float>(InHeight);
-        if (!DrawFullscreen(Commands, *History[WriteIndex].Texture, *TAAPipeline, InWidth, InHeight, Constants))
-        {
-            return false;
-        }
-        Commands.UseAsShaderResource(*History[WriteIndex].Texture);
+                Commands.SetPipeline(*(Batch->bTwoSided ? MeshVelocityTwoSidedPipeline : MeshVelocityPipeline));
+                Commands.SetVertexBuffer(*Batch->VertexBuffer);
+                Commands.SetIndexBuffer(*Batch->IndexBuffer);
+                Commands.SetConstantBuffer(ObjectConstants, Index * ConstantAlignment);
+                Commands.DrawIndexed(Batch->IndexCount);
+            }
+            Commands.EndRenderPass();
+            Commands.UseAsShaderResource(*Motion.Texture);
 
-        Constants.Source = History[WriteIndex].Descriptor;
-        Constants.DestSize[0] = static_cast<float>(ExposureLum.Width);
-        Constants.DestSize[1] = static_cast<float>(ExposureLum.Height);
-        if (!DrawFullscreen(
-                Commands,
-                *ExposureLum.Texture,
-                *ExposureLuminancePipeline,
-                ExposureLum.Width,
-                ExposureLum.Height,
-                Constants))
-        {
-            return false;
+            const uint32 WriteIndex = HistoryIndex ^ 1u;
+            Constants.Source = SceneColor.Descriptor;
+            Constants.Secondary = History[HistoryIndex].Descriptor;
+            Constants.CurrentWeight = bHistoryValid ? Interface.Post.TAACurrentWeight : 1.0F;
+            Constants.DestSize[0] = static_cast<float>(InWidth);
+            Constants.DestSize[1] = static_cast<float>(InHeight);
+            if (!DrawFullscreen(Commands, *History[WriteIndex].Texture, *TAAPipeline, InWidth, InHeight, Constants))
+            {
+                return false;
+            }
+            Commands.UseAsShaderResource(*History[WriteIndex].Texture);
+            ResolvedColor = History[WriteIndex].Descriptor;
+            HistoryIndex = WriteIndex;
+            bHistoryValid = true;
         }
-        Commands.UseAsShaderResource(*ExposureLum.Texture);
 
-        Constants.Source = ExposureLum.Descriptor;
-        Constants.DestSize[0] = 1.0F;
-        Constants.DestSize[1] = 1.0F;
-        if (!DrawFullscreen(Commands, *ExposureAverage.Texture, *ExposureReducePipeline, 1, 1, Constants))
+        if (Interface.Post.bAutoExposure)
         {
-            return false;
-        }
-        Commands.UseAsShaderResource(*ExposureAverage.Texture);
-
-        Commands.UseAsShaderResource(*Exposure[ExposureIndex].Texture);
-        const uint32 ExposureWrite = ExposureIndex ^ 1u;
-        Constants.Source = ExposureAverage.Descriptor;
-        Constants.Secondary = Exposure[ExposureIndex].Descriptor;
-        Constants.CurrentWeight = bExposureValid ? 0.0F : 1.0F;
-        Constants.ExposureDelta = DeltaTime;
-        if (!DrawFullscreen(Commands, *Exposure[ExposureWrite].Texture, *ExposureAdaptPipeline, 1, 1, Constants))
-        {
-            return false;
-        }
-        Commands.UseAsShaderResource(*Exposure[ExposureWrite].Texture);
-
-        Constants.Source = History[WriteIndex].Descriptor;
-        Constants.Threshold = 1.0F;
-        Constants.DestSize[0] = static_cast<float>(BloomDown[0].Width);
-        Constants.DestSize[1] = static_cast<float>(BloomDown[0].Height);
-        Constants.SourceTexel[0] = 1.0F / static_cast<float>(InWidth);
-        Constants.SourceTexel[1] = 1.0F / static_cast<float>(InHeight);
-        if (!DrawFullscreen(Commands, *BloomDown[0].Texture, *BloomExtractPipeline, BloomDown[0].Width, BloomDown[0].Height, Constants))
-        {
-            return false;
-        }
-        Commands.UseAsShaderResource(*BloomDown[0].Texture);
-
-        for (uint32 Level = 0; Level < 3; ++Level)
-        {
-            Constants.Source = BloomDown[Level].Descriptor;
-            Constants.DestSize[0] = static_cast<float>(BloomDown[Level + 1].Width);
-            Constants.DestSize[1] = static_cast<float>(BloomDown[Level + 1].Height);
-            Constants.SourceTexel[0] = 1.0F / static_cast<float>(BloomDown[Level].Width);
-            Constants.SourceTexel[1] = 1.0F / static_cast<float>(BloomDown[Level].Height);
+            Constants.Source = ResolvedColor;
+            Constants.DestSize[0] = static_cast<float>(ExposureLum.Width);
+            Constants.DestSize[1] = static_cast<float>(ExposureLum.Height);
             if (!DrawFullscreen(
                     Commands,
-                    *BloomDown[Level + 1].Texture,
-                    *BloomDownsamplePipeline,
-                    BloomDown[Level + 1].Width,
-                    BloomDown[Level + 1].Height,
+                    *ExposureLum.Texture,
+                    *ExposureLuminancePipeline,
+                    ExposureLum.Width,
+                    ExposureLum.Height,
                     Constants))
             {
                 return false;
             }
+            Commands.UseAsShaderResource(*ExposureLum.Texture);
 
-            Commands.UseAsShaderResource(*BloomDown[Level + 1].Texture);
-        }
-
-        for (int32 Level = 2; Level >= 0; --Level)
-        {
-            const uint32 SourceDescriptor = Level == 2 ? BloomDown[3].Descriptor : BloomUp[Level + 1].Descriptor;
-            Constants.Source = SourceDescriptor;
-            Constants.Secondary = BloomDown[Level].Descriptor;
-            Constants.DestSize[0] = static_cast<float>(BloomUp[Level].Width);
-            Constants.DestSize[1] = static_cast<float>(BloomUp[Level].Height);
-            if (!DrawFullscreen(
-                    Commands,
-                    *BloomUp[Level].Texture,
-                    *BloomUpsamplePipeline,
-                    BloomUp[Level].Width,
-                    BloomUp[Level].Height,
-                    Constants))
+            Constants.Source = ExposureLum.Descriptor;
+            Constants.DestSize[0] = 1.0F;
+            Constants.DestSize[1] = 1.0F;
+            if (!DrawFullscreen(Commands, *ExposureAverage.Texture, *ExposureReducePipeline, 1, 1, Constants))
             {
                 return false;
             }
+            Commands.UseAsShaderResource(*ExposureAverage.Texture);
 
-            Commands.UseAsShaderResource(*BloomUp[Level].Texture);
+            Commands.UseAsShaderResource(*Exposure[ExposureIndex].Texture);
+            const uint32 ExposureWrite = ExposureIndex ^ 1u;
+            Constants.Source = ExposureAverage.Descriptor;
+            Constants.Secondary = Exposure[ExposureIndex].Descriptor;
+            Constants.CurrentWeight = bExposureValid ? 0.0F : 1.0F;
+            Constants.ExposureDelta = DeltaTime;
+            if (!DrawFullscreen(Commands, *Exposure[ExposureWrite].Texture, *ExposureAdaptPipeline, 1, 1, Constants))
+            {
+                return false;
+            }
+            Commands.UseAsShaderResource(*Exposure[ExposureWrite].Texture);
+            Constants.ExposureMap = Exposure[ExposureWrite].Descriptor;
+            ExposureIndex = ExposureWrite;
+            bExposureValid = true;
         }
 
-        Constants.Source = History[WriteIndex].Descriptor;
-        Constants.Secondary = BloomUp[0].Descriptor;
-        Constants.Strength = 0.08F;
-        Constants.ExposureMap = Exposure[ExposureWrite].Descriptor;
+        if (Interface.Post.bBloom)
+        {
+            Constants.Source = ResolvedColor;
+            Constants.Threshold = Interface.Post.BloomThreshold;
+            Constants.DestSize[0] = static_cast<float>(BloomDown[0].Width);
+            Constants.DestSize[1] = static_cast<float>(BloomDown[0].Height);
+            Constants.SourceTexel[0] = 1.0F / static_cast<float>(InWidth);
+            Constants.SourceTexel[1] = 1.0F / static_cast<float>(InHeight);
+            if (!DrawFullscreen(Commands, *BloomDown[0].Texture, *BloomExtractPipeline, BloomDown[0].Width, BloomDown[0].Height, Constants))
+            {
+                return false;
+            }
+            Commands.UseAsShaderResource(*BloomDown[0].Texture);
+
+            for (uint32 Level = 0; Level < 3; ++Level)
+            {
+                Constants.Source = BloomDown[Level].Descriptor;
+                Constants.DestSize[0] = static_cast<float>(BloomDown[Level + 1].Width);
+                Constants.DestSize[1] = static_cast<float>(BloomDown[Level + 1].Height);
+                Constants.SourceTexel[0] = 1.0F / static_cast<float>(BloomDown[Level].Width);
+                Constants.SourceTexel[1] = 1.0F / static_cast<float>(BloomDown[Level].Height);
+                if (!DrawFullscreen(
+                        Commands,
+                        *BloomDown[Level + 1].Texture,
+                        *BloomDownsamplePipeline,
+                        BloomDown[Level + 1].Width,
+                        BloomDown[Level + 1].Height,
+                        Constants))
+                {
+                    return false;
+                }
+
+                Commands.UseAsShaderResource(*BloomDown[Level + 1].Texture);
+            }
+
+            for (int32 Level = 2; Level >= 0; --Level)
+            {
+                const uint32 SourceDescriptor = Level == 2 ? BloomDown[3].Descriptor : BloomUp[Level + 1].Descriptor;
+                Constants.Source = SourceDescriptor;
+                Constants.Secondary = BloomDown[Level].Descriptor;
+                Constants.DestSize[0] = static_cast<float>(BloomUp[Level].Width);
+                Constants.DestSize[1] = static_cast<float>(BloomUp[Level].Height);
+                if (!DrawFullscreen(
+                        Commands,
+                        *BloomUp[Level].Texture,
+                        *BloomUpsamplePipeline,
+                        BloomUp[Level].Width,
+                        BloomUp[Level].Height,
+                        Constants))
+                {
+                    return false;
+                }
+
+                Commands.UseAsShaderResource(*BloomUp[Level].Texture);
+            }
+
+            Constants.Secondary = BloomUp[0].Descriptor;
+            Constants.Strength = Interface.Post.BloomStrength;
+        }
+
+        Constants.Source = ResolvedColor;
         Constants.DestSize[0] = static_cast<float>(InWidth);
         Constants.DestSize[1] = static_cast<float>(InHeight);
         if (!DrawFullscreen(Commands, BackBuffer, *TonemapPipeline, InWidth, InHeight, Constants))
@@ -447,10 +494,6 @@ namespace ShadowEngine
             return false;
         }
 
-        HistoryIndex = WriteIndex;
-        ExposureIndex = ExposureWrite;
-        bHistoryValid = true;
-        bExposureValid = true;
         return true;
     }
 }

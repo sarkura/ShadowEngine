@@ -3,6 +3,7 @@
 #include "Framework/Asset/Public/AssetHandle.h"
 #include "Framework/Asset/Public/MeshAsset.h"
 #include "Framework/Common/Public/Log.h"
+#include "Framework/UI/Public/UIManager.h"
 #include "Framework/Config/Public/ConfigManager.h"
 #include "Framework/Engine/Public/EngineModules.h"
 #include "Framework/Render/Public/BlinnPhongRenderer.h"
@@ -220,6 +221,29 @@ namespace ShadowEngine
             Movement.UpSpeed,
             Movement.DownSpeed);
 
+        EUIPipeline Pipeline = EUIPipeline::None;
+        if (RendererName == "DeferredRenderer")
+        {
+            Pipeline = EUIPipeline::Deferred;
+        }
+        else if (RendererName == "ForwardRenderer")
+        {
+            Pipeline = EUIPipeline::Forward;
+        }
+        else if (RendererName == "BlinnPhongRenderer")
+        {
+            Pipeline = EUIPipeline::BlinnPhong;
+        }
+        else if (RendererName == "DebugRenderer")
+        {
+            Pipeline = EUIPipeline::Debug;
+        }
+        if (Pipeline != EUIPipeline::None && !UIManager::Get().Initialize(Pipeline))
+        {
+            Finalize();
+            return false;
+        }
+
         bInitialized = true;
         Log::Info("Engine initialized");
         return true;
@@ -270,6 +294,8 @@ namespace ShadowEngine
 
     void Engine::Finalize()
     {
+        UIManager::Get().Shutdown();
+
         if (Device != nullptr)
         {
             Device->WaitIdle();

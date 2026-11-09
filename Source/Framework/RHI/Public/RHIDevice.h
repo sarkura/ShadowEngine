@@ -84,6 +84,9 @@ namespace ShadowEngine
             virtual std::unique_ptr<RHISampler> CreateClampSampler(
                 std::string* ErrorMessage = nullptr) = 0;
 
+            virtual std::unique_ptr<RHISampler> CreatePointClampSampler(
+                std::string* ErrorMessage = nullptr);
+
             virtual std::unique_ptr<RHISampler> CreateComparisonSampler(
                 std::string* ErrorMessage = nullptr) = 0;
 

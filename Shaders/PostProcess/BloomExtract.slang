@@ -16,7 +16,6 @@ float4 PixelMain(float4 Position : SV_Position) : SV_Target
     const float Excess = max(Brightness - Threshold, 0.0);
     const float3 Extracted = Color * Excess / max(Brightness, 0.0001);
     const float ExtractedBrightness = max(Extracted.r, max(Extracted.g, Extracted.b));
-    const float BloomLimit = 4.0;
     const float LimitScale = ExtractedBrightness > BloomLimit ? BloomLimit / ExtractedBrightness : 1.0;
     return float4(Extracted * LimitScale, 1.0);
 }

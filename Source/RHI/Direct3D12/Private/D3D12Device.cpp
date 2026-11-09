@@ -1,6 +1,7 @@
 #include "RHI/Direct3D12/Public/D3D12Device.h"
 
 #include "Framework/Common/Public/Log.h"
+
 #include "RHI/Direct3D12/Public/D3D12Buffer.h"
 #include "RHI/Direct3D12/Public/D3D12CommandList.h"
 #include "RHI/Direct3D12/Public/D3D12Descriptor.h"
@@ -356,6 +357,34 @@ namespace ShadowEngine
 
         D3D12_SAMPLER_DESC Desc{};
         Desc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+        Desc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        Desc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        Desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        Desc.MipLODBias = 0.0F;
+        Desc.MaxAnisotropy = 1;
+        Desc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+        Desc.MinLOD = 0.0F;
+        Desc.MaxLOD = D3D12_FLOAT32_MAX;
+
+        D3D12_CPU_DESCRIPTOR_HANDLE Cpu = SamplerHeap->GetCPUDescriptorHandleForHeapStart();
+        Cpu.ptr += static_cast<SIZE_T>(SamplerCount) * SamplerIncrement;
+        Device->CreateSampler(&Desc, Cpu);
+        const uint32 Index = SamplerCount;
+        ++SamplerCount;
+        return std::make_unique<D3D12Sampler>(Index);
+    }
+
+    std::unique_ptr<RHISampler> D3D12Device::CreatePointClampSampler(std::string* ErrorMessage)
+    {
+        constexpr uint32 SamplerCapacity = 64;
+        if (SamplerHeap == nullptr || SamplerCount >= SamplerCapacity)
+        {
+            SetErrorMessage(ErrorMessage, "Sampler descriptor heap is full");
+            return nullptr;
+        }
+
+        D3D12_SAMPLER_DESC Desc{};
+        Desc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
         Desc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
         Desc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
         Desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;

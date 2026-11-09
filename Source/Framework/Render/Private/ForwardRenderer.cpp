@@ -3,6 +3,7 @@
 #include "Framework/Asset/Public/AssetManager.h"
 #include "Framework/Asset/Public/TextureAsset.h"
 #include "Framework/Common/Public/Log.h"
+#include "Framework/UI/Public/UIManager.h"
 #include "Framework/RHI/Public/RHIDefinitions.h"
 #include "Framework/RHI/Public/RHIDevice.h"
 #include "Framework/RHI/Public/RHIPipelineLayout.h"
@@ -127,12 +128,20 @@ namespace ShadowEngine
             return false;
         }
 
-        ProjectionJitterX = Halton(FrameIndex, 2) - 0.5F;
-        ProjectionJitterY = Halton(FrameIndex, 3) - 0.5F;
-        ++FrameIndex;
-        if (FrameIndex == 0)
+        if (UIManager::Get().GetState().Post.bTAA)
         {
-            FrameIndex = 1;
+            ProjectionJitterX = Halton(FrameIndex, 2) - 0.5F;
+            ProjectionJitterY = Halton(FrameIndex, 3) - 0.5F;
+            ++FrameIndex;
+            if (FrameIndex == 0)
+            {
+                FrameIndex = 1;
+            }
+        }
+        else
+        {
+            ProjectionJitterX = 0.0F;
+            ProjectionJitterY = 0.0F;
         }
 
         SelectVisiblePointLights(ForwardPointLightLimit, VisiblePointLights);

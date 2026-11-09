@@ -1,6 +1,7 @@
 #include "Framework/Render/Public/SkyBackground.h"
 
 #include "Framework/Common/Public/Log.h"
+#include "Framework/UI/Public/UIManager.h"
 #include "Framework/RHI/Public/RHIBuffer.h"
 #include "Framework/RHI/Public/RHICommandList.h"
 #include "Framework/RHI/Public/RHIPipeline.h"
@@ -43,6 +44,11 @@ namespace ShadowEngine
     bool DrawSkyBackground(const RenderPassContext& Context)
     {
         static_assert(sizeof(GpuSkyConstants) <= 256);
+        if (!UIManager::Get().GetState().Light.bSkyBackground)
+        {
+            return true;
+        }
+
         if (Context.CommandList == nullptr || Context.SkyPipeline == nullptr || Context.SkyConstants == nullptr ||
             Context.SwapChain == nullptr || Context.View == nullptr)
         {

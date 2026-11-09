@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Framework/Config/Public/ConfigSetting.h"
+#include "Framework/Config/Public/UIConfigManager.h"
+#include "Framework/Config/Public/UIConfigSetting.h"
 
 #include <filesystem>
 #include <mutex>
@@ -30,6 +32,15 @@ namespace ShadowEngine
                 EngineSetting::ViewportSetting Setting,
                 std::string* ErrorMessage = nullptr);
 
+            void SubmitDeferredUISetting(UIConfigSetting::DeferredUIParameter Setting);
+            void SubmitForwardUISetting(UIConfigSetting::ForwardUIParameter Setting);
+            void SubmitBlinnPhongUISetting(UIConfigSetting::BlinnPhongUIParameter Setting);
+            void SubmitDebugUISetting(UIConfigSetting::DebugUIParameter Setting);
+            [[nodiscard]] UIConfigSetting::DeferredUIParameter GetDeferredUISetting() const;
+            [[nodiscard]] UIConfigSetting::ForwardUIParameter GetForwardUISetting() const;
+            [[nodiscard]] UIConfigSetting::BlinnPhongUIParameter GetBlinnPhongUISetting() const;
+            [[nodiscard]] UIConfigSetting::DebugUIParameter GetDebugUISetting() const;
+
             ConfigManager(const ConfigManager&) = delete;
             ConfigManager& operator=(const ConfigManager&) = delete;
             ConfigManager(ConfigManager&&) = delete;
@@ -45,6 +56,7 @@ namespace ShadowEngine
             RenderSetting::RHISetting RHI;
             SceneSetting::Setting Scene;
             GlobalTextureSetting::Setting GlobalTextures;
+            UIConfigManager UserInterface;
             bool bInitialized = false;
     };
 }

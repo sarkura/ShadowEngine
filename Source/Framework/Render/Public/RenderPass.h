@@ -61,6 +61,7 @@ namespace ShadowEngine
         uint32 GBufferDepthDescriptor = 0xffffffff;
         uint32 GBufferSampler = 0xffffffff;
         class PostProcess* Post = nullptr;
+        class UIRender* Interface = nullptr;
         float FrameDeltaTime = 0.0F;
         float ProjectionJitterX = 0.0F;
         float ProjectionJitterY = 0.0F;

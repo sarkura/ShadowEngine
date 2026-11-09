@@ -3,11 +3,13 @@
 #include "Framework/Render/Public/ForwardShadows.h"
 #include "Framework/Render/Public/ImageBasedLighting.h"
 #include "Framework/Render/Public/PostProcess.h"
+#include "Framework/Render/Public/UIRender.h"
 #include "Framework/Render/Public/SkyBackground.h"
 
 #include "Framework/Asset/Public/AssetManager.h"
 #include "Framework/Asset/Public/MeshAsset.h"
 #include "Framework/Common/Public/Log.h"
+#include "Framework/UI/Public/UIManager.h"
 #include "Framework/Material/Public/Material.h"
 #include "Framework/Material/Public/MaterialInstance.h"
 #include "Framework/Material/Public/MaterialParameter.h"
@@ -180,6 +182,10 @@ namespace ShadowEngine
         if (Context.SkyLight != nullptr)
         {
             Sky = *Context.SkyLight;
+        }
+        if (!UIManager::Get().GetState().Light.bImageBasedLighting)
+        {
+            Sky.Intensity = 0.0F;
         }
 
         std::vector<uint8> Constants(Items.size() * Context.ConstantAlignment);
@@ -481,6 +487,10 @@ namespace ShadowEngine
         if (Context.StoredViewProjection != nullptr)
         {
             std::memcpy(Context.StoredViewProjection, ViewProjectionValues, sizeof(ViewProjectionValues));
+        }
+        if (Context.Interface != nullptr)
+        {
+            Context.Interface->Draw(*Context.CommandList, Context.SwapChain->GetCurrentBackBuffer());
         }
         Context.CommandList->End();
 
