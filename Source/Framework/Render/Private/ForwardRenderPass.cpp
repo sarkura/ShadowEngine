@@ -1,8 +1,10 @@
+#include "ThirdPartyAdapter/Mathematics/Public/GLMAdapter.h"
 #include "Framework/Render/Public/ForwardRenderPass.h"
 
 #include "Framework/Render/Public/ForwardShadows.h"
 #include "Framework/Render/Public/ImageBasedLighting.h"
 #include "Framework/Render/Public/PostProcess.h"
+#include "Framework/Render/Public/RenderGraph.h"
 #include "Framework/Render/Public/UIRender.h"
 #include "Framework/Render/Public/SkyBackground.h"
 
@@ -21,9 +23,6 @@
 #include "Framework/RHI/Public/RHITexture.h"
 #include "Framework/Shader/Public/ShaderManager.h"
 
-#include <glm/ext/matrix_clip_space.hpp>
-#include <glm/gtc/matrix_inverse.hpp>
-#include <glm/gtc/type_ptr.hpp>
 
 #include <algorithm>
 #include <array>
@@ -158,12 +157,12 @@ namespace ShadowEngine
         const float Width = static_cast<float>(Context.SwapChain->GetWidth());
         const float Height = static_cast<float>(Context.SwapChain->GetHeight());
         const float Aspect = Height > 0.0F ? Width / Height : 1.0F;
-        const glm::mat4 View = Context.View->ViewMatrix();
-        glm::mat4 Projection = glm::perspectiveRH_ZO(glm::radians(45.0F), Aspect, 0.1F, 100.0F);
+        const Mat4 View = Context.View->ViewMatrix();
+        Mat4 Projection = GLMAdapter::PerspectiveRH_ZO(GLMAdapter::Radians(45.0F), Aspect, 0.1F, 100.0F);
         ApplyProjectionJitter(Projection, Context.ProjectionJitterX, Context.ProjectionJitterY, Width, Height);
-        const glm::mat4 ViewProjection = Projection * View;
-        const glm::mat4 InverseViewProjection = glm::inverse(ViewProjection);
-        const glm::vec3 CameraPosition = Context.View->GetPosition();
+        const Mat4 ViewProjection = Projection * View;
+        const Mat4 InverseViewProjection = GLMAdapter::Inverse(ViewProjection);
+        const Vec3 CameraPosition = Context.View->GetPosition();
         if (Context.Post == nullptr || Context.SceneColor == nullptr)
         {
             Log::Error("Forward post process is missing");
@@ -207,7 +206,7 @@ namespace ShadowEngine
 
             const MaterialParameterBlock* Parameter = Instance->FindParameters("ForwardRenderer");
             GpuObjectConstants Slot{};
-            std::memcpy(Slot.ViewProjection, glm::value_ptr(ViewProjection), sizeof(Slot.ViewProjection));
+            std::memcpy(Slot.ViewProjection, GLMAdapter::ValuePtr(ViewProjection), sizeof(Slot.ViewProjection));
             std::memcpy(Slot.World, Item.World, sizeof(Slot.World));
             std::memcpy(Slot.NormalMatrix, Item.NormalMatrix, sizeof(Slot.NormalMatrix));
             Slot.CameraPosition[0] = CameraPosition.x;
@@ -362,12 +361,6 @@ namespace ShadowEngine
             return false;
         }
 
-        Context.CommandList->Begin();
-        if (!Context.Shadows->Record(*Context.CommandList, *Context.Batches, *Context.ShadowCasters))
-        {
-            Context.CommandList->End();
-            return false;
-        }
         const RHIRect Window{
             0,
             0,
@@ -412,60 +405,79 @@ namespace ShadowEngine
             Context.CommandList->DrawIndexed(Batch->IndexCount);
         };
 
-        Context.CommandList->BeginRenderPass(*Context.SceneColor, Context.DepthBuffer, Context.ClearColor, false, true);
-        Context.CommandList->SetViewport({0.0F, 0.0F, Width, Height, 0.0F, 1.0F});
-        Context.CommandList->SetScissor(Window);
-        for (const uint32 Index : DepthItems)
+        RenderGraph Graph;
+        const RenderGraphResource SceneInputs = Graph.ImportResource("SceneInputs");
+        const RenderGraphResource ShadowMaps = Graph.CreateResource("ShadowMaps");
+        const RenderGraphResource MainDepth = Graph.CreateResource("MainDepth");
+        const RenderGraphResource SceneColor = Graph.CreateResource("SceneColor");
+        const RenderGraphResource BackBuffer = Graph.CreateResource("BackBuffer");
+        const RenderGraphResource InterfaceOutput = Graph.CreateResource("InterfaceOutput");
+
+        Graph.AddPass("Forward.Shadows", {SceneInputs}, {ShadowMaps}, [&]()
         {
-            const MeshBatch* Batch = FindMeshBatch(*Context.Batches, Items[Index].Mesh, Items[Index].Section);
-            RHIPipeline* DepthPipeline = Batch->bTwoSided ? Context.DepthPrepassTwoSidedPipeline : Context.DepthPrepassPipeline;
-            if (Batch->Surface == EMaterialSurface::Cutout)
+            return Context.Shadows->Record(*Context.CommandList, *Context.Batches, *Context.ShadowCasters);
+        });
+        Graph.AddPass("Forward.DepthPrepass", {SceneInputs}, {MainDepth}, [&]()
+        {
+            Context.CommandList->BeginRenderPass(*Context.SceneColor, Context.DepthBuffer, Context.ClearColor, false, true);
+            Context.CommandList->SetViewport({0.0F, 0.0F, Width, Height, 0.0F, 1.0F});
+            Context.CommandList->SetScissor(Window);
+            for (const uint32 Index : DepthItems)
             {
-                if (Batch->DepthPipeline == nullptr)
+                const MeshBatch* Batch = FindMeshBatch(*Context.Batches, Items[Index].Mesh, Items[Index].Section);
+                RHIPipeline* DepthPipeline = Batch->bTwoSided ? Context.DepthPrepassTwoSidedPipeline : Context.DepthPrepassPipeline;
+                if (Batch->Surface == EMaterialSurface::Cutout)
                 {
-                    Log::Error("Cutout material is missing its depth pipeline");
-                    Context.CommandList->EndRenderPass();
-                    Context.CommandList->End();
-                    return false;
+                    if (Batch->DepthPipeline == nullptr)
+                    {
+                        Log::Error("Cutout material is missing its depth pipeline");
+                        Context.CommandList->EndRenderPass();
+                        return false;
+                    }
+                    DepthPipeline = Batch->DepthPipeline.get();
                 }
 
-                DepthPipeline = Batch->DepthPipeline.get();
+                Context.CommandList->SetPipeline(*DepthPipeline);
+                Context.CommandList->BindShaderResources();
+                Context.CommandList->SetVertexBuffer(*Batch->VertexBuffer);
+                Context.CommandList->SetIndexBuffer(*Batch->IndexBuffer);
+                Context.CommandList->SetConstantBuffer(*Context.ConstantBuffer, Index * Context.ConstantAlignment);
+                Context.CommandList->DrawIndexed(Batch->IndexCount);
             }
+            Context.CommandList->EndRenderPass();
+            return true;
+        });
 
-            Context.CommandList->SetPipeline(*DepthPipeline);
-            Context.CommandList->BindShaderResources();
-            Context.CommandList->SetVertexBuffer(*Batch->VertexBuffer);
-            Context.CommandList->SetIndexBuffer(*Batch->IndexBuffer);
-            Context.CommandList->SetConstantBuffer(*Context.ConstantBuffer, Index * Context.ConstantAlignment);
-            Context.CommandList->DrawIndexed(Batch->IndexCount);
-        }
-        Context.CommandList->EndRenderPass();
-
-        Context.CommandList->BeginRenderPass(*Context.SceneColor, Context.DepthBuffer, Context.ClearColor, true, false);
-        Context.CommandList->SetViewport({0.0F, 0.0F, Width, Height, 0.0F, 1.0F});
-        Context.CommandList->SetScissor(Window);
-        if (!DrawSkyBackground(Context))
+        Graph.AddPass("Forward.Scene", {SceneInputs, ShadowMaps, MainDepth}, {SceneColor}, [&]()
         {
-            Context.CommandList->End();
-            return false;
-        }
-        for (const uint32 Index : DepthItems)
-        {
-            DrawShaded(Index);
-        }
-        for (const uint32 Index : TranslucentItems)
-        {
-            DrawShaded(Index);
-        }
-        Context.CommandList->EndRenderPass();
+            Context.CommandList->BeginRenderPass(*Context.SceneColor, Context.DepthBuffer, Context.ClearColor, true, false);
+            Context.CommandList->SetViewport({0.0F, 0.0F, Width, Height, 0.0F, 1.0F});
+            Context.CommandList->SetScissor(Window);
+            if (!DrawSkyBackground(Context))
+            {
+                return false;
+            }
+            for (const uint32 Index : DepthItems)
+            {
+                DrawShaded(Index);
+            }
+            for (const uint32 Index : TranslucentItems)
+            {
+                DrawShaded(Index);
+            }
+            Context.CommandList->EndRenderPass();
+            return true;
+        });
 
         float InverseViewProjectionValues[16];
-        std::memcpy(InverseViewProjectionValues, glm::value_ptr(InverseViewProjection), sizeof(InverseViewProjectionValues));
+        std::memcpy(InverseViewProjectionValues, GLMAdapter::ValuePtr(InverseViewProjection), sizeof(InverseViewProjectionValues));
         float ViewProjectionValues[16];
-        std::memcpy(ViewProjectionValues, glm::value_ptr(ViewProjection), sizeof(ViewProjectionValues));
+        std::memcpy(ViewProjectionValues, GLMAdapter::ValuePtr(ViewProjection), sizeof(ViewProjectionValues));
         const float* PreviousViewProjection = Context.PreviousViewProjection != nullptr ? Context.PreviousViewProjection : ViewProjectionValues;
         const float CameraPositionValues[3] = {CameraPosition.x, CameraPosition.y, CameraPosition.z};
-        if (!Context.Post->Draw(
+        Graph.AddPass("Forward.Post", {SceneColor, MainDepth}, {BackBuffer}, [&]()
+        {
+            return Context.Post->Draw(
                 *Context.CommandList,
                 Context.SwapChain->GetCurrentBackBuffer(),
                 *Context.DepthBuffer,
@@ -478,9 +490,22 @@ namespace ShadowEngine
                 Context.SwapChain->GetWidth(),
                 Context.SwapChain->GetHeight(),
                 Context.ConstantAlignment,
-                Context.FrameDeltaTime))
+                Context.FrameDeltaTime);
+        });
+        Graph.AddPass("Forward.UI", {BackBuffer}, {InterfaceOutput}, [&]()
         {
-            Context.CommandList->End();
+            if (Context.Interface != nullptr)
+            {
+                Context.Interface->Draw(*Context.CommandList, Context.SwapChain->GetCurrentBackBuffer());
+            }
+            return true;
+        });
+
+        std::string GraphError;
+        const bool bExecuted = Graph.Execute(&GraphError);
+        if (!bExecuted)
+        {
+            Log::Error("{}", GraphError);
             return false;
         }
 
@@ -488,15 +513,7 @@ namespace ShadowEngine
         {
             std::memcpy(Context.StoredViewProjection, ViewProjectionValues, sizeof(ViewProjectionValues));
         }
-        if (Context.Interface != nullptr)
-        {
-            Context.Interface->Draw(*Context.CommandList, Context.SwapChain->GetCurrentBackBuffer());
-        }
-        Context.CommandList->End();
 
-        Context.Device->SubmitCommandList(*Context.CommandList);
-        const bool bPresented = Context.SwapChain->Present();
-        Context.Device->WaitIdle();
-        return bPresented;
+        return true;
     }
 }

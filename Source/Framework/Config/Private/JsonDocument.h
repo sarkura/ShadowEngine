@@ -1,20 +1,21 @@
 #pragma once
 
+#include "ThirdPartyAdapter/Serialization/Public/RapidJSONAdapter.h"
+
 #include <filesystem>
 #include <string>
 
-#include <rapidjson/document.h>
 
 namespace ShadowEngine
 {
     bool ParseJsonObject(
         const std::filesystem::path& FilePath,
         const char* Kind,
-        rapidjson::Document& Document,
+        RapidJSONDocument& Document,
         std::string* ErrorMessage);
 
     bool RequireMembers(
-        const rapidjson::Value& Object,
+        const RapidJSONValue& Object,
         const std::filesystem::path& FilePath,
         const char* Kind,
         const char* const* Names,

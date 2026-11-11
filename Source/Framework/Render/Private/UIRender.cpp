@@ -12,7 +12,7 @@
 #include "Framework/Shader/Public/ShaderManager.h"
 #include "Framework/UI/Public/UIManager.h"
 
-#include <imgui.h>
+#include "ThirdPartyAdapter/UI/Public/ImGuiAdapter.h"
 
 #include <cstddef>
 #include <cstring>
@@ -135,12 +135,12 @@ namespace ShadowEngine
 
     void UIRender::UpdateTextures()
     {
-        if (Device == nullptr || ImGui::GetCurrentContext() == nullptr)
+        if (Device == nullptr || !ImGuiAdapter::HasContext())
         {
             return;
         }
 
-        ImDrawData* DrawData = ImGui::GetDrawData();
+        ImDrawData* DrawData = ImGuiAdapter::GetDrawData();
         if (DrawData == nullptr || DrawData->Textures == nullptr)
         {
             return;
@@ -276,12 +276,12 @@ namespace ShadowEngine
     void UIRender::Draw(RHICommandList& Commands, RHITexture& Target)
     {
         if (!UIManager::Get().IsActive() || Device == nullptr || Pipeline == nullptr || ConstantBuffer == nullptr ||
-            LinearSampler == nullptr || PointSampler == nullptr || ImGui::GetCurrentContext() == nullptr)
+            LinearSampler == nullptr || PointSampler == nullptr || !ImGuiAdapter::HasContext())
         {
             return;
         }
 
-        ImDrawData* DrawData = ImGui::GetDrawData();
+        ImDrawData* DrawData = ImGuiAdapter::GetDrawData();
         if (DrawData == nullptr)
         {
             return;
@@ -315,7 +315,7 @@ namespace ShadowEngine
         WriteProjection(Projection, *DrawData);
         const ImVec2 ClipOffset = DrawData->DisplayPos;
         const ImVec2 ClipScale = DrawData->FramebufferScale;
-        const ImGuiPlatformIO& Platform = ImGui::GetPlatformIO();
+        const ImGuiPlatformIO& Platform = ImGuiAdapter::GetPlatformIO();
         const uint32 LinearIndex = LinearSampler->GetDescriptorIndex();
         const uint32 PointIndex = PointSampler->GetDescriptorIndex();
         uint32 SamplerIndex = LinearIndex;

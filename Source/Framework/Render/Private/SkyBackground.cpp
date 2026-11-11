@@ -1,3 +1,4 @@
+#include "ThirdPartyAdapter/Mathematics/Public/GLMAdapter.h"
 #include "Framework/Render/Public/SkyBackground.h"
 
 #include "Framework/Common/Public/Log.h"
@@ -7,9 +8,6 @@
 #include "Framework/RHI/Public/RHIPipeline.h"
 #include "Framework/RHI/Public/RHISwapChain.h"
 
-#include <glm/ext/matrix_clip_space.hpp>
-#include <glm/gtc/matrix_inverse.hpp>
-#include <glm/gtc/type_ptr.hpp>
 
 #include <cstdint>
 #include <cstring>
@@ -30,7 +28,7 @@ namespace ShadowEngine
         };
     }
 
-    void ApplyProjectionJitter(glm::mat4& Projection, float JitterX, float JitterY, float Width, float Height)
+    void ApplyProjectionJitter(Mat4& Projection, float JitterX, float JitterY, float Width, float Height)
     {
         if (Width <= 0.0F || Height <= 0.0F)
         {
@@ -58,14 +56,14 @@ namespace ShadowEngine
         const float Width = static_cast<float>(Context.SwapChain->GetWidth());
         const float Height = static_cast<float>(Context.SwapChain->GetHeight());
         const float Aspect = Height > 0.0F ? Width / Height : 1.0F;
-        const glm::mat4 View = Context.View->ViewMatrix();
-        glm::mat4 Projection = glm::perspectiveRH_ZO(glm::radians(45.0F), Aspect, 0.1F, 100.0F);
+        const Mat4 View = Context.View->ViewMatrix();
+        Mat4 Projection = GLMAdapter::PerspectiveRH_ZO(GLMAdapter::Radians(45.0F), Aspect, 0.1F, 100.0F);
         ApplyProjectionJitter(Projection, Context.ProjectionJitterX, Context.ProjectionJitterY, Width, Height);
-        const glm::mat4 InverseViewProjection = glm::inverse(Projection * View);
-        const glm::vec3 CameraPosition = Context.View->GetPosition();
+        const Mat4 InverseViewProjection = GLMAdapter::Inverse(Projection * View);
+        const Vec3 CameraPosition = Context.View->GetPosition();
 
         GpuSkyConstants Constants{};
-        std::memcpy(Constants.InverseViewProjection, glm::value_ptr(InverseViewProjection), sizeof(Constants.InverseViewProjection));
+        std::memcpy(Constants.InverseViewProjection, GLMAdapter::ValuePtr(InverseViewProjection), sizeof(Constants.InverseViewProjection));
         Constants.CameraPosition[0] = CameraPosition.x;
         Constants.CameraPosition[1] = CameraPosition.y;
         Constants.CameraPosition[2] = CameraPosition.z;

@@ -179,6 +179,21 @@ namespace ShadowEngine
             new TextureAsset(std::move(InPath), std::move(Mips), ETextureFormat::RGBA32_Float, ETextureEncoding::Linear));
     }
 
+    std::unique_ptr<TextureAsset> TextureAsset::Adopt(
+        std::filesystem::path InPath,
+        std::vector<Mip> InMips,
+        ETextureFormat InFormat,
+        ETextureEncoding InEncoding)
+    {
+        if (InMips.empty())
+        {
+            return nullptr;
+        }
+
+        return std::unique_ptr<TextureAsset>(
+            new TextureAsset(std::move(InPath), std::move(InMips), InFormat, InEncoding));
+    }
+
     TextureAsset::TextureAsset(
         std::filesystem::path InPath,
         std::vector<Mip> InMips,

@@ -8,10 +8,7 @@
 
 #include <windows.h>
 
-#include <imgui.h>
-#include <imgui_impl_win32.h>
-
-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam);
+#include "ThirdPartyAdapter/UI/Public/ImGuiAdapter.h"
 
 namespace ShadowEngine
 {
@@ -50,8 +47,8 @@ namespace ShadowEngine
             }
 
             if (UIManager::Get().IsVisible() &&
-                ImGui::GetCurrentContext() != nullptr &&
-                ImGui_ImplWin32_WndProcHandler(Window, Message, WParam, LParam) != 0)
+                ImGuiAdapter::HasContext() &&
+                ImGuiAdapter::Win32WndProc(Window, Message, WParam, LParam) != 0)
             {
                 return 1;
             }
@@ -204,9 +201,9 @@ namespace ShadowEngine
             return -1;
         }
 
-        if (ImGui::GetCurrentContext() != nullptr)
+        if (ImGuiAdapter::HasContext())
         {
-            if (ImGui_ImplWin32_Init(Window) == false)
+            if (ImGuiAdapter::Win32Init(Window) == false)
             {
                 Log::Error("ImGui Win32 initialization failed");
                 Finalize();
@@ -421,7 +418,7 @@ namespace ShadowEngine
 
         if (bImGuiPlatform)
         {
-            ImGui_ImplWin32_Shutdown();
+            ImGuiAdapter::Win32Shutdown();
             bImGuiPlatform = false;
         }
 

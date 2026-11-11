@@ -1,3 +1,4 @@
+#include "ThirdPartyAdapter/Serialization/Public/RapidJSONAdapter.h"
 #include "Framework/Config/Private/JsonDocument.h"
 
 #include "Framework/Common/Public/Log.h"
@@ -6,14 +7,13 @@
 #include <iterator>
 #include <sstream>
 
-#include <rapidjson/error/en.h>
 
 namespace ShadowEngine
 {
     bool ParseJsonObject(
         const std::filesystem::path& FilePath,
         const char* Kind,
-        rapidjson::Document& Document,
+        RapidJSONDocument& Document,
         std::string* ErrorMessage)
     {
         std::ifstream File(FilePath, std::ios::binary);
@@ -27,14 +27,10 @@ namespace ShadowEngine
             std::istreambuf_iterator<char>(File),
             std::istreambuf_iterator<char>()};
 
-        Document.Parse(Json.data(), Json.size());
-        if (Document.HasParseError())
+        std::string ParseError;
+        if (!Document.Parse(Json.data(), Json.size(), &ParseError))
         {
-            std::ostringstream Message;
-            Message << "Invalid JSON in " << FilePath.generic_string()
-                    << " at offset " << Document.GetErrorOffset() << ": "
-                    << rapidjson::GetParseError_En(Document.GetParseError());
-            SetErrorMessage(ErrorMessage, Message.str());
+            SetErrorMessage(ErrorMessage, std::string("Invalid JSON in ") + FilePath.generic_string() + " " + ParseError);
             return false;
         }
 
@@ -48,19 +44,20 @@ namespace ShadowEngine
     }
 
     bool RequireMembers(
-        const rapidjson::Value& Object,
+        const RapidJSONValue& Object,
         const std::filesystem::path& FilePath,
         const char* Kind,
         const char* const* Names,
         size_t NameCount,
         std::string* ErrorMessage)
     {
-        for (auto Member = Object.MemberBegin(); Member != Object.MemberEnd(); ++Member)
+        for (size_t MemberIndex = 0; MemberIndex < Object.MemberCount(); ++MemberIndex)
         {
+            const RapidJSONValue Name = Object.MemberName(MemberIndex);
             bool bKnown = false;
             for (size_t Index = 0; Index < NameCount; ++Index)
             {
-                if (Member->name == Names[Index])
+                if (Name.NameEquals(Names[Index]))
                 {
                     bKnown = true;
                     break;
@@ -70,7 +67,7 @@ namespace ShadowEngine
             {
                 SetErrorMessage(
                     ErrorMessage,
-                    std::string(Kind) + " has unsupported member '" + Member->name.GetString() +
+                    std::string(Kind) + " has unsupported member '" + Name.GetString() +
                         "': " + FilePath.generic_string());
                 return false;
             }

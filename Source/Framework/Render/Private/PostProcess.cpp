@@ -3,6 +3,7 @@
 #include "Framework/Common/Public/Log.h"
 #include "Framework/UI/Public/UIManager.h"
 #include "Framework/Render/Public/MeshBatch.h"
+#include "Framework/Render/Public/RenderGraph.h"
 #include "Framework/Render/Public/RenderItem.h"
 #include "Framework/RHI/Public/RHIBuffer.h"
 #include "Framework/RHI/Public/RHICommandList.h"
@@ -335,165 +336,218 @@ namespace ShadowEngine
         }
 
         uint32 ResolvedColor = SceneColor.Descriptor;
+        RenderGraph Graph;
+        const RenderGraphResource SceneInput = Graph.ImportResource("Post.SceneColor");
+        const RenderGraphResource DepthInput = Graph.ImportResource("Post.Depth");
+        RenderGraphResource ResolvedInput = SceneInput;
+
         if (Interface.Post.bTAA)
         {
-            Constants.DestSize[0] = static_cast<float>(InWidth);
-            Constants.DestSize[1] = static_cast<float>(InHeight);
-            Constants.Source = SceneColor.Descriptor;
-            if (!DrawFullscreen(Commands, *Motion.Texture, *CameraVelocityPipeline, InWidth, InHeight, Constants))
+            const RenderGraphResource CameraMotion = Graph.CreateResource("Post.CameraMotion");
+            const RenderGraphResource MeshMotion = Graph.CreateResource("Post.MeshMotion");
+            const RenderGraphResource TAAOutput = Graph.CreateResource("Post.TAAOutput");
+            const uint32 WriteIndex = HistoryIndex ^ 1u;
+            Graph.AddPass("Post.CameraVelocity", {DepthInput}, {CameraMotion}, [&]()
             {
-                return false;
-            }
-
-            Commands.BeginRenderPass(*Motion.Texture, &Depth, {}, false, false);
-            Commands.SetViewport({0.0F, 0.0F, static_cast<float>(InWidth), static_cast<float>(InHeight), 0.0F, 1.0F});
-            Commands.SetScissor({0, 0, static_cast<int32>(InWidth), static_cast<int32>(InHeight)});
-            Commands.BindShaderResources();
-            for (uint32 Index = 0; Index < static_cast<uint32>(Items.size()); ++Index)
+                Constants.DestSize[0] = static_cast<float>(InWidth);
+                Constants.DestSize[1] = static_cast<float>(InHeight);
+                Constants.Source = SceneColor.Descriptor;
+                return DrawFullscreen(Commands, *Motion.Texture, *CameraVelocityPipeline, InWidth, InHeight, Constants);
+            });
+            Graph.AddPass("Post.MeshVelocity", {CameraMotion, DepthInput}, {MeshMotion}, [&]()
             {
-                const MeshBatch* Batch = FindMeshBatch(Batches, Items[Index].Mesh, Items[Index].Section);
-                if (Batch == nullptr || Batch->VertexBuffer == nullptr || Batch->IndexBuffer == nullptr)
+                Commands.BeginRenderPass(*Motion.Texture, &Depth, {}, false, false);
+                Commands.SetViewport({0.0F, 0.0F, static_cast<float>(InWidth), static_cast<float>(InHeight), 0.0F, 1.0F});
+                Commands.SetScissor({0, 0, static_cast<int32>(InWidth), static_cast<int32>(InHeight)});
+                Commands.BindShaderResources();
+                for (uint32 Index = 0; Index < static_cast<uint32>(Items.size()); ++Index)
                 {
-                    Log::Error("Forward velocity is missing a mesh");
-                    Commands.EndRenderPass();
+                    const MeshBatch* Batch = FindMeshBatch(Batches, Items[Index].Mesh, Items[Index].Section);
+                    if (Batch == nullptr || Batch->VertexBuffer == nullptr || Batch->IndexBuffer == nullptr)
+                    {
+                        Log::Error("Forward velocity is missing a mesh");
+                        Commands.EndRenderPass();
+                        return false;
+                    }
+
+                    Commands.SetPipeline(*(Batch->bTwoSided ? MeshVelocityTwoSidedPipeline : MeshVelocityPipeline));
+                    Commands.SetVertexBuffer(*Batch->VertexBuffer);
+                    Commands.SetIndexBuffer(*Batch->IndexBuffer);
+                    Commands.SetConstantBuffer(ObjectConstants, Index * ConstantAlignment);
+                    Commands.DrawIndexed(Batch->IndexCount);
+                }
+                Commands.EndRenderPass();
+                Commands.UseAsShaderResource(*Motion.Texture);
+                return true;
+            });
+            Graph.AddPass("Post.TAAResolve", {SceneInput, MeshMotion}, {TAAOutput}, [&]()
+            {
+                Constants.Source = SceneColor.Descriptor;
+                Constants.Secondary = History[HistoryIndex].Descriptor;
+                Constants.CurrentWeight = bHistoryValid ? Interface.Post.TAACurrentWeight : 1.0F;
+                if (!DrawFullscreen(Commands, *History[WriteIndex].Texture, *TAAPipeline, InWidth, InHeight, Constants))
+                {
                     return false;
                 }
-
-                Commands.SetPipeline(*(Batch->bTwoSided ? MeshVelocityTwoSidedPipeline : MeshVelocityPipeline));
-                Commands.SetVertexBuffer(*Batch->VertexBuffer);
-                Commands.SetIndexBuffer(*Batch->IndexBuffer);
-                Commands.SetConstantBuffer(ObjectConstants, Index * ConstantAlignment);
-                Commands.DrawIndexed(Batch->IndexCount);
-            }
-            Commands.EndRenderPass();
-            Commands.UseAsShaderResource(*Motion.Texture);
-
-            const uint32 WriteIndex = HistoryIndex ^ 1u;
-            Constants.Source = SceneColor.Descriptor;
-            Constants.Secondary = History[HistoryIndex].Descriptor;
-            Constants.CurrentWeight = bHistoryValid ? Interface.Post.TAACurrentWeight : 1.0F;
-            Constants.DestSize[0] = static_cast<float>(InWidth);
-            Constants.DestSize[1] = static_cast<float>(InHeight);
-            if (!DrawFullscreen(Commands, *History[WriteIndex].Texture, *TAAPipeline, InWidth, InHeight, Constants))
-            {
-                return false;
-            }
-            Commands.UseAsShaderResource(*History[WriteIndex].Texture);
-            ResolvedColor = History[WriteIndex].Descriptor;
-            HistoryIndex = WriteIndex;
-            bHistoryValid = true;
+                Commands.UseAsShaderResource(*History[WriteIndex].Texture);
+                ResolvedColor = History[WriteIndex].Descriptor;
+                HistoryIndex = WriteIndex;
+                bHistoryValid = true;
+                return true;
+            });
+            ResolvedInput = TAAOutput;
         }
 
+        RenderGraphResource ExposureOutput = Graph.ImportResource("Post.ExposureDisabled");
         if (Interface.Post.bAutoExposure)
         {
-            Constants.Source = ResolvedColor;
-            Constants.DestSize[0] = static_cast<float>(ExposureLum.Width);
-            Constants.DestSize[1] = static_cast<float>(ExposureLum.Height);
-            if (!DrawFullscreen(
-                    Commands,
-                    *ExposureLum.Texture,
-                    *ExposureLuminancePipeline,
-                    ExposureLum.Width,
-                    ExposureLum.Height,
-                    Constants))
-            {
-                return false;
-            }
-            Commands.UseAsShaderResource(*ExposureLum.Texture);
-
-            Constants.Source = ExposureLum.Descriptor;
-            Constants.DestSize[0] = 1.0F;
-            Constants.DestSize[1] = 1.0F;
-            if (!DrawFullscreen(Commands, *ExposureAverage.Texture, *ExposureReducePipeline, 1, 1, Constants))
-            {
-                return false;
-            }
-            Commands.UseAsShaderResource(*ExposureAverage.Texture);
-
-            Commands.UseAsShaderResource(*Exposure[ExposureIndex].Texture);
+            const RenderGraphResource LuminanceOutput = Graph.CreateResource("Post.ExposureLuminance");
+            const RenderGraphResource AverageOutput = Graph.CreateResource("Post.ExposureAverage");
+            ExposureOutput = Graph.CreateResource("Post.ExposureOutput");
             const uint32 ExposureWrite = ExposureIndex ^ 1u;
-            Constants.Source = ExposureAverage.Descriptor;
-            Constants.Secondary = Exposure[ExposureIndex].Descriptor;
-            Constants.CurrentWeight = bExposureValid ? 0.0F : 1.0F;
-            Constants.ExposureDelta = DeltaTime;
-            if (!DrawFullscreen(Commands, *Exposure[ExposureWrite].Texture, *ExposureAdaptPipeline, 1, 1, Constants))
+            Graph.AddPass("Post.ExposureLuminance", {ResolvedInput}, {LuminanceOutput}, [&]()
             {
-                return false;
-            }
-            Commands.UseAsShaderResource(*Exposure[ExposureWrite].Texture);
-            Constants.ExposureMap = Exposure[ExposureWrite].Descriptor;
-            ExposureIndex = ExposureWrite;
-            bExposureValid = true;
+                Constants.Source = ResolvedColor;
+                Constants.DestSize[0] = static_cast<float>(ExposureLum.Width);
+                Constants.DestSize[1] = static_cast<float>(ExposureLum.Height);
+                if (!DrawFullscreen(Commands, *ExposureLum.Texture, *ExposureLuminancePipeline, ExposureLum.Width, ExposureLum.Height, Constants))
+                {
+                    return false;
+                }
+                Commands.UseAsShaderResource(*ExposureLum.Texture);
+                return true;
+            });
+            Graph.AddPass("Post.ExposureReduce", {LuminanceOutput}, {AverageOutput}, [&]()
+            {
+                Constants.Source = ExposureLum.Descriptor;
+                Constants.DestSize[0] = 1.0F;
+                Constants.DestSize[1] = 1.0F;
+                if (!DrawFullscreen(Commands, *ExposureAverage.Texture, *ExposureReducePipeline, 1, 1, Constants))
+                {
+                    return false;
+                }
+                Commands.UseAsShaderResource(*ExposureAverage.Texture);
+                return true;
+            });
+            Graph.AddPass("Post.ExposureAdapt", {AverageOutput}, {ExposureOutput}, [&]()
+            {
+                Commands.UseAsShaderResource(*Exposure[ExposureIndex].Texture);
+                Constants.Source = ExposureAverage.Descriptor;
+                Constants.Secondary = Exposure[ExposureIndex].Descriptor;
+                Constants.CurrentWeight = bExposureValid ? 0.0F : 1.0F;
+                Constants.ExposureDelta = DeltaTime;
+                if (!DrawFullscreen(Commands, *Exposure[ExposureWrite].Texture, *ExposureAdaptPipeline, 1, 1, Constants))
+                {
+                    return false;
+                }
+                Commands.UseAsShaderResource(*Exposure[ExposureWrite].Texture);
+                Constants.ExposureMap = Exposure[ExposureWrite].Descriptor;
+                ExposureIndex = ExposureWrite;
+                bExposureValid = true;
+                return true;
+            });
         }
 
+        RenderGraphResource BloomOutput = Graph.ImportResource("Post.BloomDisabled");
         if (Interface.Post.bBloom)
         {
-            Constants.Source = ResolvedColor;
-            Constants.Threshold = Interface.Post.BloomThreshold;
-            Constants.DestSize[0] = static_cast<float>(BloomDown[0].Width);
-            Constants.DestSize[1] = static_cast<float>(BloomDown[0].Height);
-            Constants.SourceTexel[0] = 1.0F / static_cast<float>(InWidth);
-            Constants.SourceTexel[1] = 1.0F / static_cast<float>(InHeight);
-            if (!DrawFullscreen(Commands, *BloomDown[0].Texture, *BloomExtractPipeline, BloomDown[0].Width, BloomDown[0].Height, Constants))
+            RenderGraphResource DownOutputs[4];
+            RenderGraphResource UpOutputs[3];
+            for (uint32 Level = 0; Level < 4; ++Level)
             {
-                return false;
+                DownOutputs[Level] = Graph.CreateResource("Post.BloomDown" + std::to_string(Level));
             }
-            Commands.UseAsShaderResource(*BloomDown[0].Texture);
+            for (uint32 Level = 0; Level < 3; ++Level)
+            {
+                UpOutputs[Level] = Graph.CreateResource("Post.BloomUp" + std::to_string(Level));
+            }
+
+            Graph.AddPass("Post.BloomExtract", {ResolvedInput}, {DownOutputs[0]}, [&]()
+            {
+                Constants.Source = ResolvedColor;
+                Constants.Threshold = Interface.Post.BloomThreshold;
+                Constants.DestSize[0] = static_cast<float>(BloomDown[0].Width);
+                Constants.DestSize[1] = static_cast<float>(BloomDown[0].Height);
+                Constants.SourceTexel[0] = 1.0F / static_cast<float>(InWidth);
+                Constants.SourceTexel[1] = 1.0F / static_cast<float>(InHeight);
+                if (!DrawFullscreen(Commands, *BloomDown[0].Texture, *BloomExtractPipeline, BloomDown[0].Width, BloomDown[0].Height, Constants))
+                {
+                    return false;
+                }
+                Commands.UseAsShaderResource(*BloomDown[0].Texture);
+                return true;
+            });
 
             for (uint32 Level = 0; Level < 3; ++Level)
             {
-                Constants.Source = BloomDown[Level].Descriptor;
-                Constants.DestSize[0] = static_cast<float>(BloomDown[Level + 1].Width);
-                Constants.DestSize[1] = static_cast<float>(BloomDown[Level + 1].Height);
-                Constants.SourceTexel[0] = 1.0F / static_cast<float>(BloomDown[Level].Width);
-                Constants.SourceTexel[1] = 1.0F / static_cast<float>(BloomDown[Level].Height);
-                if (!DrawFullscreen(
-                        Commands,
-                        *BloomDown[Level + 1].Texture,
-                        *BloomDownsamplePipeline,
-                        BloomDown[Level + 1].Width,
-                        BloomDown[Level + 1].Height,
-                        Constants))
+                Graph.AddPass(
+                    "Post.BloomDownsample" + std::to_string(Level + 1),
+                    {DownOutputs[Level]},
+                    {DownOutputs[Level + 1]},
+                    [&, Level]()
                 {
-                    return false;
-                }
-
-                Commands.UseAsShaderResource(*BloomDown[Level + 1].Texture);
+                    Constants.Source = BloomDown[Level].Descriptor;
+                    Constants.DestSize[0] = static_cast<float>(BloomDown[Level + 1].Width);
+                    Constants.DestSize[1] = static_cast<float>(BloomDown[Level + 1].Height);
+                    Constants.SourceTexel[0] = 1.0F / static_cast<float>(BloomDown[Level].Width);
+                    Constants.SourceTexel[1] = 1.0F / static_cast<float>(BloomDown[Level].Height);
+                    if (!DrawFullscreen(Commands, *BloomDown[Level + 1].Texture, *BloomDownsamplePipeline, BloomDown[Level + 1].Width, BloomDown[Level + 1].Height, Constants))
+                    {
+                        return false;
+                    }
+                    Commands.UseAsShaderResource(*BloomDown[Level + 1].Texture);
+                    return true;
+                });
             }
 
             for (int32 Level = 2; Level >= 0; --Level)
             {
-                const uint32 SourceDescriptor = Level == 2 ? BloomDown[3].Descriptor : BloomUp[Level + 1].Descriptor;
-                Constants.Source = SourceDescriptor;
-                Constants.Secondary = BloomDown[Level].Descriptor;
-                Constants.DestSize[0] = static_cast<float>(BloomUp[Level].Width);
-                Constants.DestSize[1] = static_cast<float>(BloomUp[Level].Height);
-                if (!DrawFullscreen(
-                        Commands,
-                        *BloomUp[Level].Texture,
-                        *BloomUpsamplePipeline,
-                        BloomUp[Level].Width,
-                        BloomUp[Level].Height,
-                        Constants))
+                const RenderGraphResource Source = Level == 2 ? DownOutputs[3] : UpOutputs[Level + 1];
+                const RenderGraphResource Reads[] = {Source, DownOutputs[Level]};
+                const RenderGraphResource Writes[] = {UpOutputs[Level]};
+                Graph.AddPass(
+                    "Post.BloomUpsample" + std::to_string(Level),
+                    Reads,
+                    Writes,
+                    [&, Level]()
                 {
-                    return false;
-                }
-
-                Commands.UseAsShaderResource(*BloomUp[Level].Texture);
+                    Constants.Source = Level == 2 ? BloomDown[3].Descriptor : BloomUp[Level + 1].Descriptor;
+                    Constants.Secondary = BloomDown[Level].Descriptor;
+                    Constants.DestSize[0] = static_cast<float>(BloomUp[Level].Width);
+                    Constants.DestSize[1] = static_cast<float>(BloomUp[Level].Height);
+                    if (!DrawFullscreen(Commands, *BloomUp[Level].Texture, *BloomUpsamplePipeline, BloomUp[Level].Width, BloomUp[Level].Height, Constants))
+                    {
+                        return false;
+                    }
+                    Commands.UseAsShaderResource(*BloomUp[Level].Texture);
+                    if (Level == 0)
+                    {
+                        Constants.Secondary = BloomUp[0].Descriptor;
+                        Constants.Strength = Interface.Post.BloomStrength;
+                    }
+                    return true;
+                });
             }
-
-            Constants.Secondary = BloomUp[0].Descriptor;
-            Constants.Strength = Interface.Post.BloomStrength;
+            BloomOutput = UpOutputs[0];
         }
 
-        Constants.Source = ResolvedColor;
-        Constants.DestSize[0] = static_cast<float>(InWidth);
-        Constants.DestSize[1] = static_cast<float>(InHeight);
-        if (!DrawFullscreen(Commands, BackBuffer, *TonemapPipeline, InWidth, InHeight, Constants))
+        const RenderGraphResource BackBufferOutput = Graph.CreateResource("Post.BackBuffer");
+        std::vector<RenderGraphResource> TonemapReads{ResolvedInput, ExposureOutput, BloomOutput};
+        const RenderGraphResource TonemapWrites[] = {BackBufferOutput};
+        Graph.AddPass("Post.Tonemap", TonemapReads, TonemapWrites, [&]()
         {
+            Constants.Source = ResolvedColor;
+            Constants.DestSize[0] = static_cast<float>(InWidth);
+            Constants.DestSize[1] = static_cast<float>(InHeight);
+            return DrawFullscreen(Commands, BackBuffer, *TonemapPipeline, InWidth, InHeight, Constants);
+        });
+
+        std::string GraphError;
+        if (!Graph.Execute(&GraphError))
+        {
+            Log::Error("{}", GraphError);
             return false;
         }
-
         return true;
     }
 }

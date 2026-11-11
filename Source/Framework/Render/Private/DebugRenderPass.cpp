@@ -1,3 +1,4 @@
+#include "ThirdPartyAdapter/Mathematics/Public/GLMAdapter.h"
 #include "Framework/Render/Public/DebugRenderPass.h"
 
 #include "Framework/Asset/Public/AssetManager.h"
@@ -9,13 +10,12 @@
 #include "Framework/RHI/Public/RHICommandList.h"
 #include "Framework/RHI/Public/RHIDevice.h"
 #include "Framework/RHI/Public/RHIPipelineLayout.h"
+#include "Framework/Render/Public/RenderGraph.h"
 #include "Framework/Render/Public/UIRender.h"
 #include "Framework/RHI/Public/RHISwapChain.h"
 #include "Framework/RHI/Public/RHITexture.h"
 #include "Framework/Shader/Public/ShaderManager.h"
 
-#include <glm/ext/matrix_clip_space.hpp>
-#include <glm/gtc/type_ptr.hpp>
 
 #include <array>
 #include <cstdint>
@@ -63,9 +63,9 @@ namespace ShadowEngine
         const float Width = static_cast<float>(Context.SwapChain->GetWidth());
         const float Height = static_cast<float>(Context.SwapChain->GetHeight());
         const float Aspect = Height > 0.0F ? Width / Height : 1.0F;
-        const glm::mat4 View = Context.View->ViewMatrix();
-        const glm::mat4 Projection = glm::perspectiveRH_ZO(glm::radians(45.0F), Aspect, 0.1F, 100.0F);
-        const glm::mat4 ViewProjection = Projection * View;
+        const Mat4 View = Context.View->ViewMatrix();
+        const Mat4 Projection = GLMAdapter::PerspectiveRH_ZO(GLMAdapter::Radians(45.0F), Aspect, 0.1F, 100.0F);
+        const Mat4 ViewProjection = Projection * View;
 
         std::vector<uint8> Constants(Items.size() * Context.ConstantAlignment);
         for (size_t Index = 0; Index < Items.size(); ++Index)
@@ -96,7 +96,7 @@ namespace ShadowEngine
                 }
             }
             GpuObjectConstants Slot{};
-            std::memcpy(Slot.ViewProjection, glm::value_ptr(ViewProjection), sizeof(Slot.ViewProjection));
+            std::memcpy(Slot.ViewProjection, GLMAdapter::ValuePtr(ViewProjection), sizeof(Slot.ViewProjection));
             std::memcpy(Slot.World, Item.World, sizeof(Slot.World));
             std::memcpy(Slot.NormalMatrix, Item.NormalMatrix, sizeof(Slot.NormalMatrix));
             std::memcpy(Slot.PreviousViewProjection, Slot.ViewProjection, sizeof(Slot.PreviousViewProjection));
@@ -157,34 +157,49 @@ namespace ShadowEngine
             return false;
         }
 
-        Context.CommandList->Begin();
-        Context.CommandList->BeginRenderPass(Context.SwapChain->GetCurrentBackBuffer(), Context.DepthBuffer, Context.ClearColor);
-        Context.CommandList->SetViewport({0.0F, 0.0F, Width, Height, 0.0F, 1.0F});
-        Context.CommandList->SetScissor({
-            0,
-            0,
-            static_cast<int32>(Context.SwapChain->GetWidth()),
-            static_cast<int32>(Context.SwapChain->GetHeight())});
-        for (uint32 Index = 0; Index < static_cast<uint32>(Items.size()); ++Index)
-        {
-            const MeshBatch* Batch = FindMeshBatch(*Context.Batches, Items[Index].Mesh, Items[Index].Section);
-            Context.CommandList->SetPipeline(*Batch->Pipeline);
-            Context.CommandList->BindShaderResources();
-            Context.CommandList->SetVertexBuffer(*Batch->VertexBuffer);
-            Context.CommandList->SetIndexBuffer(*Batch->IndexBuffer);
-            Context.CommandList->SetConstantBuffer(*Context.ConstantBuffer, Index * Context.ConstantAlignment);
-            Context.CommandList->DrawIndexed(Batch->IndexCount);
-        }
-        Context.CommandList->EndRenderPass();
-        if (Context.Interface != nullptr)
-        {
-            Context.Interface->Draw(*Context.CommandList, Context.SwapChain->GetCurrentBackBuffer());
-        }
-        Context.CommandList->End();
+        RenderGraph Graph;
+        const RenderGraphResource SceneInputs = Graph.ImportResource("SceneInputs");
+        const RenderGraphResource SceneOutput = Graph.CreateResource("SceneOutput");
+        const RenderGraphResource InterfaceOutput = Graph.CreateResource("InterfaceOutput");
 
-        Context.Device->SubmitCommandList(*Context.CommandList);
-        const bool bPresented = Context.SwapChain->Present();
-        Context.Device->WaitIdle();
-        return bPresented;
+        Graph.AddPass("Debug.Scene", {SceneInputs}, {SceneOutput}, [&]()
+        {
+            Context.CommandList->BeginRenderPass(Context.SwapChain->GetCurrentBackBuffer(), Context.DepthBuffer, Context.ClearColor);
+            Context.CommandList->SetViewport({0.0F, 0.0F, Width, Height, 0.0F, 1.0F});
+            Context.CommandList->SetScissor({
+                0,
+                0,
+                static_cast<int32>(Context.SwapChain->GetWidth()),
+                static_cast<int32>(Context.SwapChain->GetHeight())});
+            for (uint32 Index = 0; Index < static_cast<uint32>(Items.size()); ++Index)
+            {
+                const MeshBatch* Batch = FindMeshBatch(*Context.Batches, Items[Index].Mesh, Items[Index].Section);
+                Context.CommandList->SetPipeline(*Batch->Pipeline);
+                Context.CommandList->BindShaderResources();
+                Context.CommandList->SetVertexBuffer(*Batch->VertexBuffer);
+                Context.CommandList->SetIndexBuffer(*Batch->IndexBuffer);
+                Context.CommandList->SetConstantBuffer(*Context.ConstantBuffer, Index * Context.ConstantAlignment);
+                Context.CommandList->DrawIndexed(Batch->IndexCount);
+            }
+            Context.CommandList->EndRenderPass();
+            return true;
+        });
+        Graph.AddPass("Debug.UI", {SceneOutput}, {InterfaceOutput}, [&]()
+        {
+            if (Context.Interface != nullptr)
+            {
+                Context.Interface->Draw(*Context.CommandList, Context.SwapChain->GetCurrentBackBuffer());
+            }
+            return true;
+        });
+
+        std::string GraphError;
+        const bool bExecuted = Graph.Execute(&GraphError);
+        if (!bExecuted)
+        {
+            Log::Error("{}", GraphError);
+            return false;
+        }
+        return true;
     }
 }

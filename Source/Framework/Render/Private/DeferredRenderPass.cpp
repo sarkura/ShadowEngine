@@ -1,8 +1,10 @@
+#include "ThirdPartyAdapter/Mathematics/Public/GLMAdapter.h"
 #include "Framework/Render/Public/DeferredRenderPass.h"
 
 #include "Framework/Render/Public/ForwardShadows.h"
 #include "Framework/Render/Public/ImageBasedLighting.h"
 #include "Framework/Render/Public/PostProcess.h"
+#include "Framework/Render/Public/RenderGraph.h"
 #include "Framework/Render/Public/UIRender.h"
 #include "Framework/Render/Public/SkyBackground.h"
 
@@ -21,9 +23,6 @@
 #include "Framework/RHI/Public/RHITexture.h"
 #include "Framework/Shader/Public/ShaderManager.h"
 
-#include <glm/ext/matrix_clip_space.hpp>
-#include <glm/gtc/matrix_inverse.hpp>
-#include <glm/gtc/type_ptr.hpp>
 
 #include <algorithm>
 #include <cstdint>
@@ -214,12 +213,12 @@ namespace ShadowEngine
         const float Width = static_cast<float>(Context.SwapChain->GetWidth());
         const float Height = static_cast<float>(Context.SwapChain->GetHeight());
         const float Aspect = Height > 0.0F ? Width / Height : 1.0F;
-        const glm::mat4 View = Context.View->ViewMatrix();
-        glm::mat4 Projection = glm::perspectiveRH_ZO(glm::radians(45.0F), Aspect, 0.1F, 100.0F);
+        const Mat4 View = Context.View->ViewMatrix();
+        Mat4 Projection = GLMAdapter::PerspectiveRH_ZO(GLMAdapter::Radians(45.0F), Aspect, 0.1F, 100.0F);
         ApplyProjectionJitter(Projection, Context.ProjectionJitterX, Context.ProjectionJitterY, Width, Height);
-        const glm::mat4 ViewProjection = Projection * View;
-        const glm::mat4 InverseViewProjection = glm::inverse(ViewProjection);
-        const glm::vec3 CameraPosition = Context.View->GetPosition();
+        const Mat4 ViewProjection = Projection * View;
+        const Mat4 InverseViewProjection = GLMAdapter::Inverse(ViewProjection);
+        const Vec3 CameraPosition = Context.View->GetPosition();
 
         DirectLightRenderProxy Direct{};
         Direct.Intensity = 0.0F;
@@ -258,7 +257,7 @@ namespace ShadowEngine
 
             const MaterialParameterBlock* Parameter = Instance->FindParameters("DeferredRenderer");
             GpuObjectConstants Slot{};
-            std::memcpy(Slot.ViewProjection, glm::value_ptr(ViewProjection), sizeof(Slot.ViewProjection));
+            std::memcpy(Slot.ViewProjection, GLMAdapter::ValuePtr(ViewProjection), sizeof(Slot.ViewProjection));
             std::memcpy(Slot.World, Item.World, sizeof(Slot.World));
             std::memcpy(Slot.NormalMatrix, Item.NormalMatrix, sizeof(Slot.NormalMatrix));
             Slot.CameraPosition[0] = CameraPosition.x;
@@ -399,13 +398,6 @@ namespace ShadowEngine
             return false;
         }
 
-        Context.CommandList->Begin();
-        if (!Context.Shadows->Record(*Context.CommandList, *Context.Batches, *Context.ShadowCasters))
-        {
-            Context.CommandList->End();
-            return false;
-        }
-
         const RHIRect Window{
             0,
             0,
@@ -450,32 +442,53 @@ namespace ShadowEngine
             Context.CommandList->DrawIndexed(Batch->IndexCount);
         };
 
-        RHITexture* GBuffers[] = {Context.GBufferA, Context.GBufferB, Context.GBufferC};
-        Context.CommandList->BeginRenderPass(GBuffers, Context.DepthBuffer, {}, true, true);
-        Context.CommandList->SetViewport({0.0F, 0.0F, Width, Height, 0.0F, 1.0F});
-        Context.CommandList->SetScissor(Window);
-        for (const uint32 Index : OpaqueItems)
-        {
-            DrawMesh(Index);
-        }
-        Context.CommandList->EndRenderPass();
-        Context.CommandList->UseAsShaderResource(*Context.GBufferA);
-        Context.CommandList->UseAsShaderResource(*Context.GBufferB);
-        Context.CommandList->UseAsShaderResource(*Context.GBufferC);
+        RenderGraph Graph;
+        const RenderGraphResource SceneInputs = Graph.ImportResource("SceneInputs");
+        const RenderGraphResource ShadowMaps = Graph.CreateResource("ShadowMaps");
+        const RenderGraphResource GBuffer = Graph.CreateResource("GBuffer");
+        const RenderGraphResource MainDepth = Graph.CreateResource("MainDepth");
+        const RenderGraphResource SkyColor = Graph.CreateResource("SkyColor");
+        const RenderGraphResource LitScene = Graph.CreateResource("LitScene");
+        const RenderGraphResource SceneColor = Graph.CreateResource("SceneColor");
+        const RenderGraphResource BackBuffer = Graph.CreateResource("BackBuffer");
+        const RenderGraphResource InterfaceOutput = Graph.CreateResource("InterfaceOutput");
 
-        Context.CommandList->BeginRenderPass(*Context.SceneColor, nullptr, Context.ClearColor, true, false);
-        Context.CommandList->SetViewport({0.0F, 0.0F, Width, Height, 0.0F, 1.0F});
-        Context.CommandList->SetScissor(Window);
-        if (!DrawSkyBackground(Context))
+        Graph.AddPass("Deferred.Shadows", {SceneInputs}, {ShadowMaps}, [&]()
         {
-            Context.CommandList->End();
-            return false;
-        }
-        Context.CommandList->EndRenderPass();
-        Context.CommandList->UseAsShaderResource(*Context.DepthBuffer);
+            return Context.Shadows->Record(*Context.CommandList, *Context.Batches, *Context.ShadowCasters);
+        });
+        Graph.AddPass("Deferred.GBuffer", {SceneInputs}, {GBuffer, MainDepth}, [&]()
+        {
+            RHITexture* GBuffers[] = {Context.GBufferA, Context.GBufferB, Context.GBufferC};
+            Context.CommandList->BeginRenderPass(GBuffers, Context.DepthBuffer, {}, true, true);
+            Context.CommandList->SetViewport({0.0F, 0.0F, Width, Height, 0.0F, 1.0F});
+            Context.CommandList->SetScissor(Window);
+            for (const uint32 Index : OpaqueItems)
+            {
+                DrawMesh(Index);
+            }
+            Context.CommandList->EndRenderPass();
+            Context.CommandList->UseAsShaderResource(*Context.GBufferA);
+            Context.CommandList->UseAsShaderResource(*Context.GBufferB);
+            Context.CommandList->UseAsShaderResource(*Context.GBufferC);
+            return true;
+        });
+        Graph.AddPass("Deferred.Sky", {SceneInputs}, {SkyColor}, [&]()
+        {
+            Context.CommandList->BeginRenderPass(*Context.SceneColor, nullptr, Context.ClearColor, true, false);
+            Context.CommandList->SetViewport({0.0F, 0.0F, Width, Height, 0.0F, 1.0F});
+            Context.CommandList->SetScissor(Window);
+            if (!DrawSkyBackground(Context))
+            {
+                return false;
+            }
+            Context.CommandList->EndRenderPass();
+            Context.CommandList->UseAsShaderResource(*Context.DepthBuffer);
+            return true;
+        });
 
         DeferredLightGpuConstants Light{};
-        std::memcpy(Light.InverseViewProjection, glm::value_ptr(InverseViewProjection), sizeof(Light.InverseViewProjection));
+        std::memcpy(Light.InverseViewProjection, GLMAdapter::ValuePtr(InverseViewProjection), sizeof(Light.InverseViewProjection));
         Light.CameraPosition[0] = CameraPosition.x;
         Light.CameraPosition[1] = CameraPosition.y;
         Light.CameraPosition[2] = CameraPosition.z;
@@ -536,38 +549,46 @@ namespace ShadowEngine
                 {reinterpret_cast<const uint8*>(&Light), sizeof(Light)}))
         {
             Log::Error("Failed to write deferred light constants");
-            Context.CommandList->End();
             return false;
         }
 
-        Context.CommandList->BeginRenderPass(*Context.SceneColor, nullptr, {}, false, false);
-        Context.CommandList->SetViewport({0.0F, 0.0F, Width, Height, 0.0F, 1.0F});
-        Context.CommandList->SetScissor(Window);
-        Context.CommandList->SetPipeline(*Context.DeferredLightPipeline);
-        Context.CommandList->BindShaderResources();
-        Context.CommandList->SetConstantBuffer(*Context.DeferredLightConstants, 0);
-        Context.CommandList->Draw(3);
-        Context.CommandList->EndRenderPass();
-
-        if (!TranslucentItems.empty())
+        Graph.AddPass("Deferred.Lighting", {GBuffer, MainDepth, SkyColor, ShadowMaps}, {LitScene}, [&]()
         {
-            Context.CommandList->BeginRenderPass(*Context.SceneColor, Context.DepthBuffer, {}, false, false);
+            Context.CommandList->BeginRenderPass(*Context.SceneColor, nullptr, {}, false, false);
             Context.CommandList->SetViewport({0.0F, 0.0F, Width, Height, 0.0F, 1.0F});
             Context.CommandList->SetScissor(Window);
-            for (const uint32 Index : TranslucentItems)
-            {
-                DrawMesh(Index);
-            }
+            Context.CommandList->SetPipeline(*Context.DeferredLightPipeline);
+            Context.CommandList->BindShaderResources();
+            Context.CommandList->SetConstantBuffer(*Context.DeferredLightConstants, 0);
+            Context.CommandList->Draw(3);
             Context.CommandList->EndRenderPass();
-        }
+            return true;
+        });
+        Graph.AddPass("Deferred.Translucency", {LitScene, MainDepth, SceneInputs}, {SceneColor}, [&]()
+        {
+            if (!TranslucentItems.empty())
+            {
+                Context.CommandList->BeginRenderPass(*Context.SceneColor, Context.DepthBuffer, {}, false, false);
+                Context.CommandList->SetViewport({0.0F, 0.0F, Width, Height, 0.0F, 1.0F});
+                Context.CommandList->SetScissor(Window);
+                for (const uint32 Index : TranslucentItems)
+                {
+                    DrawMesh(Index);
+                }
+                Context.CommandList->EndRenderPass();
+            }
+            return true;
+        });
 
         float InverseViewProjectionValues[16];
-        std::memcpy(InverseViewProjectionValues, glm::value_ptr(InverseViewProjection), sizeof(InverseViewProjectionValues));
+        std::memcpy(InverseViewProjectionValues, GLMAdapter::ValuePtr(InverseViewProjection), sizeof(InverseViewProjectionValues));
         float ViewProjectionValues[16];
-        std::memcpy(ViewProjectionValues, glm::value_ptr(ViewProjection), sizeof(ViewProjectionValues));
+        std::memcpy(ViewProjectionValues, GLMAdapter::ValuePtr(ViewProjection), sizeof(ViewProjectionValues));
         const float* PreviousViewProjection = Context.PreviousViewProjection != nullptr ? Context.PreviousViewProjection : ViewProjectionValues;
         const float CameraPositionValues[3] = {CameraPosition.x, CameraPosition.y, CameraPosition.z};
-        if (!Context.Post->Draw(
+        Graph.AddPass("Deferred.Post", {SceneColor, MainDepth}, {BackBuffer}, [&]()
+        {
+            return Context.Post->Draw(
                 *Context.CommandList,
                 Context.SwapChain->GetCurrentBackBuffer(),
                 *Context.DepthBuffer,
@@ -580,9 +601,22 @@ namespace ShadowEngine
                 Context.SwapChain->GetWidth(),
                 Context.SwapChain->GetHeight(),
                 Context.ConstantAlignment,
-                Context.FrameDeltaTime))
+                Context.FrameDeltaTime);
+        });
+        Graph.AddPass("Deferred.UI", {BackBuffer}, {InterfaceOutput}, [&]()
         {
-            Context.CommandList->End();
+            if (Context.Interface != nullptr)
+            {
+                Context.Interface->Draw(*Context.CommandList, Context.SwapChain->GetCurrentBackBuffer());
+            }
+            return true;
+        });
+
+        std::string GraphError;
+        const bool bExecuted = Graph.Execute(&GraphError);
+        if (!bExecuted)
+        {
+            Log::Error("{}", GraphError);
             return false;
         }
 
@@ -590,14 +624,6 @@ namespace ShadowEngine
         {
             std::memcpy(Context.StoredViewProjection, ViewProjectionValues, sizeof(ViewProjectionValues));
         }
-        if (Context.Interface != nullptr)
-        {
-            Context.Interface->Draw(*Context.CommandList, Context.SwapChain->GetCurrentBackBuffer());
-        }
-        Context.CommandList->End();
-        Context.Device->SubmitCommandList(*Context.CommandList);
-        const bool bPresented = Context.SwapChain->Present();
-        Context.Device->WaitIdle();
-        return bPresented;
+        return true;
     }
 }

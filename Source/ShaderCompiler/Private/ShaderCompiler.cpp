@@ -4,15 +4,11 @@
 #include "Framework/Engine/Public/EngineModules.h"
 #include "Framework/Shader/Public/IShaderCompiler.h"
 #include "Framework/Shader/Public/ShaderReflection.h"
+#include "ThirdPartyAdapter/Shader/Public/SlangAdapter.h"
 
-#include <slang.h>
-#include <slang-com-ptr.h>
-
-#include <cstring>
 #include <filesystem>
 #include <memory>
 #include <string>
-#include <type_traits>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -24,43 +20,6 @@ namespace ShadowEngine
 {
     namespace
     {
-        class ShaderSourceBlob final : public ISlangBlob
-        {
-            public:
-                explicit ShaderSourceBlob(std::string InSource)
-                    : Source(std::move(InSource))
-                {
-                }
-
-                ISlangUnknown* getInterface(SlangUUID const& Id)
-                {
-                    if (Id == ISlangUnknown::getTypeGuid() || Id == ISlangBlob::getTypeGuid())
-                    {
-                        return static_cast<ISlangBlob*>(this);
-                    }
-
-                    return nullptr;
-                }
-
-                SLANG_IUNKNOWN_ALL
-
-                void const* SLANG_MCALL getBufferPointer() SLANG_OVERRIDE
-                {
-                    return Source.data();
-                }
-
-                size_t SLANG_MCALL getBufferSize() SLANG_OVERRIDE
-                {
-                    return Source.size();
-                }
-
-            private:
-                uint32_t m_refCount = 1;
-                std::string Source;
-        };
-
-        using CreateGlobalSessionFunction = SlangResult (*)(SlangInt, slang::IGlobalSession**);
-
         constexpr char CreateGlobalSessionSymbol[] = "slang_createGlobalSession";
 
         class SharedLibrary final
@@ -160,86 +119,26 @@ namespace ShadowEngine
             return SLANG_STAGE_NONE;
         }
 
-        struct ReflectionApi
-        {
-            SlangTypeKind (*GetKind)(SlangReflectionType*) = nullptr;
-            size_t (*GetElementCount)(SlangReflectionType*) = nullptr;
-            SlangScalarType (*GetScalarType)(SlangReflectionType*) = nullptr;
-            char const* (*GetTypeName)(SlangReflectionType*) = nullptr;
-            SlangTypeKind (*GetLayoutKind)(SlangReflectionTypeLayout*) = nullptr;
-            SlangReflectionType* (*GetType)(SlangReflectionTypeLayout*) = nullptr;
-            size_t (*GetSize)(SlangReflectionTypeLayout*, SlangParameterCategory) = nullptr;
-            uint32_t (*GetFieldCount)(SlangReflectionTypeLayout*) = nullptr;
-            SlangReflectionVariableLayout* (*GetFieldByIndex)(SlangReflectionTypeLayout*, unsigned) = nullptr;
-            SlangReflectionTypeLayout* (*GetElementTypeLayout)(SlangReflectionTypeLayout*) = nullptr;
-            size_t (*GetElementStride)(SlangReflectionTypeLayout*, SlangParameterCategory) = nullptr;
-            SlangReflectionVariableLayout* (*GetElementVarLayout)(SlangReflectionTypeLayout*) = nullptr;
-            SlangReflectionVariableLayout* (*GetContainerVarLayout)(SlangReflectionTypeLayout*) = nullptr;
-            char const* (*GetVariableName)(SlangReflectionVariable*) = nullptr;
-            SlangReflectionVariable* (*GetVariable)(SlangReflectionVariableLayout*) = nullptr;
-            SlangReflectionTypeLayout* (*GetVariableTypeLayout)(SlangReflectionVariableLayout*) = nullptr;
-            size_t (*GetOffset)(SlangReflectionVariableLayout*, SlangParameterCategory) = nullptr;
-            size_t (*GetSpace)(SlangReflectionVariableLayout*, SlangParameterCategory) = nullptr;
-            unsigned (*GetBindingIndex)(SlangReflectionParameter*) = nullptr;
-            SlangReflectionVariableLayout* (*GetGlobalParams)(SlangReflection*) = nullptr;
-
-            bool Load(const SharedLibrary& Library, std::string* ErrorMessage)
-            {
-                const auto LoadSymbol = [&](const char* Name, auto& Out) -> bool
-                {
-                    Out = reinterpret_cast<std::remove_reference_t<decltype(Out)>>(Library.FindSymbol(Name));
-                    if (Out == nullptr)
-                    {
-                        SetErrorMessage(ErrorMessage, std::string("Slang library does not export ") + Name);
-                        return false;
-                    }
-
-                    return true;
-                };
-
-                return LoadSymbol("spReflectionType_GetKind", GetKind) &&
-                    LoadSymbol("spReflectionType_GetElementCount", GetElementCount) &&
-                    LoadSymbol("spReflectionType_GetScalarType", GetScalarType) &&
-                    LoadSymbol("spReflectionType_GetName", GetTypeName) &&
-                    LoadSymbol("spReflectionTypeLayout_getKind", GetLayoutKind) &&
-                    LoadSymbol("spReflectionTypeLayout_GetType", GetType) &&
-                    LoadSymbol("spReflectionTypeLayout_GetSize", GetSize) &&
-                    LoadSymbol("spReflectionTypeLayout_GetFieldCount", GetFieldCount) &&
-                    LoadSymbol("spReflectionTypeLayout_GetFieldByIndex", GetFieldByIndex) &&
-                    LoadSymbol("spReflectionTypeLayout_GetElementTypeLayout", GetElementTypeLayout) &&
-                    LoadSymbol("spReflectionTypeLayout_GetElementStride", GetElementStride) &&
-                    LoadSymbol("spReflectionTypeLayout_GetElementVarLayout", GetElementVarLayout) &&
-                    LoadSymbol("spReflectionTypeLayout_getContainerVarLayout", GetContainerVarLayout) &&
-                    LoadSymbol("spReflectionVariable_GetName", GetVariableName) &&
-                    LoadSymbol("spReflectionVariableLayout_GetVariable", GetVariable) &&
-                    LoadSymbol("spReflectionVariableLayout_GetTypeLayout", GetVariableTypeLayout) &&
-                    LoadSymbol("spReflectionVariableLayout_GetOffset", GetOffset) &&
-                    LoadSymbol("spReflectionVariableLayout_GetSpace", GetSpace) &&
-                    LoadSymbol("spReflectionParameter_GetBindingIndex", GetBindingIndex) &&
-                    LoadSymbol("spReflection_getGlobalParamsVarLayout", GetGlobalParams);
-            }
-        };
-
-        bool IsFloat(const ReflectionApi& Api, SlangReflectionType* Type)
+        bool IsFloat(const SlangReflectionApi& Api, SlangReflectionType* Type)
         {
             return Type != nullptr && Api.GetKind(Type) == SLANG_TYPE_KIND_SCALAR &&
                 Api.GetScalarType(Type) == SLANG_SCALAR_TYPE_FLOAT32;
         }
 
-        bool IsFloatVector(const ReflectionApi& Api, SlangReflectionType* Type, uint32 Count)
+        bool IsFloatVector(const SlangReflectionApi& Api, SlangReflectionType* Type, uint32 Count)
         {
             return Type != nullptr && Api.GetKind(Type) == SLANG_TYPE_KIND_VECTOR &&
                 Api.GetElementCount(Type) == Count && Api.GetScalarType(Type) == SLANG_SCALAR_TYPE_FLOAT32;
         }
 
-        bool IsUInt(const ReflectionApi& Api, SlangReflectionType* Type)
+        bool IsUInt(const SlangReflectionApi& Api, SlangReflectionType* Type)
         {
             return Type != nullptr && Api.GetKind(Type) == SLANG_TYPE_KIND_SCALAR &&
                 Api.GetScalarType(Type) == SLANG_SCALAR_TYPE_UINT32;
         }
 
         uint32 BindingSlot(
-            const ReflectionApi& Api,
+            const SlangReflectionApi& Api,
             SlangReflectionVariableLayout* Variable,
             SlangParameterCategory Category)
         {
@@ -259,7 +158,7 @@ namespace ShadowEngine
         }
 
         void CollectBinding(
-            const ReflectionApi& Api,
+            const SlangReflectionApi& Api,
             SlangReflectionVariableLayout* Variable,
             const std::string& ParentType,
             uint32 BaseOffset,
@@ -443,7 +342,7 @@ namespace ShadowEngine
             Out.Bindings.push_back(std::move(Binding));
         }
 
-        void CollectReflection(const ReflectionApi& Api, slang::ProgramLayout* Layout, ShaderReflection& Out)
+        void CollectReflection(const SlangReflectionApi& Api, slang::ProgramLayout* Layout, ShaderReflection& Out)
         {
             Out.Bindings.clear();
             if (Layout == nullptr)
@@ -461,9 +360,14 @@ namespace ShadowEngine
                 return {};
             }
 
-            return {
-                static_cast<const char*>(Blob->getBufferPointer()),
-                Blob->getBufferSize()};
+            const void* Data = SlangAdapter::BlobData(Blob);
+            const size_t Size = SlangAdapter::BlobSize(Blob);
+            if (Data == nullptr || Size == 0)
+            {
+                return {};
+            }
+
+            return {static_cast<const char*>(Data), Size};
         }
 
         class SlangShaderCompiler final : public IShaderCompiler
@@ -481,8 +385,7 @@ namespace ShadowEngine
                         return false;
                     }
 
-                    const auto CreateGlobalSession = reinterpret_cast<CreateGlobalSessionFunction>(
-                        Library.FindSymbol(CreateGlobalSessionSymbol));
+                    void* CreateGlobalSession = Library.FindSymbol(CreateGlobalSessionSymbol);
                     if (CreateGlobalSession == nullptr)
                     {
                         SetErrorMessage(
@@ -492,14 +395,20 @@ namespace ShadowEngine
                         return false;
                     }
 
-                    if (SLANG_FAILED(CreateGlobalSession(SLANG_API_VERSION, GlobalSession.writeRef())))
+                    if (SLANG_FAILED(SlangAdapter::CreateGlobalSession(CreateGlobalSession, GlobalSession.writeRef())))
                     {
                         SetErrorMessage(ErrorMessage, "Unable to create the Slang global session");
                         Library.Unload();
                         return false;
                     }
 
-                    if (!ReflectionApi.Load(Library, ErrorMessage))
+                    if (!ReflectionApi.Load(
+                            [](void* User, const char* Name) -> void*
+                            {
+                                return static_cast<const SharedLibrary*>(User)->FindSymbol(Name);
+                            },
+                            &Library,
+                            ErrorMessage))
                     {
                         GlobalSession = nullptr;
                         Library.Unload();
@@ -533,7 +442,7 @@ namespace ShadowEngine
 
                     slang::TargetDesc Target{};
                     Target.format = ToSlangTarget(Request.Format);
-                    Target.profile = GlobalSession->findProfile(ToSlangProfile(Request.Format));
+                    Target.profile = SlangAdapter::FindProfile(GlobalSession, ToSlangProfile(Request.Format));
 
                     const std::string SearchPath = Request.SourcePath.parent_path().string();
                     const char* SearchPaths[] = {SearchPath.c_str()};
@@ -547,7 +456,7 @@ namespace ShadowEngine
                     SessionDesc.searchPathCount = 1;
 
                     Slang::ComPtr<slang::ISession> Session;
-                    if (SLANG_FAILED(GlobalSession->createSession(SessionDesc, Session.writeRef())))
+                    if (SLANG_FAILED(SlangAdapter::CreateSession(GlobalSession, SessionDesc, Session.writeRef())))
                     {
                         SetErrorMessage(ErrorMessage, "Unable to create a Slang session for " + Label);
                         return false;
@@ -558,7 +467,7 @@ namespace ShadowEngine
                     slang::IModule* Module = nullptr;
                     if (Request.ImplementationPath.empty() && Request.LightPath.empty())
                     {
-                        Module = Session->loadModule(ModuleName.c_str(), Diagnostics.writeRef());
+                        Module = SlangAdapter::LoadModule(Session, ModuleName.c_str(), Diagnostics.writeRef());
                     }
                     else
                     {
@@ -644,11 +553,11 @@ namespace ShadowEngine
                         }
                         Source += "#include \"" + Fragment.generic_string() + "\"\n";
                         ModuleStem += Fragment.filename().string();
-                        Slang::ComPtr<ISlangBlob> SourceBlob;
-                        SourceBlob.attach(new ShaderSourceBlob(Source));
+                        Slang::ComPtr<ISlangBlob> SourceBlob = SlangAdapter::CreateSourceBlob(std::move(Source));
 
                         const std::string ModulePath = (Fragment.parent_path() / ModuleStem).generic_string();
-                        Module = Session->loadModuleFromSource(
+                        Module = SlangAdapter::LoadModuleFromSource(
+                            Session,
                             ModuleName.c_str(),
                             ModulePath.c_str(),
                             SourceBlob,
@@ -660,7 +569,8 @@ namespace ShadowEngine
                     }
 
                     Slang::ComPtr<slang::IEntryPoint> EntryPoint;
-                    if (SLANG_FAILED(Module->findAndCheckEntryPoint(
+                    if (SLANG_FAILED(SlangAdapter::FindEntryPoint(
+                            Module,
                             Request.EntryPoint.c_str(),
                             ToSlangStage(Request.Stage),
                             EntryPoint.writeRef(),
@@ -671,7 +581,8 @@ namespace ShadowEngine
 
                     slang::IComponentType* Components[] = {Module, EntryPoint.get()};
                     Slang::ComPtr<slang::IComponentType> Composite;
-                    if (SLANG_FAILED(Session->createCompositeComponentType(
+                    if (SLANG_FAILED(SlangAdapter::CreateComposite(
+                            Session,
                             Components,
                             2,
                             Composite.writeRef(),
@@ -681,27 +592,27 @@ namespace ShadowEngine
                     }
 
                     Slang::ComPtr<slang::IComponentType> Linked;
-                    if (SLANG_FAILED(Composite->link(Linked.writeRef(), Diagnostics.writeRef())))
+                    if (SLANG_FAILED(SlangAdapter::Link(Composite, Linked.writeRef(), Diagnostics.writeRef())))
                     {
                         return Fail(ErrorMessage, "Unable to link shader " + Label, Diagnostics);
                     }
 
                     Slang::ComPtr<slang::IBlob> Code;
-                    if (SLANG_FAILED(Linked->getEntryPointCode(0, 0, Code.writeRef(), Diagnostics.writeRef())))
+                    if (SLANG_FAILED(SlangAdapter::GetEntryPointCode(Linked, Code.writeRef(), Diagnostics.writeRef())))
                     {
                         return Fail(ErrorMessage, "Unable to generate code for " + Label, Diagnostics);
                     }
 
-                    if (Diagnostics != nullptr && Diagnostics->getBufferSize() > 0)
+                    if (SlangAdapter::BlobSize(Diagnostics) > 0)
                     {
                         Log::Warning("Slang diagnostics for {}:\n{}", Label, ToString(Diagnostics));
                     }
 
-                    const auto* Data = static_cast<const uint8*>(Code->getBufferPointer());
+                    const auto* Data = static_cast<const uint8*>(SlangAdapter::BlobData(Code));
                     Bytecode.Stage = Request.Stage;
                     Bytecode.EntryPoint = Request.EntryPoint;
-                    Bytecode.Data.assign(Data, Data + Code->getBufferSize());
-                    CollectReflection(ReflectionApi, Linked->getLayout(), Reflection);
+                    Bytecode.Data.assign(Data, Data + SlangAdapter::BlobSize(Code));
+                    CollectReflection(ReflectionApi, SlangAdapter::GetLayout(Linked), Reflection);
                     return true;
                 }
 
@@ -722,7 +633,7 @@ namespace ShadowEngine
                 }
 
                 SharedLibrary Library;
-                ReflectionApi ReflectionApi;
+                SlangReflectionApi ReflectionApi;
                 Slang::ComPtr<slang::IGlobalSession> GlobalSession;
         };
     }

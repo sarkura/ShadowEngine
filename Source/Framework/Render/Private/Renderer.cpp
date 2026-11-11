@@ -1,3 +1,4 @@
+#include "ThirdPartyAdapter/Mathematics/Public/GLMAdapter.h"
 #include "Framework/Render/Public/Renderer.h"
 
 #include "Framework/Asset/Public/AssetManager.h"
@@ -15,13 +16,6 @@
 #include "Framework/RHI/Public/RHISwapChain.h"
 #include "Framework/Shader/Public/ShaderManager.h"
 
-#include <glm/common.hpp>
-#include <glm/ext/matrix_clip_space.hpp>
-#include <glm/geometric.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-#include <glm/vec3.hpp>
-#include <glm/vec4.hpp>
 
 #include <algorithm>
 #include <array>
@@ -42,13 +36,13 @@ namespace ShadowEngine
             return {static_cast<const uint8*>(Data), Size};
         }
 
-        void BuildFrustumPlanes(const glm::mat4& ViewProjection, float Planes[6][4])
+        void BuildFrustumPlanes(const Mat4& ViewProjection, float Planes[6][4])
         {
-            const glm::vec4 Row0(ViewProjection[0][0], ViewProjection[1][0], ViewProjection[2][0], ViewProjection[3][0]);
-            const glm::vec4 Row1(ViewProjection[0][1], ViewProjection[1][1], ViewProjection[2][1], ViewProjection[3][1]);
-            const glm::vec4 Row2(ViewProjection[0][2], ViewProjection[1][2], ViewProjection[2][2], ViewProjection[3][2]);
-            const glm::vec4 Row3(ViewProjection[0][3], ViewProjection[1][3], ViewProjection[2][3], ViewProjection[3][3]);
-            const glm::vec4 Raw[6] = {
+            const Vec4 Row0(ViewProjection[0][0], ViewProjection[1][0], ViewProjection[2][0], ViewProjection[3][0]);
+            const Vec4 Row1(ViewProjection[0][1], ViewProjection[1][1], ViewProjection[2][1], ViewProjection[3][1]);
+            const Vec4 Row2(ViewProjection[0][2], ViewProjection[1][2], ViewProjection[2][2], ViewProjection[3][2]);
+            const Vec4 Row3(ViewProjection[0][3], ViewProjection[1][3], ViewProjection[2][3], ViewProjection[3][3]);
+            const Vec4 Raw[6] = {
                 Row3 + Row0,
                 Row3 - Row0,
                 Row3 + Row1,
@@ -58,8 +52,8 @@ namespace ShadowEngine
             };
             for (uint32 Index = 0; Index < 6; ++Index)
             {
-                const float Length = glm::length(glm::vec3(Raw[Index]));
-                const glm::vec4 Plane = Length > 0.0001F ? Raw[Index] / Length : Raw[Index];
+                const float Length = GLMAdapter::Length(Vec3(Raw[Index]));
+                const Vec4 Plane = Length > 0.0001F ? Raw[Index] / Length : Raw[Index];
                 Planes[Index][0] = Plane.x;
                 Planes[Index][1] = Plane.y;
                 Planes[Index][2] = Plane.z;
@@ -67,12 +61,12 @@ namespace ShadowEngine
             }
         }
 
-        bool SphereIntersectsFrustum(const float Planes[6][4], const glm::vec3& Center, float Radius)
+        bool SphereIntersectsFrustum(const float Planes[6][4], const Vec3& Center, float Radius)
         {
             for (uint32 Index = 0; Index < 6; ++Index)
             {
-                const glm::vec3 Normal(Planes[Index][0], Planes[Index][1], Planes[Index][2]);
-                if (glm::dot(Normal, Center) + Planes[Index][3] < -Radius)
+                const Vec3 Normal(Planes[Index][0], Planes[Index][1], Planes[Index][2]);
+                if (GLMAdapter::Dot(Normal, Center) + Planes[Index][3] < -Radius)
                 {
                     return false;
                 }
@@ -81,40 +75,40 @@ namespace ShadowEngine
             return true;
         }
 
-        void WorldBounds(const float World[16], const float LocalMin[3], const float LocalMax[3], glm::vec3& OutMin, glm::vec3& OutMax)
+        void WorldBounds(const float World[16], const float LocalMin[3], const float LocalMax[3], Vec3& OutMin, Vec3& OutMax)
         {
-            const glm::mat4 Matrix = glm::make_mat4(World);
-            const glm::vec3 Corner(LocalMin[0], LocalMin[1], LocalMin[2]);
-            const glm::vec3 Opposite(LocalMax[0], LocalMax[1], LocalMax[2]);
-            OutMin = glm::vec3(std::numeric_limits<float>::max());
-            OutMax = glm::vec3(std::numeric_limits<float>::lowest());
+            const Mat4 Matrix = GLMAdapter::MakeMat4(World);
+            const Vec3 Corner(LocalMin[0], LocalMin[1], LocalMin[2]);
+            const Vec3 Opposite(LocalMax[0], LocalMax[1], LocalMax[2]);
+            OutMin = Vec3(std::numeric_limits<float>::max());
+            OutMax = Vec3(std::numeric_limits<float>::lowest());
             for (int X = 0; X < 2; ++X)
             {
                 for (int Y = 0; Y < 2; ++Y)
                 {
                     for (int Z = 0; Z < 2; ++Z)
                     {
-                        const glm::vec3 Local(X == 0 ? Corner.x : Opposite.x, Y == 0 ? Corner.y : Opposite.y, Z == 0 ? Corner.z : Opposite.z);
-                        const glm::vec3 Point = glm::vec3(Matrix * glm::vec4(Local, 1.0F));
-                        OutMin = glm::min(OutMin, Point);
-                        OutMax = glm::max(OutMax, Point);
+                        const Vec3 Local(X == 0 ? Corner.x : Opposite.x, Y == 0 ? Corner.y : Opposite.y, Z == 0 ? Corner.z : Opposite.z);
+                        const Vec3 Point = Vec3(Matrix * Vec4(Local, 1.0F));
+                        OutMin = GLMAdapter::Min(OutMin, Point);
+                        OutMax = GLMAdapter::Max(OutMax, Point);
                     }
                 }
             }
         }
 
-        bool AabbIntersectsFrustum(const float Planes[6][4], const glm::vec3& Min, const glm::vec3& Max)
+        bool AabbIntersectsFrustum(const float Planes[6][4], const Vec3& Min, const Vec3& Max)
         {
-            const glm::vec3 Center = (Min + Max) * 0.5F;
-            const glm::vec3 Extent = (Max - Min) * 0.5F;
+            const Vec3 Center = (Min + Max) * 0.5F;
+            const Vec3 Extent = (Max - Min) * 0.5F;
             for (uint32 Index = 0; Index < 6; ++Index)
             {
-                const glm::vec3 Normal(Planes[Index][0], Planes[Index][1], Planes[Index][2]);
-                const glm::vec3 Positive(
+                const Vec3 Normal(Planes[Index][0], Planes[Index][1], Planes[Index][2]);
+                const Vec3 Positive(
                     Normal.x >= 0.0F ? Extent.x : -Extent.x,
                     Normal.y >= 0.0F ? Extent.y : -Extent.y,
                     Normal.z >= 0.0F ? Extent.z : -Extent.z);
-                if (glm::dot(Normal, Center + Positive) + Planes[Index][3] < 0.0F)
+                if (GLMAdapter::Dot(Normal, Center + Positive) + Planes[Index][3] < 0.0F)
                 {
                     return false;
                 }
@@ -145,7 +139,7 @@ namespace ShadowEngine
         }
 
         const float Aspect = static_cast<float>(Width) / static_cast<float>(Height);
-        const glm::mat4 Projection = glm::perspectiveRH_ZO(glm::radians(45.0F), Aspect, 0.1F, 100.0F);
+        const Mat4 Projection = GLMAdapter::PerspectiveRH_ZO(GLMAdapter::Radians(45.0F), Aspect, 0.1F, 100.0F);
         BuildFrustumPlanes(Projection * ViewCamera.ViewMatrix(), FrameFrustum.Planes);
         FrameFrustum.bValid = true;
 
@@ -161,8 +155,8 @@ namespace ShadowEngine
             }
 
             const MeshSection& Section = Mesh->GetSections()[Item.Section];
-            glm::vec3 Min;
-            glm::vec3 Max;
+            Vec3 Min;
+            Vec3 Max;
             WorldBounds(Item.World, Section.BoundsMin, Section.BoundsMax, Min, Max);
             if (AabbIntersectsFrustum(FrameFrustum.Planes, Min, Max))
             {
@@ -183,7 +177,7 @@ namespace ShadowEngine
 
         for (const PointLightRenderProxy& Light : SceneProxy.PointLights)
         {
-            const glm::vec3 Center(Light.Position[0], Light.Position[1], Light.Position[2]);
+            const Vec3 Center(Light.Position[0], Light.Position[1], Light.Position[2]);
             if (SphereIntersectsFrustum(FrameFrustum.Planes, Center, Light.Radius))
             {
                 Out.push_back(Light);
@@ -238,10 +232,21 @@ namespace ShadowEngine
 
         RenderPassContext Context;
         PopulateContext(Context);
-        if (!FramePass->Execute(DrawQueue, Context))
+        CommandList->Begin();
+        const bool bRecorded = FramePass->Execute(DrawQueue, Context);
+        CommandList->End();
+        if (!bRecorded)
         {
             return false;
         }
+
+        Device->SubmitCommandList(*CommandList);
+        if (!SwapChain->Present())
+        {
+            Device->WaitIdle();
+            return false;
+        }
+        Device->WaitIdle();
 
         StoreFrameHistory();
         return true;

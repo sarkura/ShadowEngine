@@ -40,6 +40,12 @@ namespace ShadowEngine
                 std::vector<uint8> Pixels,
                 std::string* ErrorMessage = nullptr);
 
+            static std::unique_ptr<TextureAsset> Adopt(
+                std::filesystem::path InPath,
+                std::vector<Mip> InMips,
+                ETextureFormat InFormat,
+                ETextureEncoding InEncoding);
+
             [[nodiscard]] ETextureFormat GetFormat() const;
             [[nodiscard]] ETextureEncoding GetEncoding() const;
             [[nodiscard]] const std::vector<Mip>& GetMips() const;

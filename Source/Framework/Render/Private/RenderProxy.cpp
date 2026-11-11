@@ -1,10 +1,8 @@
+#include "ThirdPartyAdapter/Mathematics/Public/GLMAdapter.h"
 #include "Framework/Render/Public/RenderProxy.h"
 
 #include "Framework/Scene/Public/Scene.h"
 
-#include <glm/gtc/type_ptr.hpp>
-#include <glm/mat3x3.hpp>
-#include <glm/mat4x4.hpp>
 
 #include <cstring>
 #include <utility>
@@ -15,14 +13,14 @@ namespace ShadowEngine
     {
         void WriteNormalMatrix(const float* World, float* OutMatrix)
         {
-            const glm::mat4 WorldMatrix = glm::make_mat4(World);
-            const glm::mat3 Linear = glm::mat3(WorldMatrix);
-            const glm::mat3 Normal = glm::transpose(glm::inverse(Linear));
-            glm::mat4 Packed(1.0F);
-            Packed[0] = glm::vec4(Normal[0], 0.0F);
-            Packed[1] = glm::vec4(Normal[1], 0.0F);
-            Packed[2] = glm::vec4(Normal[2], 0.0F);
-            std::memcpy(OutMatrix, glm::value_ptr(Packed), sizeof(float) * 16);
+            const Mat4 WorldMatrix = GLMAdapter::MakeMat4(World);
+            const Mat3 Linear = Mat3(WorldMatrix);
+            const Mat3 Normal = GLMAdapter::Transpose(GLMAdapter::Inverse(Linear));
+            Mat4 Packed(1.0F);
+            Packed[0] = Vec4(Normal[0], 0.0F);
+            Packed[1] = Vec4(Normal[1], 0.0F);
+            Packed[2] = Vec4(Normal[2], 0.0F);
+            std::memcpy(OutMatrix, GLMAdapter::ValuePtr(Packed), sizeof(float) * 16);
         }
     }
 

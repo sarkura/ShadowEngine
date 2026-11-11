@@ -72,6 +72,44 @@ target_include_directories(ImGui SYSTEM PUBLIC
     ${SHADOW_THIRDPARTY_DIR}/Imgui
 )
 
+if(WIN32)
+    add_library(ImGuiWin32 STATIC
+        ${SHADOW_THIRDPARTY_DIR}/Imgui/backends/imgui_impl_win32.cpp
+    )
+    target_include_directories(ImGuiWin32 SYSTEM PUBLIC
+        ${SHADOW_THIRDPARTY_DIR}/Imgui/backends
+    )
+    target_link_libraries(ImGuiWin32
+        PUBLIC ImGui
+        PRIVATE gdi32 dwmapi
+    )
+endif()
+
+# Engine-facing entry points for the third-party functions actually used.
+set(SHADOW_THIRDPARTY_ADAPTER_SOURCES
+    ${SHADOW_SOURCE_DIR}/ThirdPartyAdapter/Texture/Private/STBAdapter.cpp
+    ${SHADOW_SOURCE_DIR}/ThirdPartyAdapter/Mesh/Private/CGLTFAdapter.cpp
+    ${SHADOW_SOURCE_DIR}/ThirdPartyAdapter/Serialization/Private/RapidJSONAdapter.cpp
+    ${SHADOW_SOURCE_DIR}/ThirdPartyAdapter/Mathematics/Private/GLMAdapter.cpp
+    ${SHADOW_SOURCE_DIR}/ThirdPartyAdapter/UI/Private/ImGuiAdapter.cpp
+    ${SHADOW_SOURCE_DIR}/ThirdPartyAdapter/Mesh/Private/MeshOptimizerAdapter.cpp
+)
+add_library(ThirdPartyAdapter STATIC ${SHADOW_THIRDPARTY_ADAPTER_SOURCES})
+target_link_libraries(ThirdPartyAdapter
+    PUBLIC
+    Interface
+    ImGui
+    PRIVATE
+    GLM
+    RapidJSON
+    Stb
+    Cgltf
+    MeshOptimizer
+)
+if(WIN32)
+    target_link_libraries(ThirdPartyAdapter PRIVATE ImGuiWin32)
+endif()
+
 # Slang (headers only, slang-compiler.dll is loaded at runtime by ShaderCompiler)
 add_library(SlangHeaders INTERFACE)
 target_include_directories(SlangHeaders SYSTEM INTERFACE
@@ -114,6 +152,25 @@ target_include_directories(Interface INTERFACE
     ${SHADOW_SOURCE_DIR}
 )
 
+# Runtime cooked assets. Import stays in AssetCook.
+file(GLOB_RECURSE COOKED_ASSET_SOURCES CONFIGURE_DEPENDS
+    "${SHADOW_SOURCE_DIR}/CookedAsset/*.cpp"
+)
+add_library(CookedAsset STATIC ${COOKED_ASSET_SOURCES})
+target_link_libraries(CookedAsset PUBLIC Interface)
+
+file(GLOB ASSET_COOK_SOURCES CONFIGURE_DEPENDS
+    "${SHADOW_SOURCE_DIR}/AssetCook/Private/AssetCook.cpp"
+)
+add_library(AssetCook STATIC ${ASSET_COOK_SOURCES})
+target_link_libraries(AssetCook PUBLIC CookedAsset ThirdPartyAdapter)
+
+add_executable(AssetImportTool
+    ${SHADOW_SOURCE_DIR}/AssetCook/Private/AssetImportTool.cpp
+)
+target_link_libraries(AssetImportTool PRIVATE AssetCook)
+set_target_properties(AssetImportTool PROPERTIES OUTPUT_NAME AssetImportTool)
+
 # ------------------------------------------------------------------------------
 # 2. Framework Module (Base Framework, backend-agnostic)
 # ------------------------------------------------------------------------------
@@ -126,13 +183,8 @@ add_library(Framework STATIC ${FRAMEWORK_SOURCES})
 target_link_libraries(Framework
     PUBLIC
     Interface
-    GLM
-    PRIVATE
-    RapidJSON
-    Stb
-    Cgltf
-    MeshOptimizer
-    ImGui
+    ThirdPartyAdapter
+    CookedAsset
 )
 
 # ------------------------------------------------------------------------------
@@ -141,7 +193,10 @@ target_link_libraries(Framework
 file(GLOB_RECURSE SHADER_COMPILER_SOURCES CONFIGURE_DEPENDS
     "${SHADOW_SOURCE_DIR}/ShaderCompiler/*.cpp"
 )
-add_library(ShaderCompiler STATIC ${SHADER_COMPILER_SOURCES})
+add_library(ShaderCompiler STATIC
+    ${SHADER_COMPILER_SOURCES}
+    ${SHADOW_SOURCE_DIR}/ThirdPartyAdapter/Shader/Private/SlangAdapter.cpp
+)
 target_link_libraries(ShaderCompiler
     PUBLIC Framework
     PRIVATE SlangHeaders ${CMAKE_DL_LIBS}
@@ -188,18 +243,6 @@ endif()
 # 5. Platform Module
 # ------------------------------------------------------------------------------
 if(WIN32)
-    # Dear ImGui Win32 backend
-    add_library(ImGuiWin32 STATIC
-        ${SHADOW_THIRDPARTY_DIR}/Imgui/backends/imgui_impl_win32.cpp
-    )
-    target_include_directories(ImGuiWin32 SYSTEM PUBLIC
-        ${SHADOW_THIRDPARTY_DIR}/Imgui/backends
-    )
-    target_link_libraries(ImGuiWin32
-        PUBLIC ImGui
-        PRIVATE gdi32 dwmapi
-    )
-
     file(GLOB_RECURSE WINDOWS_PLATFORM_SOURCES CONFIGURE_DEPENDS
         "${SHADOW_SOURCE_DIR}/Platform/Windows/*.cpp"
     )
@@ -208,7 +251,7 @@ if(WIN32)
 
     target_link_libraries(WindowsPlatform
         PUBLIC Framework
-        PRIVATE ImGuiWin32 user32 gdi32
+        PRIVATE user32 gdi32
     )
 
     set(SHADOW_PLATFORM_TARGET WindowsPlatform)

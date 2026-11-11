@@ -1,3 +1,4 @@
+#include "ThirdPartyAdapter/Serialization/Public/RapidJSONAdapter.h"
 #include "Framework/Config/Public/DescriptionParser.h"
 
 #include "Framework/Common/Public/Log.h"
@@ -13,7 +14,7 @@ namespace ShadowEngine
     namespace
     {
         bool ReadRendererBinding(
-            const rapidjson::Value& Object,
+            const RapidJSONValue& Object,
             const std::filesystem::path& FilePath,
             const char* RendererName,
             MaterialRendererBinding& Binding,
@@ -50,12 +51,13 @@ namespace ShadowEngine
                     AllowedCount = 8;
                 }
             }
-            for (auto Member = Object.MemberBegin(); Member != Object.MemberEnd(); ++Member)
+            for (size_t MemberIndex = 0; MemberIndex < Object.MemberCount(); ++MemberIndex)
             {
+                const RapidJSONValue MemberName = Object.MemberName(MemberIndex);
                 bool bKnown = false;
                 for (uint32 Index = 0; Index < AllowedCount; ++Index)
                 {
-                    if (Member->name == AllowedMembers[Index])
+                    if (MemberName.NameEquals(AllowedMembers[Index]))
                     {
                         bKnown = true;
                         break;
@@ -65,7 +67,7 @@ namespace ShadowEngine
                 {
                     SetErrorMessage(
                         ErrorMessage,
-                        std::string(RendererName) + " has unsupported member '" + Member->name.GetString() +
+                        std::string(RendererName) + " has unsupported member '" + MemberName.GetString() +
                             "': " + FilePath.generic_string());
                     return false;
                 }
@@ -74,7 +76,7 @@ namespace ShadowEngine
             Binding.Renderer = RendererName;
             if (Object.HasMember("Parent"))
             {
-                const rapidjson::Value& Parent = Object["Parent"];
+                const RapidJSONValue& Parent = Object["Parent"];
                 if (!Parent.IsString() || Parent.GetStringLength() == 0)
                 {
                     SetErrorMessage(
@@ -87,7 +89,7 @@ namespace ShadowEngine
             }
             if (Object.HasMember("Vertex"))
             {
-                const rapidjson::Value& VertexShader = Object["Vertex"];
+                const RapidJSONValue& VertexShader = Object["Vertex"];
                 if (!VertexShader.IsString() || VertexShader.GetStringLength() == 0)
                 {
                     SetErrorMessage(ErrorMessage, std::string(RendererName) + " Vertex must be a path: " + FilePath.generic_string());
@@ -99,7 +101,7 @@ namespace ShadowEngine
 
             if (Object.HasMember("Fragment"))
             {
-                const rapidjson::Value& PixelShader = Object["Fragment"];
+                const RapidJSONValue& PixelShader = Object["Fragment"];
                 if (!PixelShader.IsString() || PixelShader.GetStringLength() == 0)
                 {
                     SetErrorMessage(ErrorMessage, std::string(RendererName) + " Fragment must be a path: " + FilePath.generic_string());
@@ -111,7 +113,7 @@ namespace ShadowEngine
 
             if (Object.HasMember("Material"))
             {
-                const rapidjson::Value& MaterialShader = Object["Material"];
+                const RapidJSONValue& MaterialShader = Object["Material"];
                 if (!MaterialShader.IsString() || MaterialShader.GetStringLength() == 0)
                 {
                     SetErrorMessage(ErrorMessage, std::string(RendererName) + " Material must be a path: " + FilePath.generic_string());
@@ -122,7 +124,7 @@ namespace ShadowEngine
             }
             if (Object.HasMember("Light"))
             {
-                const rapidjson::Value& LightShader = Object["Light"];
+                const RapidJSONValue& LightShader = Object["Light"];
                 if (!LightShader.IsString() || LightShader.GetStringLength() == 0)
                 {
                     SetErrorMessage(ErrorMessage, std::string(RendererName) + " Light must be a path: " + FilePath.generic_string());
@@ -133,7 +135,7 @@ namespace ShadowEngine
             }
             if (bSurface && Object.HasMember("Surface"))
             {
-                const rapidjson::Value& Surface = Object["Surface"];
+                const RapidJSONValue& Surface = Object["Surface"];
                 Binding.bHasSurface = true;
                 if (!Surface.IsString())
                 {
@@ -165,7 +167,7 @@ namespace ShadowEngine
             }
             if (bSurface && Object.HasMember("TwoSided"))
             {
-                const rapidjson::Value& TwoSided = Object["TwoSided"];
+                const RapidJSONValue& TwoSided = Object["TwoSided"];
                 if (!TwoSided.IsBool())
                 {
                     SetErrorMessage(ErrorMessage, std::string(RendererName) + " TwoSided must be a boolean: " + FilePath.generic_string());
@@ -209,7 +211,7 @@ namespace ShadowEngine
                 return true;
             }
 
-            const rapidjson::Value& Parameters = Object["Parameters"];
+            const RapidJSONValue& Parameters = Object["Parameters"];
             if (!Parameters.IsObject())
             {
                 SetErrorMessage(ErrorMessage, std::string(RendererName) + " Parameters must be an object: " + FilePath.generic_string());
@@ -246,7 +248,7 @@ namespace ShadowEngine
 
                 return true;
             };
-            const auto ReadComponents = [&](const std::string& Name, const rapidjson::Value& Value, uint32 Count, float* Out) -> bool
+            const auto ReadComponents = [&](const std::string& Name, const RapidJSONValue& Value, uint32 Count, float* Out) -> bool
             {
                 if (!Value.IsArray() || Value.Size() != Count)
                 {
@@ -257,7 +259,7 @@ namespace ShadowEngine
                     return false;
                 }
 
-                for (rapidjson::SizeType Index = 0; Index < Count; ++Index)
+                for (size_t Index = 0; Index < Count; ++Index)
                 {
                     if (!Value[Index].IsNumber())
                     {
@@ -273,9 +275,10 @@ namespace ShadowEngine
 
                 return true;
             };
-            for (auto Member = Parameters.MemberBegin(); Member != Parameters.MemberEnd(); ++Member)
+            for (size_t MemberIndex = 0; MemberIndex < Parameters.MemberCount(); ++MemberIndex)
             {
-                const std::string Name = Member->name.GetString();
+                const RapidJSONValue MemberValue = Parameters.MemberValue(MemberIndex);
+                const std::string Name = Parameters.MemberName(MemberIndex).GetString();
                 if (!IsParameterName(Name))
                 {
                     SetErrorMessage(
@@ -284,9 +287,9 @@ namespace ShadowEngine
                     return false;
                 }
 
-                if (Member->value.IsString())
+                if (MemberValue.IsString())
                 {
-                    const std::string TypeName = Member->value.GetString();
+                    const std::string TypeName = MemberValue.GetString();
                     if (TypeName == "texture")
                     {
                         Binding.ShaderTextures.emplace_back(Name, "");
@@ -324,7 +327,7 @@ namespace ShadowEngine
                     continue;
                 }
 
-                if (!Member->value.IsObject() || Member->value.MemberCount() != 1)
+                if (!MemberValue.IsObject() || MemberValue.MemberCount() != 1)
                 {
                     SetErrorMessage(
                         ErrorMessage,
@@ -332,11 +335,12 @@ namespace ShadowEngine
                     return false;
                 }
 
-                const auto TypeMember = Member->value.MemberBegin();
-                const std::string TypeName = TypeMember->name.GetString();
+                const RapidJSONValue TypeNameValue = MemberValue.MemberName(0);
+                const RapidJSONValue TypeValue = MemberValue.MemberValue(0);
+                const std::string TypeName = TypeNameValue.GetString();
                 if (TypeName == "texture")
                 {
-                    if (!TypeMember->value.IsString() || TypeMember->value.GetStringLength() == 0)
+                    if (!TypeValue.IsString() || TypeValue.GetStringLength() == 0)
                     {
                         SetErrorMessage(
                             ErrorMessage,
@@ -346,7 +350,7 @@ namespace ShadowEngine
 
                     Binding.Textures.emplace_back(
                         Name,
-                        std::string(TypeMember->value.GetString(), TypeMember->value.GetStringLength()));
+                        std::string(TypeValue.GetString(), TypeValue.GetStringLength()));
                     continue;
                 }
 
@@ -354,7 +358,7 @@ namespace ShadowEngine
                 Scalar.Name = Name;
                 if (TypeName == "float")
                 {
-                    if (!TypeMember->value.IsNumber())
+                    if (!TypeValue.IsNumber())
                     {
                         SetErrorMessage(
                             ErrorMessage,
@@ -363,12 +367,12 @@ namespace ShadowEngine
                     }
 
                     Scalar.Components = 1;
-                    Scalar.Value[0] = TypeMember->value.GetFloat();
+                    Scalar.Value[0] = TypeValue.GetFloat();
                 }
                 else if (TypeName == "float2")
                 {
                     Scalar.Components = 2;
-                    if (!ReadComponents(Name, TypeMember->value, 2, Scalar.Value))
+                    if (!ReadComponents(Name, TypeValue, 2, Scalar.Value))
                     {
                         return false;
                     }
@@ -376,7 +380,7 @@ namespace ShadowEngine
                 else if (TypeName == "float3")
                 {
                     Scalar.Components = 3;
-                    if (!ReadComponents(Name, TypeMember->value, 3, Scalar.Value))
+                    if (!ReadComponents(Name, TypeValue, 3, Scalar.Value))
                     {
                         return false;
                     }
@@ -384,7 +388,7 @@ namespace ShadowEngine
                 else if (TypeName == "float4")
                 {
                     Scalar.Components = 4;
-                    if (!ReadComponents(Name, TypeMember->value, 4, Scalar.Value))
+                    if (!ReadComponents(Name, TypeValue, 4, Scalar.Value))
                     {
                         return false;
                     }
@@ -420,7 +424,7 @@ namespace ShadowEngine
         MeshDescription& Description,
         std::string* ErrorMessage)
     {
-        rapidjson::Document Document;
+        RapidJSONDocument Document;
         if (!ParseJsonObject(FilePath, "Mesh description", Document, ErrorMessage))
         {
             return false;
@@ -432,22 +436,22 @@ namespace ShadowEngine
             return false;
         }
 
-        const rapidjson::Value& Type = Document["type"];
+        const RapidJSONValue& Type = Document["type"];
         if (!Type.IsString() || std::string(Type.GetString()) != "Mesh")
         {
             SetErrorMessage(ErrorMessage, "Mesh description type must be Mesh: " + FilePath.generic_string());
             return false;
         }
 
-        const rapidjson::Value& Source = Document["source"];
+        const RapidJSONValue& Source = Document["source"];
         if (!Source.IsString() || Source.GetStringLength() == 0)
         {
             SetErrorMessage(ErrorMessage, "Mesh description source must be a path: " + FilePath.generic_string());
             return false;
         }
 
-        const rapidjson::Value& Materials = Document["materials"];
-        if (!Materials.IsArray() || Materials.Empty())
+        const RapidJSONValue& Materials = Document["materials"];
+        if (!Materials.IsArray() || Materials.Size() == 0)
         {
             SetErrorMessage(
                 ErrorMessage,
@@ -458,9 +462,9 @@ namespace ShadowEngine
         const char* const SlotMembers[] = {"slot", "material"};
         MeshDescription Parsed;
         Parsed.Materials.reserve(Materials.Size());
-        for (rapidjson::SizeType Index = 0; Index < Materials.Size(); ++Index)
+        for (size_t Index = 0; Index < Materials.Size(); ++Index)
         {
-            const rapidjson::Value& Entry = Materials[Index];
+            const RapidJSONValue& Entry = Materials[Index];
             if (!Entry.IsObject())
             {
                 SetErrorMessage(ErrorMessage, "Mesh material entry must be an object: " + FilePath.generic_string());
@@ -472,8 +476,8 @@ namespace ShadowEngine
                 return false;
             }
 
-            const rapidjson::Value& Slot = Entry["slot"];
-            const rapidjson::Value& Material = Entry["material"];
+            const RapidJSONValue& Slot = Entry["slot"];
+            const RapidJSONValue& Material = Entry["material"];
             if (!Slot.IsUint())
             {
                 SetErrorMessage(
@@ -515,7 +519,7 @@ namespace ShadowEngine
         MaterialDescription& Description,
         std::string* ErrorMessage)
     {
-        rapidjson::Document Document;
+        RapidJSONDocument Document;
         if (!ParseJsonObject(FilePath, "Material description", Document, ErrorMessage))
         {
             return false;
@@ -527,7 +531,7 @@ namespace ShadowEngine
             return false;
         }
 
-        const rapidjson::Value& Type = Document["Type"];
+        const RapidJSONValue& Type = Document["Type"];
         if (!Type.IsString() || std::string(Type.GetString()) != "Material")
         {
             SetErrorMessage(ErrorMessage, "Material description Type must be Material: " + FilePath.generic_string());
@@ -536,9 +540,11 @@ namespace ShadowEngine
 
         const char* const RendererNames[] = {"BlinnPhong", "Debug", "Principled"};
         MaterialDescription Parsed;
-        for (auto Member = Document.MemberBegin(); Member != Document.MemberEnd(); ++Member)
+        for (size_t MemberIndex = 0; MemberIndex < Document.MemberCount(); ++MemberIndex)
         {
-            if (Member->name == "Type")
+            const RapidJSONValue MemberName = Document.MemberName(MemberIndex);
+            const RapidJSONValue MemberValue = Document.MemberValue(MemberIndex);
+            if (MemberName.NameEquals("Type"))
             {
                 continue;
             }
@@ -546,7 +552,7 @@ namespace ShadowEngine
             bool bKnown = false;
             for (const char* Name : RendererNames)
             {
-                if (Member->name == Name)
+                if (MemberName.NameEquals(Name))
                 {
                     bKnown = true;
                     break;
@@ -556,21 +562,21 @@ namespace ShadowEngine
             {
                 SetErrorMessage(
                     ErrorMessage,
-                    "Material description has unsupported member '" + std::string(Member->name.GetString()) +
+                    "Material description has unsupported member '" + std::string(MemberName.GetString()) +
                         "': " + FilePath.generic_string());
                 return false;
             }
 
-            if (!Member->value.IsObject())
+            if (!MemberValue.IsObject())
             {
                 SetErrorMessage(
                     ErrorMessage,
-                    std::string(Member->name.GetString()) + " must be an object: " + FilePath.generic_string());
+                    std::string(MemberName.GetString()) + " must be an object: " + FilePath.generic_string());
                 return false;
             }
 
             MaterialRendererBinding Binding;
-            if (!ReadRendererBinding(Member->value, FilePath, Member->name.GetString(), Binding, ErrorMessage))
+            if (!ReadRendererBinding(MemberValue, FilePath, MemberName.GetString(), Binding, ErrorMessage))
             {
                 return false;
             }
@@ -593,7 +599,7 @@ namespace ShadowEngine
         TextureDescription& Description,
         std::string* ErrorMessage)
     {
-        rapidjson::Document Document;
+        RapidJSONDocument Document;
         if (!ParseJsonObject(FilePath, "Texture description", Document, ErrorMessage))
         {
             return false;
@@ -605,21 +611,21 @@ namespace ShadowEngine
             return false;
         }
 
-        const rapidjson::Value& Type = Document["Type"];
+        const RapidJSONValue& Type = Document["Type"];
         if (!Type.IsString() || std::string(Type.GetString()) != "Texture")
         {
             SetErrorMessage(ErrorMessage, "Texture description Type must be Texture: " + FilePath.generic_string());
             return false;
         }
 
-        const rapidjson::Value& Source = Document["Source"];
+        const RapidJSONValue& Source = Document["Source"];
         if (!Source.IsString() || Source.GetStringLength() == 0)
         {
             SetErrorMessage(ErrorMessage, "Texture description Source must be a path: " + FilePath.generic_string());
             return false;
         }
 
-        const rapidjson::Value& Encoding = Document["Encoding"];
+        const RapidJSONValue& Encoding = Document["Encoding"];
         if (!Encoding.IsString())
         {
             SetErrorMessage(ErrorMessage, "Texture description Encoding must be sRGB or Linear: " + FilePath.generic_string());

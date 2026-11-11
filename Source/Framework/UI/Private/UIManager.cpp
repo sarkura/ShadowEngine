@@ -3,9 +3,7 @@
 #include "Framework/Config/Public/ConfigManager.h"
 #include "Framework/UI/Public/RenderSettingsPanel.h"
 
-#include <imgui.h>
-
-void ImGui_ImplWin32_NewFrame();
+#include "ThirdPartyAdapter/UI/Public/ImGuiAdapter.h"
 
 namespace ShadowEngine
 {
@@ -78,18 +76,18 @@ namespace ShadowEngine
             return true;
         }
 
-        if (ImGui::GetCurrentContext() == nullptr)
+        if (!ImGuiAdapter::HasContext())
         {
-            ImGui::CreateContext();
+            ImGuiAdapter::CreateContext();
         }
 
-        ImGuiIO& IO = ImGui::GetIO();
+        ImGuiIO& IO = ImGuiAdapter::GetIO();
         IO.IniFilename = nullptr;
         IO.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
         IO.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset | ImGuiBackendFlags_RendererHasTextures;
         IO.BackendRendererName = "ShadowEngine";
 
-        ImGuiPlatformIO& Platform = ImGui::GetPlatformIO();
+        ImGuiPlatformIO& Platform = ImGuiAdapter::GetPlatformIO();
         Platform.DrawCallback_SetSamplerLinear = &SamplerLinearCallback;
         Platform.DrawCallback_SetSamplerNearest = &SamplerNearestCallback;
         Platform.DrawCallback_ResetRenderState = &ResetStateCallback;
@@ -102,9 +100,9 @@ namespace ShadowEngine
 
     void UIManager::Shutdown()
     {
-        if (ImGui::GetCurrentContext() != nullptr)
+        if (ImGuiAdapter::HasContext())
         {
-            ImGui::DestroyContext();
+            ImGuiAdapter::DestroyContext();
         }
         Pipeline = EUIPipeline::None;
         bActive = false;
@@ -167,14 +165,14 @@ namespace ShadowEngine
             return;
         }
 
-        ImGui_ImplWin32_NewFrame();
-        ImGui::NewFrame();
+        ImGuiAdapter::Win32NewFrame();
+        ImGuiAdapter::NewFrame();
         if (bVisible)
         {
             BuildRenderSettingsPanel();
         }
         BuildFrameRateReadout();
-        ImGui::Render();
+        ImGuiAdapter::Render();
     }
 
     UIManager::State UIManager::GetState() const

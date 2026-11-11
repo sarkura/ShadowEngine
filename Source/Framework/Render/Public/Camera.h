@@ -1,7 +1,7 @@
 #pragma once
 
-#include <glm/mat4x4.hpp>
-#include <glm/vec3.hpp>
+#include "ThirdPartyAdapter/Mathematics/Public/GLMAdapter.h"
+
 
 namespace ShadowEngine
 {
@@ -13,13 +13,13 @@ namespace ShadowEngine
             void SetMoveSpeed(float ForwardSpeed, float RightSpeed, float UpSpeed, float DownSpeed);
             void AddLook(float YawDelta, float PitchDelta);
             void Move(float DeltaTime, float Forward, float Right, float Up);
-            [[nodiscard]] glm::mat4 ViewMatrix() const;
-            [[nodiscard]] glm::vec3 GetPosition() const;
+            [[nodiscard]] Mat4 ViewMatrix() const;
+            [[nodiscard]] Vec3 GetPosition() const;
 
         private:
-            [[nodiscard]] glm::vec3 ForwardDirection() const;
+            [[nodiscard]] Vec3 ForwardDirection() const;
 
-            glm::vec3 Position{0.0F, 4.0F, 14.0F};
+            Vec3 Position{0.0F, 4.0F, 14.0F};
             float Yaw = 0.0F;
             float Pitch = 0.0F;
             float ForwardSpeed = 10.0F;

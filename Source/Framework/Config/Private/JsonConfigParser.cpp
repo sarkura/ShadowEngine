@@ -1,3 +1,4 @@
+#include "ThirdPartyAdapter/Serialization/Public/RapidJSONAdapter.h"
 #include "Framework/Config/Private/JsonConfigParser.h"
 
 #include <fstream>
@@ -5,8 +6,6 @@
 #include <sstream>
 #include <utility>
 
-#include <rapidjson/document.h>
-#include <rapidjson/error/en.h>
 
 namespace ShadowEngine
 {
@@ -22,7 +21,7 @@ namespace ShadowEngine
 
         bool ParseJsonFile(
             const std::filesystem::path& FilePath,
-            rapidjson::Document& Document,
+            RapidJSONDocument& Document,
             std::string* ErrorMessage)
         {
             std::ifstream File(FilePath, std::ios::binary);
@@ -38,15 +37,10 @@ namespace ShadowEngine
                 std::istreambuf_iterator<char>(File),
                 std::istreambuf_iterator<char>()};
 
-            Document.Parse(Json.data(), Json.size());
-            if (Document.HasParseError())
+            std::string ParseError;
+            if (!Document.Parse(Json.data(), Json.size(), &ParseError))
             {
-                std::ostringstream Message;
-                Message << "Invalid JSON in " << FilePath.string()
-                        << " at offset " << Document.GetErrorOffset() << ": "
-                        << rapidjson::GetParseError_En(
-                               Document.GetParseError());
-                SetError(ErrorMessage, Message.str());
+                SetError(ErrorMessage, "Invalid JSON in " + FilePath.string() + " " + ParseError);
                 return false;
             }
 
@@ -59,37 +53,37 @@ namespace ShadowEngine
             return true;
         }
 
-        const rapidjson::Value* FindMember(
-            const rapidjson::Value& Object,
+        RapidJSONValue FindMember(
+            const RapidJSONValue& Object,
             const char* Name,
             std::string* ErrorMessage)
         {
-            const auto Member = Object.FindMember(Name);
-            if (Member == Object.MemberEnd())
+            const RapidJSONValue Member = Object.Find(Name);
+            if (!Member.IsValid())
             {
                 SetError(
                     ErrorMessage,
                     std::string("Missing JSON member: ") + Name);
-                return nullptr;
+                return {};
             }
 
-            return &Member->value;
+            return Member;
         }
 
         bool ReadInt(
-            const rapidjson::Value& Object,
+            const RapidJSONValue& Object,
             const char* Name,
             int& Result,
             std::string* ErrorMessage)
         {
-            const rapidjson::Value* Value =
+            RapidJSONValue Value =
                 FindMember(Object, Name, ErrorMessage);
             if (Value == nullptr)
             {
                 return false;
             }
 
-            if (!Value->IsInt())
+            if (!Value.IsInt())
             {
                 SetError(
                     ErrorMessage,
@@ -97,24 +91,24 @@ namespace ShadowEngine
                 return false;
             }
 
-            Result = Value->GetInt();
+            Result = Value.GetInt();
             return true;
         }
 
         bool ReadFloat(
-            const rapidjson::Value& Object,
+            const RapidJSONValue& Object,
             const char* Name,
             float& Result,
             std::string* ErrorMessage)
         {
-            const rapidjson::Value* Value =
+            RapidJSONValue Value =
                 FindMember(Object, Name, ErrorMessage);
             if (Value == nullptr)
             {
                 return false;
             }
 
-            if (!Value->IsNumber())
+            if (!Value.IsNumber())
             {
                 SetError(
                     ErrorMessage,
@@ -122,24 +116,24 @@ namespace ShadowEngine
                 return false;
             }
 
-            Result = Value->GetFloat();
+            Result = Value.GetFloat();
             return true;
         }
 
         bool ReadString(
-            const rapidjson::Value& Object,
+            const RapidJSONValue& Object,
             const char* Name,
             std::string& Result,
             std::string* ErrorMessage)
         {
-            const rapidjson::Value* Value =
+            RapidJSONValue Value =
                 FindMember(Object, Name, ErrorMessage);
             if (Value == nullptr)
             {
                 return false;
             }
 
-            if (!Value->IsString())
+            if (!Value.IsString())
             {
                 SetError(
                     ErrorMessage,
@@ -147,24 +141,24 @@ namespace ShadowEngine
                 return false;
             }
 
-            Result.assign(Value->GetString(), Value->GetStringLength());
+            Result.assign(Value.GetString(), Value.GetStringLength());
             return true;
         }
 
         bool ReadBool(
-            const rapidjson::Value& Object,
+            const RapidJSONValue& Object,
             const char* Name,
             bool& Result,
             std::string* ErrorMessage)
         {
-            const rapidjson::Value* Value =
+            RapidJSONValue Value =
                 FindMember(Object, Name, ErrorMessage);
             if (Value == nullptr)
             {
                 return false;
             }
 
-            if (!Value->IsBool())
+            if (!Value.IsBool())
             {
                 SetError(
                     ErrorMessage,
@@ -172,48 +166,48 @@ namespace ShadowEngine
                 return false;
             }
 
-            Result = Value->GetBool();
+            Result = Value.GetBool();
             return true;
         }
 
-        const rapidjson::Value* FindObject(
-            const rapidjson::Value& Object,
+        RapidJSONValue FindObject(
+            const RapidJSONValue& Object,
             const char* Name,
             std::string* ErrorMessage)
         {
-            const rapidjson::Value* Value =
+            RapidJSONValue Value =
                 FindMember(Object, Name, ErrorMessage);
             if (Value == nullptr)
             {
-                return nullptr;
+                return {};
             }
 
-            if (!Value->IsObject())
+            if (!Value.IsObject())
             {
                 SetError(
                     ErrorMessage,
                     std::string("JSON member must be an object: ") + Name);
-                return nullptr;
+                return {};
             }
 
             return Value;
         }
 
         bool ReadColor(
-            const rapidjson::Value& Object,
+            const RapidJSONValue& Object,
             const char* Name,
             std::vector<float>& Result,
             std::string* ErrorMessage)
         {
-            const rapidjson::Value* Value =
+            RapidJSONValue Value =
                 FindMember(Object, Name, ErrorMessage);
             if (Value == nullptr)
             {
                 return false;
             }
 
-            if (!Value->IsArray() ||
-                (Value->Size() != 3 && Value->Size() != 4))
+            if (!Value.IsArray() ||
+                (Value.Size() != 3 && Value.Size() != 4))
             {
                 SetError(
                     ErrorMessage,
@@ -224,9 +218,10 @@ namespace ShadowEngine
             }
 
             std::vector<float> Color;
-            Color.reserve(Value->Size());
-            for (const rapidjson::Value& Component : Value->GetArray())
+            Color.reserve(Value.Size());
+            for (size_t Index = 0; Index < Value.Size(); ++Index)
             {
+                const RapidJSONValue Component = Value[Index];
                 if (!Component.IsNumber())
                 {
                     SetError(
@@ -245,19 +240,19 @@ namespace ShadowEngine
         }
 
         bool ReadVec3(
-            const rapidjson::Value& Object,
+            const RapidJSONValue& Object,
             const char* Name,
             std::vector<float>& Result,
             std::string* ErrorMessage)
         {
-            const rapidjson::Value* Value =
+            RapidJSONValue Value =
                 FindMember(Object, Name, ErrorMessage);
             if (Value == nullptr)
             {
                 return false;
             }
 
-            if (!Value->IsArray() || Value->Size() != 3)
+            if (!Value.IsArray() || Value.Size() != 3)
             {
                 SetError(
                     ErrorMessage,
@@ -268,8 +263,9 @@ namespace ShadowEngine
 
             std::vector<float> Vector;
             Vector.reserve(3);
-            for (const rapidjson::Value& Component : Value->GetArray())
+            for (size_t Index = 0; Index < Value.Size(); ++Index)
             {
+                const RapidJSONValue Component = Value[Index];
                 if (!Component.IsNumber())
                 {
                     SetError(
@@ -287,7 +283,7 @@ namespace ShadowEngine
         }
 
         bool RequireMembers(
-            const rapidjson::Value& Object,
+            const RapidJSONValue& Object,
             const char* const* Names,
             size_t Count,
             const char* Label,
@@ -312,7 +308,7 @@ namespace ShadowEngine
         }
 
         bool ReadSceneLight(
-            const rapidjson::Value& Item,
+            const RapidJSONValue& Item,
             SceneSetting::Light& Light,
             std::string* ErrorMessage)
         {
@@ -356,24 +352,24 @@ namespace ShadowEngine
             return false;
         }
 
-        const rapidjson::Value* FindArray(
-            const rapidjson::Value& Object,
+        RapidJSONValue FindArray(
+            const RapidJSONValue& Object,
             const char* Name,
             std::string* ErrorMessage)
         {
-            const rapidjson::Value* Value =
+            RapidJSONValue Value =
                 FindMember(Object, Name, ErrorMessage);
             if (Value == nullptr)
             {
-                return nullptr;
+                return {};
             }
 
-            if (!Value->IsArray())
+            if (!Value.IsArray())
             {
                 SetError(
                     ErrorMessage,
                     std::string("JSON member must be an array: ") + Name);
-                return nullptr;
+                return {};
             }
 
             return Value;
@@ -385,20 +381,20 @@ namespace ShadowEngine
         EngineSetting::ViewportSetting& Setting,
         std::string* ErrorMessage)
     {
-        rapidjson::Document Document;
+        RapidJSONDocument Document;
         if (!ParseJsonFile(FilePath, Document, ErrorMessage))
         {
             return false;
         }
 
-        const rapidjson::Value* Viewport =
+        RapidJSONValue Viewport =
             FindMember(Document, "ViewportSetting", ErrorMessage);
         if (Viewport == nullptr)
         {
             return false;
         }
 
-        if (!Viewport->IsObject())
+        if (!Viewport.IsObject())
         {
             SetError(
                 ErrorMessage,
@@ -408,47 +404,47 @@ namespace ShadowEngine
 
         EngineSetting::ViewportSetting ParsedSetting;
         if (!ReadInt(
-                *Viewport,
+                Viewport,
                 "Width",
                 ParsedSetting.Width,
                 ErrorMessage) ||
             !ReadInt(
-                *Viewport,
+                Viewport,
                 "Height",
                 ParsedSetting.Height,
                 ErrorMessage) ||
             !ReadInt(
-                *Viewport,
+                Viewport,
                 "AspectWidth",
                 ParsedSetting.AspectWidth,
                 ErrorMessage) ||
             !ReadInt(
-                *Viewport,
+                Viewport,
                 "AspectHeight",
                 ParsedSetting.AspectHeight,
                 ErrorMessage) ||
             !ReadFloat(
-                *Viewport,
+                Viewport,
                 "FOV",
                 ParsedSetting.FOV,
                 ErrorMessage) ||
             !ReadFloat(
-                *Viewport,
+                Viewport,
                 "NearPlane",
                 ParsedSetting.NearPlane,
                 ErrorMessage) ||
             !ReadFloat(
-                *Viewport,
+                Viewport,
                 "FarPlane",
                 ParsedSetting.FarPlane,
                 ErrorMessage) ||
             !ReadColor(
-                *Viewport,
+                Viewport,
                 "BackgroundColor",
                 ParsedSetting.BackgroundColor,
                 ErrorMessage) ||
             !ReadString(
-                *Viewport,
+                Viewport,
                 "ClearFlags",
                 ParsedSetting.ClearFlags,
                 ErrorMessage))
@@ -520,20 +516,20 @@ namespace ShadowEngine
         EngineSetting::MovementSetting& Setting,
         std::string* ErrorMessage)
     {
-        rapidjson::Document Document;
+        RapidJSONDocument Document;
         if (!ParseJsonFile(FilePath, Document, ErrorMessage))
         {
             return false;
         }
 
-        const rapidjson::Value* Movement =
+        RapidJSONValue Movement =
             FindMember(Document, "MovementSetting", ErrorMessage);
         if (Movement == nullptr)
         {
             return false;
         }
 
-        if (!Movement->IsObject())
+        if (!Movement.IsObject())
         {
             SetError(
                 ErrorMessage,
@@ -543,32 +539,32 @@ namespace ShadowEngine
 
         EngineSetting::MovementSetting ParsedSetting;
         if (!ReadFloat(
-                *Movement,
+                Movement,
                 "ForwardSpeed",
                 ParsedSetting.ForwardSpeed,
                 ErrorMessage) ||
             !ReadFloat(
-                *Movement,
+                Movement,
                 "RightSpeed",
                 ParsedSetting.RightSpeed,
                 ErrorMessage) ||
             !ReadFloat(
-                *Movement,
+                Movement,
                 "UpSpeed",
                 ParsedSetting.UpSpeed,
                 ErrorMessage) ||
             !ReadFloat(
-                *Movement,
+                Movement,
                 "DownSpeed",
                 ParsedSetting.DownSpeed,
                 ErrorMessage) ||
             !ReadFloat(
-                *Movement,
+                Movement,
                 "YawSpeed",
                 ParsedSetting.YawSpeed,
                 ErrorMessage) ||
             !ReadFloat(
-                *Movement,
+                Movement,
                 "PitchSpeed",
                 ParsedSetting.PitchSpeed,
                 ErrorMessage))
@@ -608,13 +604,13 @@ namespace ShadowEngine
         RenderSetting::RHISetting& Setting,
         std::string* ErrorMessage)
     {
-        rapidjson::Document Document;
+        RapidJSONDocument Document;
         if (!ParseJsonFile(FilePath, Document, ErrorMessage))
         {
             return false;
         }
 
-        const rapidjson::Value* RHI =
+        RapidJSONValue RHI =
             FindObject(Document, "RHISetting", ErrorMessage);
         if (RHI == nullptr)
         {
@@ -633,22 +629,22 @@ namespace ShadowEngine
                 ParsedSetting.DefaultMaterial,
                 ErrorMessage) ||
             !ReadString(
-                *RHI,
+                RHI,
                 "Backend",
                 ParsedSetting.Backend,
                 ErrorMessage) ||
             !ReadBool(
-                *RHI,
+                RHI,
                 "VSync",
                 ParsedSetting.bVSync,
                 ErrorMessage) ||
             !ReadBool(
-                *RHI,
+                RHI,
                 "DebugLayer",
                 ParsedSetting.bDebugLayer,
                 ErrorMessage) ||
             !ReadInt(
-                *RHI,
+                RHI,
                 "BackBufferCount",
                 ParsedSetting.BackBufferCount,
                 ErrorMessage))
@@ -704,20 +700,20 @@ namespace ShadowEngine
         SceneSetting::Setting& Setting,
         std::string* ErrorMessage)
     {
-        rapidjson::Document Document;
+        RapidJSONDocument Document;
         if (!ParseJsonFile(FilePath, Document, ErrorMessage))
         {
             return false;
         }
 
-        const rapidjson::Value* Meshes =
+        RapidJSONValue Meshes =
             FindObject(Document, "Mesh", ErrorMessage);
         if (Meshes == nullptr)
         {
             return false;
         }
 
-        const rapidjson::Value* Lights =
+        RapidJSONValue Lights =
             FindArray(Document, "Light", ErrorMessage);
         if (Lights == nullptr)
         {
@@ -725,10 +721,12 @@ namespace ShadowEngine
         }
 
         SceneSetting::Setting ParsedSetting;
-        for (auto Member = Meshes->MemberBegin(); Member != Meshes->MemberEnd(); ++Member)
+        for (size_t MemberIndex = 0; MemberIndex < Meshes.MemberCount(); ++MemberIndex)
         {
-            const std::string MeshPath(Member->name.GetString(), Member->name.GetStringLength());
-            if (!Member->value.IsArray())
+            const RapidJSONValue MemberName = Meshes.MemberName(MemberIndex);
+            const RapidJSONValue MemberValue = Meshes.MemberValue(MemberIndex);
+            const std::string MeshPath(MemberName.GetString(), MemberName.GetStringLength());
+            if (!MemberValue.IsArray())
             {
                 SetError(
                     ErrorMessage,
@@ -738,9 +736,10 @@ namespace ShadowEngine
 
             SceneSetting::Mesh Mesh;
             Mesh.Path = MeshPath;
-            Mesh.Instances.reserve(Member->value.Size());
-            for (const rapidjson::Value& Item : Member->value.GetArray())
+            Mesh.Instances.reserve(MemberValue.Size());
+            for (size_t ItemIndex = 0; ItemIndex < MemberValue.Size(); ++ItemIndex)
             {
+                const RapidJSONValue Item = MemberValue[ItemIndex];
                 if (!Item.IsObject())
                 {
                     SetError(ErrorMessage, "Each mesh instance must be an object: " + MeshPath);
@@ -748,12 +747,12 @@ namespace ShadowEngine
                 }
 
                 SceneSetting::MeshInstance Instance;
-                const rapidjson::Value* TransformValue =
+                RapidJSONValue TransformValue =
                     FindObject(Item, "Transform", ErrorMessage);
                 if (TransformValue == nullptr ||
-                    !ReadVec3(*TransformValue, "Translation", Instance.Transform.Translation, ErrorMessage) ||
-                    !ReadVec3(*TransformValue, "Rotation", Instance.Transform.Rotation, ErrorMessage) ||
-                    !ReadVec3(*TransformValue, "Scale", Instance.Transform.Scale, ErrorMessage))
+                    !ReadVec3(TransformValue, "Translation", Instance.Transform.Translation, ErrorMessage) ||
+                    !ReadVec3(TransformValue, "Rotation", Instance.Transform.Rotation, ErrorMessage) ||
+                    !ReadVec3(TransformValue, "Scale", Instance.Transform.Scale, ErrorMessage))
                 {
                     return false;
                 }
@@ -764,9 +763,10 @@ namespace ShadowEngine
             ParsedSetting.Meshes.push_back(std::move(Mesh));
         }
 
-        ParsedSetting.Lights.reserve(Lights->Size());
-        for (const rapidjson::Value& Item : Lights->GetArray())
+        ParsedSetting.Lights.reserve(Lights.Size());
+        for (size_t ItemIndex = 0; ItemIndex < Lights.Size(); ++ItemIndex)
         {
+            const RapidJSONValue Item = Lights[ItemIndex];
             if (!Item.IsObject())
             {
                 SetError(ErrorMessage, "Each Light entry must be an object");
@@ -877,7 +877,7 @@ namespace ShadowEngine
         GlobalTextureSetting::Setting& Setting,
         std::string* ErrorMessage)
     {
-        rapidjson::Document Document;
+        RapidJSONDocument Document;
         if (!ParseJsonFile(FilePath, Document, ErrorMessage))
         {
             return false;

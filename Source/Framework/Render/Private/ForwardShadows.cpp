@@ -1,3 +1,4 @@
+#include "ThirdPartyAdapter/Mathematics/Public/GLMAdapter.h"
 #include "Framework/Render/Public/ForwardShadows.h"
 
 #include "Framework/Asset/Public/AssetManager.h"
@@ -12,12 +13,6 @@
 #include "Framework/RHI/Public/RHITexture.h"
 #include "Framework/Shader/Public/ShaderManager.h"
 
-#include <glm/common.hpp>
-#include <glm/ext/matrix_clip_space.hpp>
-#include <glm/ext/matrix_transform.hpp>
-#include <glm/geometric.hpp>
-#include <glm/gtc/type_ptr.hpp>
-#include <glm/trigonometric.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -56,10 +51,10 @@ namespace ShadowEngine
             bool bClip = false;
         };
 
-        glm::vec3 TransformPoint(const float World[16], float X, float Y, float Z)
+        Vec3 TransformPoint(const float World[16], float X, float Y, float Z)
         {
-            const glm::vec4 Result = glm::make_mat4(World) * glm::vec4(X, Y, Z, 1.0F);
-            return glm::vec3(Result);
+            const Vec4 Result = GLMAdapter::MakeMat4(World) * Vec4(X, Y, Z, 1.0F);
+            return Vec3(Result);
         }
 
         bool FitDirectionalClip(
@@ -70,16 +65,16 @@ namespace ShadowEngine
             float OutClip[16],
             float& OutWorldTexel)
         {
-            const glm::vec3 RawDirection(Light.Direction[0], Light.Direction[1], Light.Direction[2]);
-            if (glm::length(RawDirection) < 0.0001F)
+            const Vec3 RawDirection(Light.Direction[0], Light.Direction[1], Light.Direction[2]);
+            if (GLMAdapter::Length(RawDirection) < 0.0001F)
             {
                 return false;
             }
 
-            const glm::vec3 Direction = glm::normalize(RawDirection);
+            const Vec3 Direction = GLMAdapter::Normalize(RawDirection);
             bool bAny = false;
-            glm::vec3 BoundsMin(0.0F);
-            glm::vec3 BoundsMax(0.0F);
+            Vec3 BoundsMin(0.0F);
+            Vec3 BoundsMax(0.0F);
             for (const MeshRenderProxy& Caster : Casters)
             {
                 const MeshAsset* Mesh = Assets.ResolveMesh(Caster.Mesh);
@@ -114,7 +109,7 @@ namespace ShadowEngine
                     const MeshSection& Bounds = Sections[Section];
                     for (uint32 Corner = 0; Corner < 8; ++Corner)
                     {
-                        const glm::vec3 Point = TransformPoint(
+                        const Vec3 Point = TransformPoint(
                             Caster.World,
                             (Corner & 1U) != 0U ? Bounds.BoundsMax[0] : Bounds.BoundsMin[0],
                             (Corner & 2U) != 0U ? Bounds.BoundsMax[1] : Bounds.BoundsMin[1],
@@ -127,8 +122,8 @@ namespace ShadowEngine
                         }
                         else
                         {
-                            BoundsMin = glm::min(BoundsMin, Point);
-                            BoundsMax = glm::max(BoundsMax, Point);
+                            BoundsMin = GLMAdapter::Min(BoundsMin, Point);
+                            BoundsMax = GLMAdapter::Max(BoundsMax, Point);
                         }
                     }
                 }
@@ -138,15 +133,15 @@ namespace ShadowEngine
                 return false;
             }
 
-            const glm::vec3 Center = (BoundsMin + BoundsMax) * 0.5F;
-            const float Radius = glm::length(BoundsMax - BoundsMin) * 0.5F + 1.0F;
-            const glm::vec3 Eye = Center - Direction * Radius;
-            const glm::vec3 Up = std::abs(Direction.y) > 0.99F ? glm::vec3(0.0F, 0.0F, 1.0F) : glm::vec3(0.0F, 1.0F, 0.0F);
-            const glm::mat4 LightView = glm::lookAtRH(Eye, Center, Up);
+            const Vec3 Center = (BoundsMin + BoundsMax) * 0.5F;
+            const float Radius = GLMAdapter::Length(BoundsMax - BoundsMin) * 0.5F + 1.0F;
+            const Vec3 Eye = Center - Direction * Radius;
+            const Vec3 Up = std::abs(Direction.y) > 0.99F ? Vec3(0.0F, 0.0F, 1.0F) : Vec3(0.0F, 1.0F, 0.0F);
+            const Mat4 LightView = GLMAdapter::LookAtRH(Eye, Center, Up);
 
             bool bView = false;
-            glm::vec3 ViewMin(0.0F);
-            glm::vec3 ViewMax(0.0F);
+            Vec3 ViewMin(0.0F);
+            Vec3 ViewMax(0.0F);
             for (const MeshRenderProxy& Caster : Casters)
             {
                 const MeshAsset* Mesh = Assets.ResolveMesh(Caster.Mesh);
@@ -167,12 +162,12 @@ namespace ShadowEngine
                     const MeshSection& Bounds = Sections[Section];
                     for (uint32 Corner = 0; Corner < 8; ++Corner)
                     {
-                        const glm::vec3 WorldPoint = TransformPoint(
+                        const Vec3 WorldPoint = TransformPoint(
                             Caster.World,
                             (Corner & 1U) != 0U ? Bounds.BoundsMax[0] : Bounds.BoundsMin[0],
                             (Corner & 2U) != 0U ? Bounds.BoundsMax[1] : Bounds.BoundsMin[1],
                             (Corner & 4U) != 0U ? Bounds.BoundsMax[2] : Bounds.BoundsMin[2]);
-                        const glm::vec3 ViewPoint = glm::vec3(LightView * glm::vec4(WorldPoint, 1.0F));
+                        const Vec3 ViewPoint = Vec3(LightView * Vec4(WorldPoint, 1.0F));
                         if (!bView)
                         {
                             ViewMin = ViewPoint;
@@ -181,8 +176,8 @@ namespace ShadowEngine
                         }
                         else
                         {
-                            ViewMin = glm::min(ViewMin, ViewPoint);
-                            ViewMax = glm::max(ViewMax, ViewPoint);
+                            ViewMin = GLMAdapter::Min(ViewMin, ViewPoint);
+                            ViewMax = GLMAdapter::Max(ViewMax, ViewPoint);
                         }
                     }
                 }
@@ -201,7 +196,7 @@ namespace ShadowEngine
                 Far = Near + 1.0F;
             }
 
-            const glm::mat4 Clip = glm::orthoRH_ZO(
+            const Mat4 Clip = GLMAdapter::OrthoRH_ZO(
                 ViewMin.x - PadX,
                 ViewMax.x + PadX,
                 ViewMin.y - PadY,
@@ -211,7 +206,7 @@ namespace ShadowEngine
             const float ExtentX = (ViewMax.x - ViewMin.x) + PadX * 2.0F;
             const float ExtentY = (ViewMax.y - ViewMin.y) + PadY * 2.0F;
             OutWorldTexel = std::max(ExtentX, ExtentY) / static_cast<float>(DirectionalShadowSize);
-            std::memcpy(OutClip, glm::value_ptr(Clip), sizeof(float) * 16);
+            std::memcpy(OutClip, GLMAdapter::ValuePtr(Clip), sizeof(float) * 16);
             return true;
         }
 
@@ -438,7 +433,7 @@ namespace ShadowEngine
         if (LightSettings.bDirectionalShadow && DirectLight != nullptr && DirectLight->Intensity > 0.0F &&
             FitDirectionalClip(Batches, Casters, Assets, *DirectLight, DirectClip, WorldTexel))
         {
-            const glm::mat4 Clip = glm::make_mat4(DirectClip);
+            const Mat4 Clip = GLMAdapter::MakeMat4(DirectClip);
             for (int Row = 0; Row < 4; ++Row)
             {
                 Binding.DirectRow[Row][0] = Clip[0][Row];
@@ -500,7 +495,7 @@ namespace ShadowEngine
             }
         }
 
-        static const glm::vec3 FaceDirection[6] = {
+        static const Vec3 FaceDirection[6] = {
             {1.0F, 0.0F, 0.0F},
             {-1.0F, 0.0F, 0.0F},
             {0.0F, 1.0F, 0.0F},
@@ -508,7 +503,7 @@ namespace ShadowEngine
             {0.0F, 0.0F, 1.0F},
             {0.0F, 0.0F, -1.0F},
         };
-        static const glm::vec3 FaceUp[6] = {
+        static const Vec3 FaceUp[6] = {
             {0.0F, 1.0F, 0.0F},
             {0.0F, 1.0F, 0.0F},
             {0.0F, 0.0F, -1.0F},
@@ -525,15 +520,15 @@ namespace ShadowEngine
             }
 
             const PointLightRenderProxy& Point = ActivePoints[LightIndex];
-            const glm::vec3 Eye(Point.Position[0], Point.Position[1], Point.Position[2]);
+            const Vec3 Eye(Point.Position[0], Point.Position[1], Point.Position[2]);
             const float Far = std::max(Point.Radius, 0.1F);
-            const glm::mat4 Projection = glm::perspectiveRH_ZO(glm::radians(90.0F), 1.0F, 0.05F, Far);
+            const Mat4 Projection = GLMAdapter::PerspectiveRH_ZO(GLMAdapter::Radians(90.0F), 1.0F, 0.05F, Far);
             const float LightPosition[4] = {Point.Position[0], Point.Position[1], Point.Position[2], Point.Radius};
             for (uint32 Face = 0; Face < 6; ++Face)
             {
-                const glm::mat4 Clip = Projection * glm::lookAtRH(Eye, Eye + FaceDirection[Face], FaceUp[Face]);
+                const Mat4 Clip = Projection * GLMAdapter::LookAtRH(Eye, Eye + FaceDirection[Face], FaceUp[Face]);
                 float ViewProjection[16];
-                std::memcpy(ViewProjection, glm::value_ptr(Clip), sizeof(ViewProjection));
+                std::memcpy(ViewProjection, GLMAdapter::ValuePtr(Clip), sizeof(ViewProjection));
                 if (PointTwoSidedPipeline == nullptr ||
                     !AppendCasters(
                         Draws,

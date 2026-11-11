@@ -4,7 +4,7 @@
 #include "Framework/Config/Public/UIConfigSetting.h"
 #include "Framework/UI/Public/UIManager.h"
 
-#include <imgui.h>
+#include "ThirdPartyAdapter/UI/Public/ImGuiAdapter.h"
 
 namespace ShadowEngine
 {
@@ -12,71 +12,71 @@ namespace ShadowEngine
     {
         bool Slider(const char* Label, float* Value, float Minimum, float Maximum)
         {
-            ImGui::TextUnformatted(Label);
-            ImGui::SetNextItemWidth(-FLT_MIN);
-            ImGui::PushID(Label);
-            const bool bChanged = ImGui::SliderFloat("##Value", Value, Minimum, Maximum, "%.3f");
-            ImGui::PopID();
+            ImGuiAdapter::TextUnformatted(Label);
+            ImGuiAdapter::SetNextItemWidth(-FLT_MIN);
+            ImGuiAdapter::PushID(Label);
+            const bool bChanged = ImGuiAdapter::SliderFloat("##Value", Value, Minimum, Maximum, "%.3f");
+            ImGuiAdapter::PopID();
             return bChanged;
         }
 
         void PlacePanel(const char* Title)
         {
-            const ImGuiViewport* Viewport = ImGui::GetMainViewport();
+            const ImGuiViewport* Viewport = ImGuiAdapter::GetMainViewport();
             constexpr float PanelWidth = 320.0F;
             constexpr float Margin = 8.0F;
             const float PanelHeight = Viewport->WorkSize.y - Margin * 2.0F;
-            ImGui::SetNextWindowPos(
+            ImGuiAdapter::SetNextWindowPos(
                 ImVec2(Viewport->WorkPos.x + Viewport->WorkSize.x - PanelWidth - Margin, Viewport->WorkPos.y + Margin),
                 ImGuiCond_Always);
-            ImGui::SetNextWindowSize(ImVec2(PanelWidth, PanelHeight > 1.0F ? PanelHeight : 1.0F), ImGuiCond_Always);
+            ImGuiAdapter::SetNextWindowSize(ImVec2(PanelWidth, PanelHeight > 1.0F ? PanelHeight : 1.0F), ImGuiCond_Always);
             constexpr ImGuiWindowFlags WindowFlags =
                 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings;
-            ImGui::Begin(Title, nullptr, WindowFlags);
+            ImGuiAdapter::Begin(Title, nullptr, WindowFlags);
         }
 
         template<typename PostSetting>
         bool EditPost(PostSetting& Post)
         {
             bool bChanged = false;
-            if (ImGui::CollapsingHeader("Post", ImGuiTreeNodeFlags_DefaultOpen))
+            if (ImGuiAdapter::CollapsingHeader("Post", ImGuiTreeNodeFlags_DefaultOpen))
             {
-                if (ImGui::TreeNodeEx("TAA", ImGuiTreeNodeFlags_DefaultOpen))
+                if (ImGuiAdapter::TreeNodeEx("TAA", ImGuiTreeNodeFlags_DefaultOpen))
                 {
-                    bChanged |= ImGui::Checkbox("Enable", &Post.bTAA);
-                    ImGui::BeginDisabled(!Post.bTAA);
+                    bChanged |= ImGuiAdapter::Checkbox("Enable", &Post.bTAA);
+                    ImGuiAdapter::BeginDisabled(!Post.bTAA);
                     bChanged |= Slider("Current Weight", &Post.TAACurrentWeight, 0.01F, 1.0F);
-                    ImGui::EndDisabled();
-                    ImGui::TreePop();
+                    ImGuiAdapter::EndDisabled();
+                    ImGuiAdapter::TreePop();
                 }
 
-                if (ImGui::TreeNodeEx("Auto Exposure", ImGuiTreeNodeFlags_DefaultOpen))
+                if (ImGuiAdapter::TreeNodeEx("Auto Exposure", ImGuiTreeNodeFlags_DefaultOpen))
                 {
-                    bChanged |= ImGui::Checkbox("Enable", &Post.bAutoExposure);
-                    ImGui::BeginDisabled(!Post.bAutoExposure);
+                    bChanged |= ImGuiAdapter::Checkbox("Enable", &Post.bAutoExposure);
+                    ImGuiAdapter::BeginDisabled(!Post.bAutoExposure);
                     bChanged |= Slider("Middle Grey", &Post.ExposureMiddleGrey, 0.01F, 1.0F);
                     bChanged |= Slider("Minimum", &Post.ExposureMinimum, 0.001F, 4.0F);
                     bChanged |= Slider("Maximum", &Post.ExposureMaximum, 0.05F, 32.0F);
                     bChanged |= Slider("Adapt Speed", &Post.ExposureAdaptSpeed, 0.0F, 10.0F);
-                    ImGui::EndDisabled();
-                    ImGui::TreePop();
+                    ImGuiAdapter::EndDisabled();
+                    ImGuiAdapter::TreePop();
                 }
 
-                if (ImGui::TreeNodeEx("Bloom", ImGuiTreeNodeFlags_DefaultOpen))
+                if (ImGuiAdapter::TreeNodeEx("Bloom", ImGuiTreeNodeFlags_DefaultOpen))
                 {
-                    bChanged |= ImGui::Checkbox("Enable", &Post.bBloom);
-                    ImGui::BeginDisabled(!Post.bBloom);
+                    bChanged |= ImGuiAdapter::Checkbox("Enable", &Post.bBloom);
+                    ImGuiAdapter::BeginDisabled(!Post.bBloom);
                     bChanged |= Slider("Threshold", &Post.BloomThreshold, 0.0F, 8.0F);
                     bChanged |= Slider("Strength", &Post.BloomStrength, 0.0F, 1.0F);
                     bChanged |= Slider("Limit", &Post.BloomLimit, 0.5F, 16.0F);
-                    ImGui::EndDisabled();
-                    ImGui::TreePop();
+                    ImGuiAdapter::EndDisabled();
+                    ImGuiAdapter::TreePop();
                 }
 
-                if (ImGui::TreeNodeEx("Tonemap", ImGuiTreeNodeFlags_DefaultOpen))
+                if (ImGuiAdapter::TreeNodeEx("Tonemap", ImGuiTreeNodeFlags_DefaultOpen))
                 {
-                    bChanged |= ImGui::Checkbox("Dither", &Post.bTonemapDither);
-                    ImGui::TreePop();
+                    bChanged |= ImGuiAdapter::Checkbox("Dither", &Post.bTonemapDither);
+                    ImGuiAdapter::TreePop();
                 }
             }
             return bChanged;
@@ -86,31 +86,31 @@ namespace ShadowEngine
         bool EditLight(LightSetting& Light)
         {
             bool bChanged = false;
-            if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen))
+            if (ImGuiAdapter::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen))
             {
-                if (ImGui::TreeNodeEx("Shadows", ImGuiTreeNodeFlags_DefaultOpen))
+                if (ImGuiAdapter::TreeNodeEx("Shadows", ImGuiTreeNodeFlags_DefaultOpen))
                 {
-                    bChanged |= ImGui::Checkbox("Directional", &Light.bDirectionalShadow);
-                    ImGui::BeginDisabled(!Light.bDirectionalShadow);
+                    bChanged |= ImGuiAdapter::Checkbox("Directional", &Light.bDirectionalShadow);
+                    ImGuiAdapter::BeginDisabled(!Light.bDirectionalShadow);
                     bChanged |= Slider("Normal Bias", &Light.ShadowNormalBias, 0.0F, 0.2F);
-                    ImGui::EndDisabled();
-                    bChanged |= ImGui::Checkbox("Point", &Light.bPointShadow);
-                    ImGui::BeginDisabled(!Light.bPointShadow);
+                    ImGuiAdapter::EndDisabled();
+                    bChanged |= ImGuiAdapter::Checkbox("Point", &Light.bPointShadow);
+                    ImGuiAdapter::BeginDisabled(!Light.bPointShadow);
                     bChanged |= Slider("Depth Bias", &Light.PointShadowDepthBias, 0.0F, 0.05F);
-                    ImGui::EndDisabled();
-                    ImGui::TreePop();
+                    ImGuiAdapter::EndDisabled();
+                    ImGuiAdapter::TreePop();
                 }
 
-                if (ImGui::TreeNodeEx("Image Based Lighting", ImGuiTreeNodeFlags_DefaultOpen))
+                if (ImGuiAdapter::TreeNodeEx("Image Based Lighting", ImGuiTreeNodeFlags_DefaultOpen))
                 {
-                    bChanged |= ImGui::Checkbox("Enable", &Light.bImageBasedLighting);
-                    ImGui::TreePop();
+                    bChanged |= ImGuiAdapter::Checkbox("Enable", &Light.bImageBasedLighting);
+                    ImGuiAdapter::TreePop();
                 }
 
-                if (ImGui::TreeNodeEx("Sky", ImGuiTreeNodeFlags_DefaultOpen))
+                if (ImGuiAdapter::TreeNodeEx("Sky", ImGuiTreeNodeFlags_DefaultOpen))
                 {
-                    bChanged |= ImGui::Checkbox("Enable", &Light.bSkyBackground);
-                    ImGui::TreePop();
+                    bChanged |= ImGuiAdapter::Checkbox("Enable", &Light.bSkyBackground);
+                    ImGuiAdapter::TreePop();
                 }
             }
             return bChanged;
@@ -120,12 +120,12 @@ namespace ShadowEngine
         bool EditInsight(InsightSetting& Insight)
         {
             bool bChanged = false;
-            if (ImGui::CollapsingHeader("Insight", ImGuiTreeNodeFlags_DefaultOpen))
+            if (ImGuiAdapter::CollapsingHeader("Insight", ImGuiTreeNodeFlags_DefaultOpen))
             {
-                if (ImGui::TreeNodeEx("FPS", ImGuiTreeNodeFlags_DefaultOpen))
+                if (ImGuiAdapter::TreeNodeEx("FPS", ImGuiTreeNodeFlags_DefaultOpen))
                 {
-                    bChanged |= ImGui::Checkbox("Enable", &Insight.bShowFrameRate);
-                    ImGui::TreePop();
+                    bChanged |= ImGuiAdapter::Checkbox("Enable", &Insight.bShowFrameRate);
+                    ImGuiAdapter::TreePop();
                 }
             }
             return bChanged;
@@ -144,7 +144,7 @@ namespace ShadowEngine
             {
                 ConfigManager::Get().SubmitDeferredUISetting(Setting);
             }
-            ImGui::End();
+            ImGuiAdapter::End();
             return;
         }
 
@@ -157,7 +157,7 @@ namespace ShadowEngine
             {
                 ConfigManager::Get().SubmitForwardUISetting(Setting);
             }
-            ImGui::End();
+            ImGuiAdapter::End();
             return;
         }
 
@@ -169,7 +169,7 @@ namespace ShadowEngine
             {
                 ConfigManager::Get().SubmitBlinnPhongUISetting(Setting);
             }
-            ImGui::End();
+            ImGuiAdapter::End();
             return;
         }
 
@@ -181,7 +181,7 @@ namespace ShadowEngine
             {
                 ConfigManager::Get().SubmitDebugUISetting(Setting);
             }
-            ImGui::End();
+            ImGuiAdapter::End();
         }
     }
 
@@ -192,18 +192,18 @@ namespace ShadowEngine
             return;
         }
 
-        const ImGuiViewport* Viewport = ImGui::GetMainViewport();
-        ImGui::SetNextWindowPos(ImVec2(Viewport->WorkPos.x + 12.0F, Viewport->WorkPos.y + 12.0F), ImGuiCond_Always);
-        ImGui::SetNextWindowBgAlpha(0.45F);
+        const ImGuiViewport* Viewport = ImGuiAdapter::GetMainViewport();
+        ImGuiAdapter::SetNextWindowPos(ImVec2(Viewport->WorkPos.x + 12.0F, Viewport->WorkPos.y + 12.0F), ImGuiCond_Always);
+        ImGuiAdapter::SetNextWindowBgAlpha(0.45F);
         constexpr ImGuiWindowFlags WindowFlags =
             ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
             ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove |
             ImGuiWindowFlags_NoInputs;
-        if (ImGui::Begin("Frame Rate", nullptr, WindowFlags))
+        if (ImGuiAdapter::Begin("Frame Rate", nullptr, WindowFlags))
         {
-            const int Rate = static_cast<int>(ImGui::GetIO().Framerate + 0.5F);
-            ImGui::Text("%d", Rate);
+            const int Rate = static_cast<int>(ImGuiAdapter::GetIO().Framerate + 0.5F);
+            ImGuiAdapter::Text("%d", Rate);
         }
-        ImGui::End();
+        ImGuiAdapter::End();
     }
 }

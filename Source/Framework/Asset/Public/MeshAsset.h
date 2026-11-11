@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CookedAsset/Public/MeshVertex.h"
 #include "Framework/Asset/Public/Asset.h"
 #include "Framework/Material/Public/MaterialHandle.h"
 
@@ -7,16 +8,6 @@
 
 namespace ShadowEngine
 {
-    struct MeshVertex
-    {
-        float Position[3];
-        float Normal[3];
-        float Color[3];
-        float TexCoord[2];
-    };
-
-    static_assert(sizeof(MeshVertex) == 44);
-
     struct MeshSection
     {
         std::vector<MeshVertex> Vertices;

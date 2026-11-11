@@ -1,7 +1,6 @@
+#include "ThirdPartyAdapter/Mathematics/Public/GLMAdapter.h"
 #include "Framework/Scene/Public/Transform.h"
 
-#include <glm/ext/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
 
 #include <cstring>
 
@@ -30,12 +29,12 @@ namespace ShadowEngine
 
     void Transform::WriteWorldMatrix(float* OutMatrix) const
     {
-        const glm::mat4 Matrix =
-            glm::translate(glm::mat4(1.0F), glm::vec3(TranslationX, TranslationY, TranslationZ)) *
-            glm::rotate(glm::mat4(1.0F), Yaw, glm::vec3(0.0F, 1.0F, 0.0F)) *
-            glm::rotate(glm::mat4(1.0F), Pitch, glm::vec3(1.0F, 0.0F, 0.0F)) *
-            glm::rotate(glm::mat4(1.0F), Roll, glm::vec3(0.0F, 0.0F, 1.0F)) *
-            glm::scale(glm::mat4(1.0F), glm::vec3(ScaleX, ScaleY, ScaleZ));
-        std::memcpy(OutMatrix, glm::value_ptr(Matrix), sizeof(float) * 16);
+        const Mat4 Matrix =
+            GLMAdapter::Translate(Mat4(1.0F), Vec3(TranslationX, TranslationY, TranslationZ)) *
+            GLMAdapter::Rotate(Mat4(1.0F), Yaw, Vec3(0.0F, 1.0F, 0.0F)) *
+            GLMAdapter::Rotate(Mat4(1.0F), Pitch, Vec3(1.0F, 0.0F, 0.0F)) *
+            GLMAdapter::Rotate(Mat4(1.0F), Roll, Vec3(0.0F, 0.0F, 1.0F)) *
+            GLMAdapter::Scale(Mat4(1.0F), Vec3(ScaleX, ScaleY, ScaleZ));
+        std::memcpy(OutMatrix, GLMAdapter::ValuePtr(Matrix), sizeof(float) * 16);
     }
 }
