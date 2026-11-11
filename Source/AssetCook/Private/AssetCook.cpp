@@ -409,31 +409,4 @@ namespace ShadowEngine
         BuildMips(Texture, Encoding);
         return SaveCookedTexture(Output, Texture, ErrorMessage);
     }
-
-    bool CookEnvironment(const std::filesystem::path& Source, const std::filesystem::path& Output, std::string* ErrorMessage)
-    {
-        int Width = 0;
-        int Height = 0;
-        int Channels = 0;
-        float* Pixels = STBAdapter::LoadImageFloat(Source.generic_string().c_str(), &Width, &Height, &Channels, 4);
-        if (Pixels == nullptr)
-        {
-            const char* Reason = STBAdapter::GetFailureReason();
-            SetError(ErrorMessage, "Unable to load environment map " + Source.generic_string() + ": " + (Reason != nullptr ? Reason : "unknown error"));
-            return false;
-        }
-
-        CookedTexture Texture;
-        Texture.Format = ECookedTextureFormat::RGBA32_Float;
-        Texture.Encoding = ECookedTextureEncoding::Linear;
-        CookedTextureMip Mip;
-        Mip.Width = static_cast<uint32>(Width);
-        Mip.Height = static_cast<uint32>(Height);
-        const size_t ByteCount = static_cast<size_t>(Width) * static_cast<size_t>(Height) * 4 * sizeof(float);
-        Mip.Pixels.resize(ByteCount);
-        std::memcpy(Mip.Pixels.data(), Pixels, ByteCount);
-        STBAdapter::FreeImage(Pixels);
-        Texture.Mips.push_back(std::move(Mip));
-        return SaveCookedTexture(Output, Texture, ErrorMessage);
-    }
 }

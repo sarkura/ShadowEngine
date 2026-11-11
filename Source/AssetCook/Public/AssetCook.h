@@ -25,9 +25,4 @@ namespace ShadowEngine
         ECookedTextureEncoding Encoding,
         const std::filesystem::path& Output,
         std::string* ErrorMessage);
-
-    [[nodiscard]] bool CookEnvironment(
-        const std::filesystem::path& Source,
-        const std::filesystem::path& Output,
-        std::string* ErrorMessage);
 }

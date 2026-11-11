@@ -265,89 +265,6 @@ namespace
         return true;
     }
 
-    bool WriteEnvironmentConfig(const std::filesystem::path& ProjectRoot, const std::filesystem::path& FileName, std::string* ErrorMessage)
-    {
-        const std::filesystem::path ConfigPath = ProjectRoot / "Config" / "GlobalTexture.json";
-        std::error_code Error;
-        std::filesystem::create_directories(ConfigPath.parent_path(), Error);
-        std::ofstream Output(ConfigPath, std::ios::binary | std::ios::trunc);
-        if (!Output)
-        {
-            if (ErrorMessage != nullptr)
-            {
-                *ErrorMessage = "Unable to write " + ConfigPath.generic_string();
-            }
-            return false;
-        }
-
-        Output << "{\n    \"EnvironmentMap\": \"Assets/Environment/" << FileName.generic_string() << "\"\n}\n";
-        if (!Output)
-        {
-            if (ErrorMessage != nullptr)
-            {
-                *ErrorMessage = "Unable to write " + ConfigPath.generic_string();
-            }
-            return false;
-        }
-
-        std::cout << "Wrote environment config " << ConfigPath.generic_string() << '\n';
-        return true;
-    }
-
-    bool ImportEnvironment(const std::filesystem::path& InputDirectory, const std::filesystem::path& ProjectRoot, std::string* ErrorMessage)
-    {
-        if (!InputDirectory.is_absolute())
-        {
-            if (ErrorMessage != nullptr)
-            {
-                *ErrorMessage = "Environment input must be an absolute directory: " + InputDirectory.generic_string();
-            }
-            return false;
-        }
-
-        if (!std::filesystem::is_directory(InputDirectory))
-        {
-            if (ErrorMessage != nullptr)
-            {
-                *ErrorMessage = "Environment input directory does not exist: " + InputDirectory.generic_string();
-            }
-            return false;
-        }
-
-        std::vector<std::filesystem::path> Sources;
-        for (const std::filesystem::directory_entry& Entry : std::filesystem::directory_iterator(InputDirectory))
-        {
-            if (Entry.is_regular_file() && EndsWith(Entry.path().generic_string(), ".hdr"))
-            {
-                Sources.push_back(Entry.path());
-            }
-        }
-
-        if (Sources.size() != 1)
-        {
-            if (ErrorMessage != nullptr)
-            {
-                *ErrorMessage = "Environment input directory must contain one .hdr file: " + InputDirectory.generic_string();
-            }
-            return false;
-        }
-
-        const std::filesystem::path OutputDirectory = ProjectRoot / "Assets" / "Environment";
-        const std::filesystem::path Output = OutputDirectory / Sources[0].filename().replace_extension(".setex");
-        std::string Error;
-        if (!ShadowEngine::CookEnvironment(Sources[0], Output, &Error))
-        {
-            if (ErrorMessage != nullptr)
-            {
-                *ErrorMessage = Error;
-            }
-            return false;
-        }
-
-        std::cout << "Cooked environment " << Output.generic_string() << '\n';
-        return WriteEnvironmentConfig(ProjectRoot, Sources[0].filename(), ErrorMessage);
-    }
-
     bool ClearScene(const std::filesystem::path& ProjectRoot, std::string* ErrorMessage)
     {
         if (!CleanMeshAssets(ProjectRoot, ErrorMessage))
@@ -420,7 +337,6 @@ int main(int ArgumentCount, char** Arguments)
     if (ArgumentCount < 2)
     {
         std::cerr << "Usage: AssetImportTool scene <ExportDirectory> <ProjectRoot>\n";
-        std::cerr << "       AssetImportTool environment <InputDirectory> <ProjectRoot>\n";
         std::cerr << "       AssetImportTool clear <ProjectRoot>\n";
         return 1;
     }
@@ -448,7 +364,6 @@ int main(int ArgumentCount, char** Arguments)
     if (ArgumentCount < 4)
     {
         std::cerr << "Usage: AssetImportTool scene <ExportDirectory> <ProjectRoot>\n";
-        std::cerr << "       AssetImportTool environment <InputDirectory> <ProjectRoot>\n";
         std::cerr << "       AssetImportTool clear <ProjectRoot>\n";
         return 1;
     }
@@ -464,17 +379,6 @@ int main(int ArgumentCount, char** Arguments)
         }
 
         if (!CleanMeshAssets(ProjectRoot, &Error) || !CookExport(Input, ProjectRoot, &Error) || !CopyConfig(Input, ProjectRoot, &Error))
-        {
-            std::cerr << Error << '\n';
-            return 1;
-        }
-
-        return 0;
-    }
-
-    if (Mode == "environment")
-    {
-        if (!ImportEnvironment(Input, ProjectRoot, &Error))
         {
             std::cerr << Error << '\n';
             return 1;

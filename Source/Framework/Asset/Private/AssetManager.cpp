@@ -10,6 +10,7 @@
 #include "Framework/Material/Public/MaterialInstance.h"
 #include "Framework/Material/Public/MaterialParameter.h"
 #include "CookedAsset/Public/CookedAsset.h"
+#include "ThirdPartyAdapter/Texture/Public/STBAdapter.h"
 
 #include <algorithm>
 #include <cctype>
@@ -1075,26 +1076,30 @@ namespace ShadowEngine
             return {};
         }
 
-        const std::filesystem::path CookedPath = CookedTexturePath(Path);
-        CookedTexture Cooked;
-        if (!LoadCookedTexture(CookedPath, Cooked, ErrorMessage))
+        int Width = 0;
+        int Height = 0;
+        int Channels = 0;
+        float* Pixels = STBAdapter::LoadImageFloat(Path.generic_string().c_str(), &Width, &Height, &Channels, 4);
+        if (Pixels == nullptr || Width <= 0 || Height <= 0)
         {
-            return {};
-        }
-
-        if (Cooked.Format != ECookedTextureFormat::RGBA32_Float || Cooked.Mips.empty())
-        {
-            SetErrorMessage(ErrorMessage, "Environment map is not an RGBA32 float image: " + Path.generic_string());
+            const char* Reason = STBAdapter::GetFailureReason();
+            SetErrorMessage(
+                ErrorMessage,
+                "Unable to load environment map " + Path.generic_string() + ": " + (Reason != nullptr ? Reason : "unknown error"));
+            STBAdapter::FreeImage(Pixels);
             return {};
         }
 
         std::vector<TextureAsset::Mip> Mips;
         TextureAsset::Mip Copy;
-        Copy.Width = Cooked.Mips.front().Width;
-        Copy.Height = Cooked.Mips.front().Height;
-        Copy.Pixels = std::move(Cooked.Mips.front().Pixels);
-        const uint32 Width = Copy.Width;
-        const uint32 Height = Copy.Height;
+        Copy.Width = static_cast<uint32>(Width);
+        Copy.Height = static_cast<uint32>(Height);
+        const size_t ByteCount = static_cast<size_t>(Width) * static_cast<size_t>(Height) * 4 * sizeof(float);
+        Copy.Pixels.resize(ByteCount);
+        std::memcpy(Copy.Pixels.data(), Pixels, ByteCount);
+        STBAdapter::FreeImage(Pixels);
+        const uint32 LoadedWidth = Copy.Width;
+        const uint32 LoadedHeight = Copy.Height;
         Mips.push_back(std::move(Copy));
         std::unique_ptr<TextureAsset> Texture = TextureAsset::Adopt(
             Path,
@@ -1117,8 +1122,8 @@ namespace ShadowEngine
         Log::Info(
             "Loaded environment map {} ({}x{})",
             Path.generic_string(),
-            Width,
-            Height);
+            LoadedWidth,
+            LoadedHeight);
         TextureAssetHandle Handle;
         Handle.Index = static_cast<uint32>(Textures.size() - 1);
         EnvironmentMap = Handle;
