@@ -56,6 +56,7 @@ namespace ShadowEngine
     DeferredRenderer::DeferredRenderer()
     {
         FramePass = &Pass;
+        Shadows = CreateShadowTechnique();
     }
 
     bool DeferredRenderer::EnsureTargets(std::string* ErrorMessage)
@@ -79,7 +80,7 @@ namespace ShadowEngine
 
         if (LightConstants == nullptr)
         {
-            LightConstants = Device->CreateConstantBuffer(512, ErrorMessage);
+            LightConstants = Device->CreateConstantBuffer(1024, ErrorMessage);
             if (LightConstants == nullptr)
             {
                 return false;
@@ -104,7 +105,7 @@ namespace ShadowEngine
             {
                 for (const ShaderBinding& Binding : PixelReflection->Bindings)
                 {
-                    if (Binding.Kind == EShaderBindingKind::ConstantBuffer && Binding.Size != 0 && Binding.Size != 448)
+                    if (Binding.Kind == EShaderBindingKind::ConstantBuffer && Binding.Size != 0 && Binding.Size != 720)
                     {
                         SetErrorMessage(
                             ErrorMessage,
@@ -200,7 +201,7 @@ namespace ShadowEngine
             return false;
         }
 
-        if (!Shadows.Ensure(*Device, *ShaderLibrary, &Error))
+        if (Shadows == nullptr || !Shadows->Ensure(*Device, *ShaderLibrary, &Error))
         {
             Log::Error("{}", Error);
             return false;
@@ -230,7 +231,7 @@ namespace ShadowEngine
 
         SelectVisiblePointLights(PointLightLimit, VisiblePointLights);
         const DirectLightRenderProxy* DirectLight = SceneProxy.bHasDirectLight ? &SceneProxy.DirectLight : nullptr;
-        if (!Shadows.Prepare(MeshBatches, SceneProxy.Meshes, *Assets, DirectLight, VisiblePointLights, &Error))
+        if (!Shadows->Prepare(MeshBatches, SceneProxy.Meshes, *Assets, ViewCamera, DirectLight, VisiblePointLights, &Error))
         {
             Log::Error("{}", Error);
             return false;
@@ -244,8 +245,8 @@ namespace ShadowEngine
         Renderer::PopulateContext(Context);
         Context.PointLights = &VisiblePointLights;
         Context.SkyLight = SceneProxy.bHasSkyLight ? &SceneProxy.SkyLight : nullptr;
-        Context.Shadow = &Shadows.GetBinding();
-        Context.Shadows = &Shadows;
+        Context.Shadow = &Shadows->GetBinding();
+        Context.Shadows = Shadows.get();
         Context.ShadowCasters = &SceneProxy.Meshes;
         Context.SkyPipeline = SkyPipeline.get();
         Context.SkyConstants = SkyConstantBuffer.get();

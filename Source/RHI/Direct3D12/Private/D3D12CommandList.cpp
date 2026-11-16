@@ -5,6 +5,8 @@
 #include "RHI/Direct3D12/Public/D3D12Pipeline.h"
 #include "RHI/Direct3D12/Public/D3D12Texture.h"
 
+#include <cstring>
+
 namespace ShadowEngine
 {
     bool D3D12CommandList::Initialize(
@@ -13,6 +15,7 @@ namespace ShadowEngine
         ID3D12DescriptorHeap* InSamplerHeap,
         std::string* ErrorMessage)
     {
+        D3DDevice = Device;
         ResourceHeap = InResourceHeap;
         SamplerHeap = InSamplerHeap;
         HRESULT Result = Device->CreateCommandAllocator(
@@ -38,6 +41,15 @@ namespace ShadowEngine
 
         CommandList->Close();
         return true;
+    }
+
+    D3D12CommandList::~D3D12CommandList()
+    {
+        if (TextureUpload != nullptr && TextureUploadMapped != nullptr)
+        {
+            TextureUpload->Unmap(0, nullptr);
+            TextureUploadMapped = nullptr;
+        }
     }
 
     void D3D12CommandList::Begin()
@@ -180,6 +192,100 @@ namespace ShadowEngine
     {
         ID3D12DescriptorHeap* Heaps[] = {ResourceHeap, SamplerHeap};
         CommandList->SetDescriptorHeaps(2, Heaps);
+    }
+
+    bool D3D12CommandList::UploadTexture(RHITexture& Texture, std::span<const uint8> Pixels)
+    {
+        auto& Target = static_cast<D3D12Texture&>(Texture);
+        if (D3DDevice == nullptr || CommandList == nullptr || Target.GetResource() == nullptr ||
+            (Target.GetFormat() != ERHIFormat::R8G8B8A8_UNorm && Target.GetFormat() != ERHIFormat::R8G8B8A8_UNorm_sRGB))
+        {
+            return false;
+        }
+
+        const uint32 Width = Target.GetWidth();
+        const uint32 Height = Target.GetHeight();
+        const uint32 SourcePitch = Width * 4;
+        if (Width == 0 || Height == 0 || Pixels.size() < static_cast<size_t>(SourcePitch) * Height)
+        {
+            return false;
+        }
+
+        const D3D12_RESOURCE_DESC ResourceDesc = Target.GetResource()->GetDesc();
+        D3D12_PLACED_SUBRESOURCE_FOOTPRINT Layout{};
+        UINT Rows = 0;
+        UINT64 RowSize = 0;
+        UINT64 TotalSize = 0;
+        D3DDevice->GetCopyableFootprints(&ResourceDesc, 0, 1, 0, &Layout, &Rows, &RowSize, &TotalSize);
+        if (TotalSize == 0 || Rows < Height)
+        {
+            return false;
+        }
+
+        if (TextureUpload == nullptr || TextureUploadSize < TotalSize)
+        {
+            if (TextureUpload != nullptr && TextureUploadMapped != nullptr)
+            {
+                TextureUpload->Unmap(0, nullptr);
+                TextureUploadMapped = nullptr;
+            }
+            TextureUpload.Reset();
+
+            D3D12_HEAP_PROPERTIES Heap{};
+            Heap.Type = D3D12_HEAP_TYPE_UPLOAD;
+            Heap.CreationNodeMask = 1;
+            Heap.VisibleNodeMask = 1;
+            D3D12_RESOURCE_DESC UploadDesc{};
+            UploadDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+            UploadDesc.Width = TotalSize;
+            UploadDesc.Height = 1;
+            UploadDesc.DepthOrArraySize = 1;
+            UploadDesc.MipLevels = 1;
+            UploadDesc.Format = DXGI_FORMAT_UNKNOWN;
+            UploadDesc.SampleDesc.Count = 1;
+            UploadDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+            const HRESULT Created = D3DDevice->CreateCommittedResource(
+                &Heap,
+                D3D12_HEAP_FLAG_NONE,
+                &UploadDesc,
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(TextureUpload.GetAddressOf()));
+            if (FAILED(Created))
+            {
+                return false;
+            }
+
+            void* Mapped = nullptr;
+            if (FAILED(TextureUpload->Map(0, nullptr, &Mapped)) || Mapped == nullptr)
+            {
+                TextureUpload.Reset();
+                return false;
+            }
+            TextureUploadMapped = static_cast<uint8*>(Mapped);
+            TextureUploadSize = TotalSize;
+        }
+
+        for (UINT Row = 0; Row < Height; ++Row)
+        {
+            std::memcpy(
+                TextureUploadMapped + Layout.Offset + static_cast<UINT64>(Row) * Layout.Footprint.RowPitch,
+                Pixels.data() + static_cast<size_t>(Row) * SourcePitch,
+                SourcePitch);
+        }
+
+        Transition(Target, D3D12_RESOURCE_STATE_COPY_DEST);
+        D3D12_TEXTURE_COPY_LOCATION Destination{};
+        Destination.pResource = Target.GetResource();
+        Destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        Destination.SubresourceIndex = 0;
+        D3D12_TEXTURE_COPY_LOCATION Source{};
+        Source.pResource = TextureUpload.Get();
+        Source.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+        Source.PlacedFootprint = Layout;
+        CommandList->CopyTextureRegion(&Destination, 0, 0, 0, &Source, nullptr);
+        Transition(Target, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        return true;
     }
 
     void D3D12CommandList::SetViewport(const RHIViewport& Viewport)

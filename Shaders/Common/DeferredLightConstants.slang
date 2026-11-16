@@ -5,6 +5,7 @@
 #include "ImageBasedLightIndices.slang"
 #include "ForwardShadow.slang"
 
+#define SHADOW_CONSTANTS_DEFINED
 cbuffer DeferredLightConstants : register(b0)
 {
     float4x4 InverseViewProjection;

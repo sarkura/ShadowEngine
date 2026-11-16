@@ -94,9 +94,36 @@ namespace ShadowEngine
                 !WriteShadowUniform(Destination, Layout, "ForwardShadow.DirectRow1", Binding.DirectRow[1]) ||
                 !WriteShadowUniform(Destination, Layout, "ForwardShadow.DirectRow2", Binding.DirectRow[2]) ||
                 !WriteShadowUniform(Destination, Layout, "ForwardShadow.DirectRow3", Binding.DirectRow[3]) ||
-                !WriteShadowUniform(Destination, Layout, "ForwardShadow.Settings", Settings))
+                !WriteShadowUniform(Destination, Layout, "ForwardShadow.Settings", Settings) ||
+                !WriteShadowUniform(Destination, Layout, "ForwardShadow.VirtualInfo", Binding.VirtualInfo))
             {
                 return false;
+            }
+
+            static const char* LevelNames[4][4] = {
+                {"ForwardShadow.Level0Row0", "ForwardShadow.Level0Row1", "ForwardShadow.Level0Row2", "ForwardShadow.Level0Row3"},
+                {"ForwardShadow.Level1Row0", "ForwardShadow.Level1Row1", "ForwardShadow.Level1Row2", "ForwardShadow.Level1Row3"},
+                {"ForwardShadow.Level2Row0", "ForwardShadow.Level2Row1", "ForwardShadow.Level2Row2", "ForwardShadow.Level2Row3"},
+                {"ForwardShadow.Level3Row0", "ForwardShadow.Level3Row1", "ForwardShadow.Level3Row2", "ForwardShadow.Level3Row3"},
+            };
+            for (uint32 Level = 0; Level < 4; ++Level)
+            {
+                for (uint32 Row = 0; Row < 4; ++Row)
+                {
+                    if (!WriteShadowUniform(Destination, Layout, LevelNames[Level][Row], Binding.LevelRow[Level][Row]))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            for (const RHIPipelineLayout::ConstantBuffer& Buffer : Layout.ConstantBuffers)
+            {
+                if (Buffer.Size > 1024)
+                {
+                    Log::Error("Material constants exceed the 1024-byte slot");
+                    return false;
+                }
             }
 
             const auto Write = [&](const char* Name, uint32 Index) -> bool
@@ -115,7 +142,9 @@ namespace ShadowEngine
                 Write("PointMap1", Binding.PointMap[1]) &&
                 Write("PointMap2", Binding.PointMap[2]) &&
                 Write("PointMap3", Binding.PointMap[3]) &&
-                Write("ComparisonSampler", Binding.ComparisonSampler);
+                Write("ComparisonSampler", Binding.ComparisonSampler) &&
+                Write("PageTable", Binding.PageTable) &&
+                Write("PageSampler", Binding.PageSampler);
         }
 
         struct GpuObjectConstants
@@ -343,6 +372,7 @@ namespace ShadowEngine
                 if (Batch->Surface == EMaterialSurface::Translucent)
                 {
                     ShadowBinding.DirectMap = InvalidShaderDescriptor;
+                    ShadowBinding.PageTable = InvalidShaderDescriptor;
                     for (uint32& PointMap : ShadowBinding.PointMap)
                     {
                         PointMap = InvalidShaderDescriptor;

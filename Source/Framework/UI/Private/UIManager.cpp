@@ -94,7 +94,7 @@ namespace ShadowEngine
 
         Pipeline = InPipeline;
         bActive = true;
-        bVisible = true;
+        bVisible = false;
         return true;
     }
 
@@ -106,7 +106,7 @@ namespace ShadowEngine
         }
         Pipeline = EUIPipeline::None;
         bActive = false;
-        bVisible = true;
+        bVisible = false;
     }
 
     bool UIManager::IsActive() const

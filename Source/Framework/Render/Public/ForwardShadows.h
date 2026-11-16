@@ -1,11 +1,7 @@
 #pragma once
 
-#include "Framework/Common/Public/NonCopyable.h"
-#include "Framework/Common/Public/Types.h"
-#include "Framework/Render/Public/MeshBatch.h"
-#include "Framework/Render/Public/RenderProxy.h"
+#include "Framework/Render/Public/ShadowTechnique.h"
 #include "Framework/RHI/Public/RHIEnums.h"
-#include "Framework/RHI/Public/RHIPipelineLayout.h"
 
 #include <memory>
 #include <string>
@@ -13,47 +9,34 @@
 
 namespace ShadowEngine
 {
-    class AssetManager;
     class RHIBuffer;
-    class RHICommandList;
-    class RHIDevice;
     class RHIPipeline;
     class RHISampler;
     class RHITexture;
-    class ShaderManager;
 
-    struct ForwardShadowBinding
-    {
-        float DirectRow[4][4] = {};
-        float Settings[4] = {};
-        uint32 DirectMap = InvalidShaderDescriptor;
-        uint32 PointMap[4] = {
-            InvalidShaderDescriptor,
-            InvalidShaderDescriptor,
-            InvalidShaderDescriptor,
-            InvalidShaderDescriptor};
-        uint32 ComparisonSampler = InvalidShaderDescriptor;
-    };
-
-    class ForwardShadows final : public NonCopyable
+    class ForwardShadows final : public ShadowTechnique
     {
         public:
-            bool Ensure(RHIDevice& Device, ShaderManager& Shaders, std::string* ErrorMessage);
+            ForwardShadows();
+            ~ForwardShadows() override;
+
+            bool Ensure(RHIDevice& Device, ShaderManager& Shaders, std::string* ErrorMessage) override;
 
             bool Prepare(
                 const std::vector<MeshBatch>& Batches,
                 const std::vector<MeshRenderProxy>& Casters,
                 const AssetManager& Assets,
+                const Camera& View,
                 const DirectLightRenderProxy* DirectLight,
                 const std::vector<PointLightRenderProxy>& PointLights,
-                std::string* ErrorMessage);
+                std::string* ErrorMessage) override;
 
             bool Record(
                 RHICommandList& Commands,
                 const std::vector<MeshBatch>& Batches,
-                const std::vector<MeshRenderProxy>& Casters);
+                const std::vector<MeshRenderProxy>& Casters) override;
 
-            [[nodiscard]] const ForwardShadowBinding& GetBinding() const
+            [[nodiscard]] const ForwardShadowBinding& GetBinding() const override
             {
                 return Binding;
             }

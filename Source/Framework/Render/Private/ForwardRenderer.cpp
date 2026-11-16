@@ -35,6 +35,7 @@ namespace ShadowEngine
     ForwardRenderer::ForwardRenderer()
     {
         FramePass = &Pass;
+        Shadows = CreateShadowTechnique();
     }
 
     bool ForwardRenderer::PrepareFrame()
@@ -122,7 +123,7 @@ namespace ShadowEngine
             return false;
         }
 
-        if (!Shadows.Ensure(*Device, *ShaderLibrary, &Error))
+        if (Shadows == nullptr || !Shadows->Ensure(*Device, *ShaderLibrary, &Error))
         {
             Log::Error("{}", Error);
             return false;
@@ -146,7 +147,7 @@ namespace ShadowEngine
 
         SelectVisiblePointLights(ForwardPointLightLimit, VisiblePointLights);
         const DirectLightRenderProxy* DirectLight = SceneProxy.bHasDirectLight ? &SceneProxy.DirectLight : nullptr;
-        if (!Shadows.Prepare(MeshBatches, SceneProxy.Meshes, *Assets, DirectLight, VisiblePointLights, &Error))
+        if (!Shadows->Prepare(MeshBatches, SceneProxy.Meshes, *Assets, ViewCamera, DirectLight, VisiblePointLights, &Error))
         {
             Log::Error("{}", Error);
             return false;
@@ -160,8 +161,8 @@ namespace ShadowEngine
         Renderer::PopulateContext(Context);
         Context.PointLights = &VisiblePointLights;
         Context.SkyLight = SceneProxy.bHasSkyLight ? &SceneProxy.SkyLight : nullptr;
-        Context.Shadow = &Shadows.GetBinding();
-        Context.Shadows = &Shadows;
+        Context.Shadow = &Shadows->GetBinding();
+        Context.Shadows = Shadows.get();
         Context.ShadowCasters = &SceneProxy.Meshes;
         Context.SkyPipeline = SkyPipeline.get();
         Context.DepthPrepassPipeline = DepthPrepassPipeline.get();

@@ -75,6 +75,6 @@ namespace ShadowEngine
 
             EUIPipeline Pipeline = EUIPipeline::None;
             bool bActive = false;
-            bool bVisible = true;
+            bool bVisible = false;
     };
 }

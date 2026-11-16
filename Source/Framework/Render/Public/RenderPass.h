@@ -2,7 +2,7 @@
 
 #include "Framework/Common/Public/NonCopyable.h"
 #include "Framework/Render/Public/Camera.h"
-#include "Framework/Render/Public/ForwardShadows.h"
+#include "Framework/Render/Public/ShadowTechnique.h"
 #include "Framework/Render/Public/MeshBatch.h"
 #include "Framework/Render/Public/RenderQueue.h"
 #include "Framework/RHI/Public/RHISampler.h"
@@ -45,7 +45,7 @@ namespace ShadowEngine
         RHIBuffer* SkyConstants = nullptr;
         const struct ImageBasedLightBinding* ImageBasedLight = nullptr;
         const ForwardShadowBinding* Shadow = nullptr;
-        ForwardShadows* Shadows = nullptr;
+        ShadowTechnique* Shadows = nullptr;
         const std::vector<MeshRenderProxy>* ShadowCasters = nullptr;
         uint32 EnvironmentDescriptor = 0;
         uint32 EnvironmentSampler = 0;

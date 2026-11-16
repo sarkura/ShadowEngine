@@ -2,12 +2,13 @@
 
 #include "Framework/Render/Public/EnvironmentCube.h"
 #include "Framework/Render/Public/ForwardRenderPass.h"
-#include "Framework/Render/Public/ForwardShadows.h"
+#include "Framework/Render/Public/ShadowTechnique.h"
 #include "Framework/Render/Public/ImageBasedLighting.h"
 #include "Framework/Render/Public/PostProcess.h"
 #include "Framework/Render/Public/Renderer.h"
 #include "Framework/RHI/Public/RHIEnums.h"
 
+#include <memory>
 #include <vector>
 
 namespace ShadowEngine
@@ -40,7 +41,7 @@ namespace ShadowEngine
         private:
             ForwardRenderPass Pass;
             EnvironmentCube EnvironmentCubeMap;
-            ForwardShadows Shadows;
+            std::unique_ptr<ShadowTechnique> Shadows;
             PostProcess Post;
             ImageBasedLighting Lighting;
             std::unique_ptr<RHIPipeline> DepthPrepassPipeline;

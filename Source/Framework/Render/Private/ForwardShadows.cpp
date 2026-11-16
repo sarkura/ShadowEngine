@@ -10,6 +10,7 @@
 #include "Framework/RHI/Public/RHIDefinitions.h"
 #include "Framework/RHI/Public/RHIDevice.h"
 #include "Framework/RHI/Public/RHIPipeline.h"
+#include "Framework/RHI/Public/RHISampler.h"
 #include "Framework/RHI/Public/RHITexture.h"
 #include "Framework/Shader/Public/ShaderManager.h"
 
@@ -278,6 +279,9 @@ namespace ShadowEngine
         }
     }
 
+    ForwardShadows::ForwardShadows() = default;
+    ForwardShadows::~ForwardShadows() = default;
+
     std::unique_ptr<RHIPipeline> ForwardShadows::CreateDepthPipeline(
         RHIDevice& Device,
         ShaderManager& Shaders,
@@ -394,14 +398,16 @@ namespace ShadowEngine
         return true;
     }
 
-    bool ForwardShadows::Prepare(
+        bool ForwardShadows::Prepare(
         const std::vector<MeshBatch>& Batches,
         const std::vector<MeshRenderProxy>& Casters,
         const AssetManager& Assets,
+        const Camera& View,
         const DirectLightRenderProxy* DirectLight,
         const std::vector<PointLightRenderProxy>& PointLights,
         std::string* ErrorMessage)
     {
+        (void)View;
         if (!bReady)
         {
             SetErrorMessage(ErrorMessage, "Shadow maps are not ready");

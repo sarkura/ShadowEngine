@@ -18,6 +18,7 @@ namespace ShadowEngine
                 ID3D12DescriptorHeap* InResourceHeap,
                 ID3D12DescriptorHeap* InSamplerHeap,
                 std::string* ErrorMessage = nullptr);
+            ~D3D12CommandList() override;
 
             void Begin() override;
             void End() override;
@@ -40,6 +41,7 @@ namespace ShadowEngine
             void BindShaderResources() override;
             void SetViewport(const RHIViewport& Viewport) override;
             void SetScissor(const RHIRect& Scissor) override;
+            bool UploadTexture(RHITexture& Texture, std::span<const uint8> Pixels) override;
             void Draw(uint32 VertexCount, uint32 FirstVertex = 0) override;
             void DrawIndexed(uint32 IndexCount, uint32 FirstIndex = 0, int32 VertexOffset = 0) override;
 
@@ -50,6 +52,10 @@ namespace ShadowEngine
 
             ComPtr<ID3D12CommandAllocator> Allocator;
             ComPtr<ID3D12GraphicsCommandList> CommandList;
+            ComPtr<ID3D12Resource> TextureUpload;
+            ID3D12Device* D3DDevice = nullptr;
+            uint8* TextureUploadMapped = nullptr;
+            UINT64 TextureUploadSize = 0;
             ID3D12DescriptorHeap* ResourceHeap = nullptr;
             ID3D12DescriptorHeap* SamplerHeap = nullptr;
 

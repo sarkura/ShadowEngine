@@ -55,6 +55,7 @@ namespace ShadowEngine
             virtual void BindShaderResources() = 0;
             virtual void SetViewport(const RHIViewport& Viewport) = 0;
             virtual void SetScissor(const RHIRect& Scissor) = 0;
+            virtual bool UploadTexture(RHITexture& Texture, std::span<const uint8> Pixels) = 0;
             virtual void Draw(uint32 VertexCount, uint32 FirstVertex = 0) = 0;
             virtual void DrawIndexed(uint32 IndexCount, uint32 FirstIndex = 0, int32 VertexOffset = 0) = 0;
     };

@@ -8,6 +8,7 @@
 #include "ImageBasedLightIndices.slang"
 #include "ForwardShadow.slang"
 
+#define SHADOW_CONSTANTS_DEFINED
 #ifndef MATERIAL_DESCRIPTOR_INDICES_DEFINED
 #define MATERIAL_DESCRIPTOR_INDICES_DEFINED
 struct MaterialDescriptorIndices

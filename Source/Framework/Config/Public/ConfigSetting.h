@@ -35,6 +35,7 @@ namespace ShadowEngine
         struct RHISetting
         {
             std::string Renderer;
+            std::string Shadow;
             std::string DefaultMaterial;
             std::string Backend;
             bool bVSync = true;

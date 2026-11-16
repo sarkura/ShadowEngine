@@ -8,6 +8,7 @@
 #include "ImageBasedLightIndices.slang"
 #include "ForwardShadow.slang"
 
+#define SHADOW_CONSTANTS_DEFINED
 cbuffer SceneConstants : register(b0)
 {
     PerObjectData PerObject;

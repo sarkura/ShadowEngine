@@ -625,6 +625,11 @@ namespace ShadowEngine
                 ErrorMessage) ||
             !ReadString(
                 Document,
+                "Shadow",
+                ParsedSetting.Shadow,
+                ErrorMessage) ||
+            !ReadString(
+                Document,
                 "DefaultMaterial",
                 ParsedSetting.DefaultMaterial,
                 ErrorMessage) ||
@@ -669,6 +674,12 @@ namespace ShadowEngine
             Setting.Renderer != "ForwardRenderer" && Setting.Renderer != "DeferredRenderer")
         {
             SetError(ErrorMessage, "Renderer must be BlinnPhongRenderer, DebugRenderer, ForwardRenderer, or DeferredRenderer");
+            return false;
+        }
+
+        if (Setting.Shadow != "PCF" && Setting.Shadow != "VirtualShadow")
+        {
+            SetError(ErrorMessage, "Shadow must be PCF or VirtualShadow");
             return false;
         }
 

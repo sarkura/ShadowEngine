@@ -76,14 +76,16 @@ namespace ShadowEngine
             float ShadowRow2[4];
             float ShadowRow3[4];
             float ShadowSettings[4];
+            float LevelRow[4][4][4];
+            float VirtualInfo[4];
             uint32 DirectMap;
             uint32 PointMap0;
             uint32 PointMap1;
             uint32 PointMap2;
             uint32 PointMap3;
             uint32 ComparisonSampler;
-            uint32 ShadowPad0;
-            uint32 ShadowPad1;
+            uint32 PageTable;
+            uint32 PageSampler;
             uint32 GBufferA;
             uint32 GBufferB;
             uint32 GBufferC;
@@ -161,9 +163,36 @@ namespace ShadowEngine
                 !WriteShadowUniform(Destination, Layout, "ForwardShadow.DirectRow1", Binding.DirectRow[1]) ||
                 !WriteShadowUniform(Destination, Layout, "ForwardShadow.DirectRow2", Binding.DirectRow[2]) ||
                 !WriteShadowUniform(Destination, Layout, "ForwardShadow.DirectRow3", Binding.DirectRow[3]) ||
-                !WriteShadowUniform(Destination, Layout, "ForwardShadow.Settings", Settings))
+                !WriteShadowUniform(Destination, Layout, "ForwardShadow.Settings", Settings) ||
+                !WriteShadowUniform(Destination, Layout, "ForwardShadow.VirtualInfo", Binding.VirtualInfo))
             {
                 return false;
+            }
+
+            static const char* LevelNames[4][4] = {
+                {"ForwardShadow.Level0Row0", "ForwardShadow.Level0Row1", "ForwardShadow.Level0Row2", "ForwardShadow.Level0Row3"},
+                {"ForwardShadow.Level1Row0", "ForwardShadow.Level1Row1", "ForwardShadow.Level1Row2", "ForwardShadow.Level1Row3"},
+                {"ForwardShadow.Level2Row0", "ForwardShadow.Level2Row1", "ForwardShadow.Level2Row2", "ForwardShadow.Level2Row3"},
+                {"ForwardShadow.Level3Row0", "ForwardShadow.Level3Row1", "ForwardShadow.Level3Row2", "ForwardShadow.Level3Row3"},
+            };
+            for (uint32 Level = 0; Level < 4; ++Level)
+            {
+                for (uint32 Row = 0; Row < 4; ++Row)
+                {
+                    if (!WriteShadowUniform(Destination, Layout, LevelNames[Level][Row], Binding.LevelRow[Level][Row]))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            for (const RHIPipelineLayout::ConstantBuffer& Buffer : Layout.ConstantBuffers)
+            {
+                if (Buffer.Size > 1024)
+                {
+                    Log::Error("Material constants exceed the 1024-byte slot");
+                    return false;
+                }
             }
 
             const auto Write = [&](const char* Name, uint32 Index) -> bool
@@ -182,14 +211,16 @@ namespace ShadowEngine
                 Write("PointMap1", Binding.PointMap[1]) &&
                 Write("PointMap2", Binding.PointMap[2]) &&
                 Write("PointMap3", Binding.PointMap[3]) &&
-                Write("ComparisonSampler", Binding.ComparisonSampler);
+                Write("ComparisonSampler", Binding.ComparisonSampler) &&
+                Write("PageTable", Binding.PageTable) &&
+                Write("PageSampler", Binding.PageSampler);
         }
     }
 
     bool DeferredRenderPass::Execute(const RenderQueue& Queue, const RenderPassContext& Context)
     {
         static_assert(sizeof(GpuObjectConstants) == 368);
-        static_assert(sizeof(DeferredLightGpuConstants) == 448);
+        static_assert(sizeof(DeferredLightGpuConstants) == 720);
         if (Context.Device == nullptr || Context.SwapChain == nullptr || Context.CommandList == nullptr ||
             Context.ConstantBuffer == nullptr || Context.DepthBuffer == nullptr || Context.Assets == nullptr ||
             Context.Shaders == nullptr || Context.View == nullptr || Context.Batches == nullptr ||
@@ -381,6 +412,7 @@ namespace ShadowEngine
             if (Batch->Surface == EMaterialSurface::Translucent)
             {
                 ShadowBinding.DirectMap = InvalidShaderDescriptor;
+                ShadowBinding.PageTable = InvalidShaderDescriptor;
                 for (uint32& PointMap : ShadowBinding.PointMap)
                 {
                     PointMap = InvalidShaderDescriptor;
@@ -533,12 +565,16 @@ namespace ShadowEngine
         std::memcpy(Light.ShadowRow2, Context.Shadow->DirectRow[2], sizeof(Light.ShadowRow2));
         std::memcpy(Light.ShadowRow3, Context.Shadow->DirectRow[3], sizeof(Light.ShadowRow3));
         std::memcpy(Light.ShadowSettings, Context.Shadow->Settings, sizeof(Light.ShadowSettings));
+        std::memcpy(Light.LevelRow, Context.Shadow->LevelRow, sizeof(Light.LevelRow));
+        std::memcpy(Light.VirtualInfo, Context.Shadow->VirtualInfo, sizeof(Light.VirtualInfo));
         Light.DirectMap = Context.Shadow->DirectMap;
         Light.PointMap0 = Context.Shadow->PointMap[0];
         Light.PointMap1 = Context.Shadow->PointMap[1];
         Light.PointMap2 = Context.Shadow->PointMap[2];
         Light.PointMap3 = Context.Shadow->PointMap[3];
         Light.ComparisonSampler = Context.Shadow->ComparisonSampler;
+        Light.PageTable = Context.Shadow->PageTable;
+        Light.PageSampler = Context.Shadow->PageSampler;
         Light.GBufferA = Context.GBufferADescriptor;
         Light.GBufferB = Context.GBufferBDescriptor;
         Light.GBufferC = Context.GBufferCDescriptor;
