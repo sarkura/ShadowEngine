@@ -28,6 +28,11 @@ namespace ShadowEngine
                 uint32 InSize,
                 std::string* ErrorMessage = nullptr);
 
+            bool InitializeIndirect(
+                ID3D12Device* Device,
+                const RHIBufferDesc& Desc,
+                std::string* ErrorMessage = nullptr);
+
             ~D3D12Buffer() override;
 
             [[nodiscard]] uint32 GetSize() const override;
@@ -36,6 +41,7 @@ namespace ShadowEngine
             [[nodiscard]] D3D12_VERTEX_BUFFER_VIEW GetVertexBufferView() const;
             [[nodiscard]] D3D12_INDEX_BUFFER_VIEW GetIndexBufferView() const;
             [[nodiscard]] D3D12_GPU_VIRTUAL_ADDRESS GetGPUVirtualAddress() const;
+            [[nodiscard]] ID3D12Resource* GetResource() const;
 
         private:
             bool CreateUploadBuffer(

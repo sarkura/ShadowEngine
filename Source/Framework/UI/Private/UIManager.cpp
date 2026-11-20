@@ -107,6 +107,7 @@ namespace ShadowEngine
         Pipeline = EUIPipeline::None;
         bActive = false;
         bVisible = false;
+        PlatformFrame = nullptr;
     }
 
     bool UIManager::IsActive() const
@@ -127,6 +128,11 @@ namespace ShadowEngine
         }
 
         bVisible = !bVisible;
+    }
+
+    void UIManager::SetPlatformFrameCallback(void (*Callback)())
+    {
+        PlatformFrame = Callback;
     }
 
     EUIPipeline UIManager::GetPipeline() const
@@ -165,7 +171,10 @@ namespace ShadowEngine
             return;
         }
 
-        ImGuiAdapter::Win32NewFrame();
+        if (PlatformFrame != nullptr)
+        {
+            PlatformFrame();
+        }
         ImGuiAdapter::NewFrame();
         if (bVisible)
         {

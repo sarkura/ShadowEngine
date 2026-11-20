@@ -58,5 +58,6 @@ namespace ShadowEngine
             virtual bool UploadTexture(RHITexture& Texture, std::span<const uint8> Pixels) = 0;
             virtual void Draw(uint32 VertexCount, uint32 FirstVertex = 0) = 0;
             virtual void DrawIndexed(uint32 IndexCount, uint32 FirstIndex = 0, int32 VertexOffset = 0) = 0;
+            virtual void ExecuteIndirect(RHIBuffer& Arguments, uint32 CommandCount) = 0;
     };
 }

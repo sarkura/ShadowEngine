@@ -121,6 +121,21 @@ namespace ShadowEngine
         return true;
     }
 
+    bool D3D12Buffer::InitializeIndirect(
+        ID3D12Device* Device,
+        const RHIBufferDesc& Desc,
+        std::string* ErrorMessage)
+    {
+        if (Desc.Stride != sizeof(RHIDrawIndexedArguments) || Desc.Data.size() % Desc.Stride != 0)
+        {
+            SetErrorMessage(ErrorMessage, "Indirect argument stride does not match its data");
+            return false;
+        }
+
+        Stride = Desc.Stride;
+        return CreateUploadBuffer(Device, Desc, ErrorMessage);
+    }
+
     D3D12Buffer::~D3D12Buffer()
     {
         if (Resource != nullptr && MappedData != nullptr)
@@ -207,6 +222,11 @@ namespace ShadowEngine
     D3D12_GPU_VIRTUAL_ADDRESS D3D12Buffer::GetGPUVirtualAddress() const
     {
         return Resource->GetGPUVirtualAddress();
+    }
+
+    ID3D12Resource* D3D12Buffer::GetResource() const
+    {
+        return Resource.Get();
     }
 
     D3D12_VERTEX_BUFFER_VIEW D3D12Buffer::GetVertexBufferView() const

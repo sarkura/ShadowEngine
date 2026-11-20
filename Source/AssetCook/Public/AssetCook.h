@@ -20,6 +20,8 @@ namespace ShadowEngine
         const std::filesystem::path& Output,
         std::string* ErrorMessage);
 
+    [[nodiscard]] bool RebuildMeshlets(const std::filesystem::path& CookedPath, std::string* ErrorMessage);
+
     [[nodiscard]] bool CookTexture(
         const std::filesystem::path& Source,
         ECookedTextureEncoding Encoding,

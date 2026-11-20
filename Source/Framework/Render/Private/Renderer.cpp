@@ -482,6 +482,47 @@ namespace ShadowEngine
             }
 
             Batch.IndexCount = static_cast<uint32>(Indices.size());
+            if (Section.Meshlets.empty())
+            {
+                SetErrorMessage(ErrorMessage, "Mesh section has no meshlets: " + Mesh.GetPath().generic_string());
+                return false;
+            }
+
+            std::vector<RHIDrawIndexedArguments> IndirectArguments;
+            IndirectArguments.reserve(Section.Meshlets.size());
+            uint32 CoveredIndices = 0;
+            for (const Meshlet& MeshletData : Section.Meshlets)
+            {
+                if (MeshletData.IndexCount == 0 || MeshletData.IndexOffset + MeshletData.IndexCount > Indices.size())
+                {
+                    SetErrorMessage(ErrorMessage, "Meshlet range is outside the index buffer: " + Mesh.GetPath().generic_string());
+                    return false;
+                }
+
+                RHIDrawIndexedArguments Argument;
+                Argument.IndexCountPerInstance = MeshletData.IndexCount;
+                Argument.InstanceCount = 1;
+                Argument.StartIndexLocation = MeshletData.IndexOffset;
+                Argument.BaseVertexLocation = 0;
+                Argument.StartInstanceLocation = 0;
+                IndirectArguments.push_back(Argument);
+                CoveredIndices += MeshletData.IndexCount;
+            }
+            if (CoveredIndices != Indices.size())
+            {
+                SetErrorMessage(ErrorMessage, "Meshlets do not cover the index buffer: " + Mesh.GetPath().generic_string());
+                return false;
+            }
+
+            RHIBufferDesc IndirectDesc;
+            IndirectDesc.Stride = sizeof(RHIDrawIndexedArguments);
+            IndirectDesc.Data = AsBytes(IndirectArguments.data(), IndirectArguments.size() * sizeof(RHIDrawIndexedArguments));
+            Batch.IndirectArguments = Device->CreateIndirectBuffer(IndirectDesc, ErrorMessage);
+            if (Batch.IndirectArguments == nullptr)
+            {
+                return false;
+            }
+            Batch.MeshletCount = static_cast<uint32>(IndirectArguments.size());
 
             constexpr RHIInputElement InputLayout[] = {
                 {"POSITION", 0, 0, ERHIVertexFormat::Float32x3},

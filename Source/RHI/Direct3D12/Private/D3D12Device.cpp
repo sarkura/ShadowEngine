@@ -256,6 +256,19 @@ namespace ShadowEngine
         return Buffer;
     }
 
+    std::unique_ptr<RHIBuffer> D3D12Device::CreateIndirectBuffer(
+        const RHIBufferDesc& Desc,
+        std::string* ErrorMessage)
+    {
+        auto Buffer = std::make_unique<D3D12Buffer>();
+        if (!Buffer->InitializeIndirect(Device.Get(), Desc, ErrorMessage))
+        {
+            return nullptr;
+        }
+
+        return Buffer;
+    }
+
     std::unique_ptr<RHITexture> D3D12Device::CreateDepthTexture(
         uint32 Width,
         uint32 Height,

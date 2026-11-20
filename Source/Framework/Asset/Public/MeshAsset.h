@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CookedAsset/Public/CookedAsset.h"
 #include "CookedAsset/Public/MeshVertex.h"
 #include "Framework/Asset/Public/Asset.h"
 #include "Framework/Material/Public/MaterialHandle.h"
@@ -12,6 +13,7 @@ namespace ShadowEngine
     {
         std::vector<MeshVertex> Vertices;
         std::vector<uint32> Indices;
+        std::vector<Meshlet> Meshlets;
         MaterialInstanceHandle Material;
         float BoundsMin[3] = {};
         float BoundsMax[3] = {};

@@ -55,6 +55,10 @@ namespace ShadowEngine
                 uint32 Size,
                 std::string* ErrorMessage = nullptr) = 0;
 
+            virtual std::unique_ptr<RHIBuffer> CreateIndirectBuffer(
+                const RHIBufferDesc& Desc,
+                std::string* ErrorMessage = nullptr) = 0;
+
             virtual std::unique_ptr<RHITexture> CreateDepthTexture(
                 uint32 Width,
                 uint32 Height,

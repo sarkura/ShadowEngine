@@ -363,7 +363,7 @@ namespace ShadowEngine
                 for (uint32 Index = 0; Index < static_cast<uint32>(Items.size()); ++Index)
                 {
                     const MeshBatch* Batch = FindMeshBatch(Batches, Items[Index].Mesh, Items[Index].Section);
-                    if (Batch == nullptr || Batch->VertexBuffer == nullptr || Batch->IndexBuffer == nullptr)
+                    if (Batch == nullptr || Batch->VertexBuffer == nullptr || Batch->IndexBuffer == nullptr || Batch->IndirectArguments == nullptr)
                     {
                         Log::Error("Forward velocity is missing a mesh");
                         Commands.EndRenderPass();
@@ -374,7 +374,7 @@ namespace ShadowEngine
                     Commands.SetVertexBuffer(*Batch->VertexBuffer);
                     Commands.SetIndexBuffer(*Batch->IndexBuffer);
                     Commands.SetConstantBuffer(ObjectConstants, Index * ConstantAlignment);
-                    Commands.DrawIndexed(Batch->IndexCount);
+                    Commands.ExecuteIndirect(*Batch->IndirectArguments, Batch->MeshletCount);
                 }
                 Commands.EndRenderPass();
                 Commands.UseAsShaderResource(*Motion.Texture);

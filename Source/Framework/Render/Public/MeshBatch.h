@@ -20,6 +20,7 @@ namespace ShadowEngine
         RHIShader* PixelShader = nullptr;
         std::unique_ptr<RHIBuffer> VertexBuffer;
         std::unique_ptr<RHIBuffer> IndexBuffer;
+        std::unique_ptr<RHIBuffer> IndirectArguments;
         std::unique_ptr<RHIPipeline> Pipeline;
         std::unique_ptr<RHIPipeline> DepthPipeline;
         std::unique_ptr<RHIPipeline> DirectionalShadowPipeline;
@@ -29,6 +30,7 @@ namespace ShadowEngine
         bool bTwoSided = false;
         RHIPipelineLayout Layout;
         uint32 IndexCount = 0;
+        uint32 MeshletCount = 0;
     };
 
     inline const MeshBatch* FindMeshBatch(const std::vector<MeshBatch>& Batches, MeshHandle Mesh, uint32 Section)

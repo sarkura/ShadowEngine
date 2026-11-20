@@ -338,6 +338,7 @@ int main(int ArgumentCount, char** Arguments)
     {
         std::cerr << "Usage: AssetImportTool scene <ExportDirectory> <ProjectRoot>\n";
         std::cerr << "       AssetImportTool clear <ProjectRoot>\n";
+        std::cerr << "       AssetImportTool meshlets <ProjectRoot>\n";
         return 1;
     }
 
@@ -361,10 +362,46 @@ int main(int ArgumentCount, char** Arguments)
         return 0;
     }
 
+    if (Mode == "meshlets")
+    {
+        if (ArgumentCount < 3)
+        {
+            std::cerr << "Usage: AssetImportTool meshlets <ProjectRoot>\n";
+            return 1;
+        }
+
+        const std::filesystem::path ProjectRoot = Arguments[2];
+        const std::filesystem::path MeshRoot = ProjectRoot / "Assets" / "Mesh";
+        if (!std::filesystem::is_directory(MeshRoot))
+        {
+            std::cerr << "Mesh directory does not exist: " << MeshRoot.generic_string() << '\n';
+            return 1;
+        }
+
+        for (const std::filesystem::directory_entry& Entry : std::filesystem::recursive_directory_iterator(MeshRoot))
+        {
+            if (!Entry.is_regular_file() || Entry.path().extension() != ".semesh")
+            {
+                continue;
+            }
+
+            if (!ShadowEngine::RebuildMeshlets(Entry.path(), &Error))
+            {
+                std::cerr << Error << '\n';
+                return 1;
+            }
+
+            std::cout << "Meshlets " << Entry.path().generic_string() << '\n';
+        }
+
+        return 0;
+    }
+
     if (ArgumentCount < 4)
     {
         std::cerr << "Usage: AssetImportTool scene <ExportDirectory> <ProjectRoot>\n";
         std::cerr << "       AssetImportTool clear <ProjectRoot>\n";
+        std::cerr << "       AssetImportTool meshlets <ProjectRoot>\n";
         return 1;
     }
 

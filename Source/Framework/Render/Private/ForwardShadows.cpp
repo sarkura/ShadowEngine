@@ -618,7 +618,7 @@ namespace ShadowEngine
             Commands.SetVertexBuffer(*Draw.Batch->VertexBuffer);
             Commands.SetIndexBuffer(*Draw.Batch->IndexBuffer);
             Commands.SetConstantBuffer(*ConstantBuffer, static_cast<uint32>(Index) * ShadowConstantStride);
-            Commands.DrawIndexed(Draw.Batch->IndexCount);
+            Commands.ExecuteIndirect(*Draw.Batch->IndirectArguments, Draw.Batch->MeshletCount);
         }
         if (OpenTarget != nullptr)
         {

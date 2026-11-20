@@ -44,6 +44,7 @@ namespace ShadowEngine
             bool UploadTexture(RHITexture& Texture, std::span<const uint8> Pixels) override;
             void Draw(uint32 VertexCount, uint32 FirstVertex = 0) override;
             void DrawIndexed(uint32 IndexCount, uint32 FirstIndex = 0, int32 VertexOffset = 0) override;
+            void ExecuteIndirect(RHIBuffer& Arguments, uint32 CommandCount) override;
 
             [[nodiscard]] ID3D12GraphicsCommandList* GetHandle() const;
 
@@ -52,6 +53,7 @@ namespace ShadowEngine
 
             ComPtr<ID3D12CommandAllocator> Allocator;
             ComPtr<ID3D12GraphicsCommandList> CommandList;
+            ComPtr<ID3D12CommandSignature> CommandSignature;
             ComPtr<ID3D12Resource> TextureUpload;
             ID3D12Device* D3DDevice = nullptr;
             uint8* TextureUploadMapped = nullptr;

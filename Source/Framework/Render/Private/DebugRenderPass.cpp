@@ -179,7 +179,7 @@ namespace ShadowEngine
                 Context.CommandList->SetVertexBuffer(*Batch->VertexBuffer);
                 Context.CommandList->SetIndexBuffer(*Batch->IndexBuffer);
                 Context.CommandList->SetConstantBuffer(*Context.ConstantBuffer, Index * Context.ConstantAlignment);
-                Context.CommandList->DrawIndexed(Batch->IndexCount);
+                Context.CommandList->ExecuteIndirect(*Batch->IndirectArguments, Batch->MeshletCount);
             }
             Context.CommandList->EndRenderPass();
             return true;

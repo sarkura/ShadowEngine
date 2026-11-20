@@ -2,12 +2,6 @@
 
 #include <cstdarg>
 
-#include <windows.h>
-
-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam);
-
-#include <imgui_impl_win32.h>
-
 namespace ShadowEngine
 {
     bool ImGuiAdapter::HasContext()
@@ -141,29 +135,5 @@ namespace ShadowEngine
         va_start(Arguments, Format);
         ImGui::TextV(Format, Arguments);
         va_end(Arguments);
-    }
-
-    bool ImGuiAdapter::Win32Init(void* Window)
-    {
-        return ImGui_ImplWin32_Init(static_cast<HWND>(Window));
-    }
-
-    void ImGuiAdapter::Win32Shutdown()
-    {
-        ImGui_ImplWin32_Shutdown();
-    }
-
-    void ImGuiAdapter::Win32NewFrame()
-    {
-        ImGui_ImplWin32_NewFrame();
-    }
-
-    std::intptr_t ImGuiAdapter::Win32WndProc(void* Window, unsigned int Message, std::uintptr_t WParam, std::intptr_t LParam)
-    {
-        return ImGui_ImplWin32_WndProcHandler(
-            static_cast<HWND>(Window),
-            Message,
-            static_cast<WPARAM>(WParam),
-            static_cast<LPARAM>(LParam));
     }
 }

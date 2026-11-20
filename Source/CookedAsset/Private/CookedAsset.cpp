@@ -10,7 +10,9 @@ namespace ShadowEngine
     {
         constexpr uint32 MeshMagic = 0x534D4553;
         constexpr uint32 TextureMagic = 0x58544553;
-        constexpr uint32 CookedVersion = 1;
+        constexpr uint32 MeshCookedVersion = 2;
+        static_assert(sizeof(Meshlet) == 56);
+        constexpr uint32 TextureCookedVersion = 1;
 
         void SetError(std::string* ErrorMessage, const std::string& Message)
         {
@@ -74,7 +76,7 @@ namespace ShadowEngine
         }
 
         const uint32 SectionCount = static_cast<uint32>(Mesh.Sections.size());
-        if (!WritePod(Output, MeshMagic) || !WritePod(Output, CookedVersion) || !WritePod(Output, SectionCount))
+        if (!WritePod(Output, MeshMagic) || !WritePod(Output, MeshCookedVersion) || !WritePod(Output, SectionCount))
         {
             SetError(ErrorMessage, "Unable to write cooked mesh: " + Path.generic_string());
             return false;
@@ -85,12 +87,15 @@ namespace ShadowEngine
             const uint32 Flags = Section.bHasTexCoords ? 1U : 0U;
             const uint32 VertexCount = static_cast<uint32>(Section.Vertices.size());
             const uint32 IndexCount = static_cast<uint32>(Section.Indices.size());
+            const uint32 MeshletCount = static_cast<uint32>(Section.Meshlets.size());
             if (!WritePod(Output, Section.Slot) ||
                 !WritePod(Output, Flags) ||
                 !WritePod(Output, VertexCount) ||
                 !WritePod(Output, IndexCount) ||
+                !WritePod(Output, MeshletCount) ||
                 !WriteValue(Output, Section.Vertices.data(), Section.Vertices.size() * sizeof(MeshVertex)) ||
-                !WriteValue(Output, Section.Indices.data(), Section.Indices.size() * sizeof(uint32)))
+                !WriteValue(Output, Section.Indices.data(), Section.Indices.size() * sizeof(uint32)) ||
+                !WriteValue(Output, Section.Meshlets.data(), Section.Meshlets.size() * sizeof(Meshlet)))
             {
                 SetError(ErrorMessage, "Unable to write cooked mesh: " + Path.generic_string());
                 return false;
@@ -112,7 +117,7 @@ namespace ShadowEngine
         uint32 Magic = 0;
         uint32 Version = 0;
         uint32 SectionCount = 0;
-        if (!ReadPod(Input, Magic) || Magic != MeshMagic || !ReadPod(Input, Version) || Version != CookedVersion || !ReadPod(Input, SectionCount))
+        if (!ReadPod(Input, Magic) || Magic != MeshMagic || !ReadPod(Input, Version) || (Version != 1 && Version != MeshCookedVersion) || !ReadPod(Input, SectionCount))
         {
             SetError(ErrorMessage, "Cooked mesh is invalid: " + Path.generic_string());
             return false;
@@ -126,7 +131,14 @@ namespace ShadowEngine
             uint32 Flags = 0;
             uint32 VertexCount = 0;
             uint32 IndexCount = 0;
+            uint32 MeshletCount = 0;
             if (!ReadPod(Input, Section.Slot) || !ReadPod(Input, Flags) || !ReadPod(Input, VertexCount) || !ReadPod(Input, IndexCount))
+            {
+                SetError(ErrorMessage, "Cooked mesh is invalid: " + Path.generic_string());
+                return false;
+            }
+
+            if (Version == MeshCookedVersion && !ReadPod(Input, MeshletCount))
             {
                 SetError(ErrorMessage, "Cooked mesh is invalid: " + Path.generic_string());
                 return false;
@@ -135,8 +147,10 @@ namespace ShadowEngine
             Section.bHasTexCoords = (Flags & 1U) != 0;
             Section.Vertices.resize(VertexCount);
             Section.Indices.resize(IndexCount);
-            if (!ReadValue(Input, Section.Vertices.data(), Section.Vertices.size() * sizeof(MeshVertex)) ||
-                !ReadValue(Input, Section.Indices.data(), Section.Indices.size() * sizeof(uint32)))
+            Section.Meshlets.resize(MeshletCount);
+            if ((VertexCount > 0 && !ReadValue(Input, Section.Vertices.data(), Section.Vertices.size() * sizeof(MeshVertex))) ||
+                (IndexCount > 0 && !ReadValue(Input, Section.Indices.data(), Section.Indices.size() * sizeof(uint32))) ||
+                (MeshletCount > 0 && !ReadValue(Input, Section.Meshlets.data(), Section.Meshlets.size() * sizeof(Meshlet))))
             {
                 SetError(ErrorMessage, "Cooked mesh is invalid: " + Path.generic_string());
                 return false;
@@ -162,7 +176,7 @@ namespace ShadowEngine
         const uint32 Format = static_cast<uint32>(Texture.Format);
         const uint32 Encoding = static_cast<uint32>(Texture.Encoding);
         const uint32 MipCount = static_cast<uint32>(Texture.Mips.size());
-        if (!WritePod(Output, TextureMagic) || !WritePod(Output, CookedVersion) || !WritePod(Output, Format) || !WritePod(Output, Encoding) || !WritePod(Output, MipCount))
+        if (!WritePod(Output, TextureMagic) || !WritePod(Output, TextureCookedVersion) || !WritePod(Output, Format) || !WritePod(Output, Encoding) || !WritePod(Output, MipCount))
         {
             SetError(ErrorMessage, "Unable to write cooked texture: " + Path.generic_string());
             return false;
@@ -198,7 +212,7 @@ namespace ShadowEngine
         uint32 Format = 0;
         uint32 Encoding = 0;
         uint32 MipCount = 0;
-        if (!ReadPod(Input, Magic) || Magic != TextureMagic || !ReadPod(Input, Version) || Version != CookedVersion ||
+        if (!ReadPod(Input, Magic) || Magic != TextureMagic || !ReadPod(Input, Version) || Version != TextureCookedVersion ||
             !ReadPod(Input, Format) || !ReadPod(Input, Encoding) || !ReadPod(Input, MipCount))
         {
             SetError(ErrorMessage, "Cooked texture is invalid: " + Path.generic_string());

@@ -78,11 +78,11 @@ namespace ShadowEngine
             }
         }
 
-        void OptimizeSection(CookedMeshSection& Section)
+        bool OptimizeSection(CookedMeshSection& Section, const std::string& SourcePath, std::string* ErrorMessage)
         {
             if (Section.Vertices.empty() || Section.Indices.empty())
             {
-                return;
+                return true;
             }
 
             std::vector<uint32> Cached(Section.Indices.size());
@@ -112,6 +112,40 @@ namespace ShadowEngine
             Fetched.resize(VertexCount);
             Section.Vertices.swap(Fetched);
             Section.Indices.swap(Overdraw);
+
+            std::vector<uint32> MeshletIndices;
+            std::vector<MeshletRecord> Records;
+            if (!MeshOptimizerAdapter::BuildMeshlets(
+                    Section.Indices.data(),
+                    Section.Indices.size(),
+                    Section.Vertices.front().Position,
+                    Section.Vertices.size(),
+                    sizeof(MeshVertex),
+                    MeshletIndices,
+                    Records))
+            {
+                SetError(ErrorMessage, "Failed to build meshlets: " + SourcePath);
+                return false;
+            }
+
+            Section.Indices.swap(MeshletIndices);
+            Section.Meshlets.clear();
+            Section.Meshlets.reserve(Records.size());
+            for (const MeshletRecord& Record : Records)
+            {
+                Meshlet MeshletData;
+                MeshletData.IndexOffset = Record.IndexOffset;
+                MeshletData.IndexCount = Record.IndexCount;
+                MeshletData.VertexCount = Record.VertexCount;
+                std::memcpy(MeshletData.Center, Record.Center, sizeof(MeshletData.Center));
+                MeshletData.Radius = Record.Radius;
+                std::memcpy(MeshletData.ConeApex, Record.ConeApex, sizeof(MeshletData.ConeApex));
+                std::memcpy(MeshletData.ConeAxis, Record.ConeAxis, sizeof(MeshletData.ConeAxis));
+                MeshletData.ConeCutoff = Record.ConeCutoff;
+                Section.Meshlets.push_back(MeshletData);
+            }
+
+            return true;
         }
 
         CookedMeshSection* FindSection(std::vector<CookedMeshSection>& Sections, uint32 Slot)
@@ -374,10 +408,78 @@ namespace ShadowEngine
                 return false;
             }
 
-            OptimizeSection(Section);
+            if (!OptimizeSection(Section, SourcePath, ErrorMessage))
+            {
+                return false;
+            }
         }
 
         return SaveCookedMesh(Output, Mesh, ErrorMessage);
+    }
+
+    bool RebuildMeshlets(const std::filesystem::path& CookedPath, std::string* ErrorMessage)
+    {
+        CookedMesh Mesh;
+        if (!LoadCookedMesh(CookedPath, Mesh, ErrorMessage))
+        {
+            return false;
+        }
+
+        bool bChanged = false;
+        for (CookedMeshSection& Section : Mesh.Sections)
+        {
+            if (!Section.Meshlets.empty())
+            {
+                continue;
+            }
+
+            if (Section.Vertices.empty() || Section.Indices.empty())
+            {
+                SetError(ErrorMessage, "Cooked mesh section has no triangles: " + CookedPath.generic_string());
+                return false;
+            }
+
+            std::vector<uint32> MeshletIndices;
+            std::vector<MeshletRecord> Records;
+            if (!MeshOptimizerAdapter::BuildMeshlets(
+                    Section.Indices.data(),
+                    Section.Indices.size(),
+                    Section.Vertices.front().Position,
+                    Section.Vertices.size(),
+                    sizeof(MeshVertex),
+                    MeshletIndices,
+                    Records))
+            {
+                SetError(ErrorMessage, "Failed to build meshlets: " + CookedPath.generic_string());
+                return false;
+            }
+
+            Section.Indices.swap(MeshletIndices);
+            Section.Meshlets.clear();
+            Section.Meshlets.reserve(Records.size());
+            for (const MeshletRecord& Record : Records)
+            {
+                Meshlet MeshletData;
+                MeshletData.IndexOffset = Record.IndexOffset;
+                MeshletData.IndexCount = Record.IndexCount;
+                MeshletData.VertexCount = Record.VertexCount;
+                std::memcpy(MeshletData.Center, Record.Center, sizeof(MeshletData.Center));
+                MeshletData.Radius = Record.Radius;
+                std::memcpy(MeshletData.ConeApex, Record.ConeApex, sizeof(MeshletData.ConeApex));
+                std::memcpy(MeshletData.ConeAxis, Record.ConeAxis, sizeof(MeshletData.ConeAxis));
+                MeshletData.ConeCutoff = Record.ConeCutoff;
+                Section.Meshlets.push_back(MeshletData);
+            }
+
+            bChanged = true;
+        }
+
+        if (!bChanged)
+        {
+            return true;
+        }
+
+        return SaveCookedMesh(CookedPath, Mesh, ErrorMessage);
     }
 
     bool CookTexture(

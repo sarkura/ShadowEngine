@@ -20,12 +20,25 @@ namespace ShadowEngine
         sRGB
     };
 
+    struct Meshlet
+    {
+        uint32 IndexOffset = 0;
+        uint32 IndexCount = 0;
+        uint32 VertexCount = 0;
+        float Center[3] = {};
+        float Radius = 0.0F;
+        float ConeApex[3] = {};
+        float ConeAxis[3] = {};
+        float ConeCutoff = 1.0F;
+    };
+
     struct CookedMeshSection
     {
         uint32 Slot = 0;
         bool bHasTexCoords = false;
         std::vector<MeshVertex> Vertices;
         std::vector<uint32> Indices;
+        std::vector<Meshlet> Meshlets;
     };
 
     struct CookedMesh

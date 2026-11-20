@@ -10,6 +10,10 @@
 
 #include "ThirdPartyAdapter/UI/Public/ImGuiAdapter.h"
 
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam);
+
+#include <imgui_impl_win32.h>
+
 namespace ShadowEngine
 {
     namespace
@@ -17,6 +21,11 @@ namespace ShadowEngine
         constexpr wchar_t WindowClassName[] = L"ShadowEngineWindowClass";
         constexpr float LookRadiansPerSpeed = 0.00025F;
         constexpr float MaxFrameTime = 0.1F;
+
+        void Win32ImGuiNewFrame()
+        {
+            ImGui_ImplWin32_NewFrame();
+        }
 
         LRESULT CALLBACK WindowProcedure(
             HWND Window,
@@ -48,7 +57,7 @@ namespace ShadowEngine
 
             if (UIManager::Get().IsVisible() &&
                 ImGuiAdapter::HasContext() &&
-                ImGuiAdapter::Win32WndProc(Window, Message, WParam, LParam) != 0)
+                ImGui_ImplWin32_WndProcHandler(Window, Message, WParam, LParam) != 0)
             {
                 return 1;
             }
@@ -203,12 +212,13 @@ namespace ShadowEngine
 
         if (ImGuiAdapter::HasContext())
         {
-            if (ImGuiAdapter::Win32Init(Window) == false)
+            if (ImGui_ImplWin32_Init(Window) == false)
             {
                 Log::Error("ImGui Win32 initialization failed");
                 Finalize();
                 return -1;
             }
+            UIManager::Get().SetPlatformFrameCallback(&Win32ImGuiNewFrame);
             bImGuiPlatform = true;
         }
 
@@ -418,7 +428,8 @@ namespace ShadowEngine
 
         if (bImGuiPlatform)
         {
-            ImGuiAdapter::Win32Shutdown();
+            UIManager::Get().SetPlatformFrameCallback(nullptr);
+            ImGui_ImplWin32_Shutdown();
             bImGuiPlatform = false;
         }
 

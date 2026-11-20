@@ -40,6 +40,21 @@ namespace ShadowEngine
         }
 
         CommandList->Close();
+
+        D3D12_INDIRECT_ARGUMENT_DESC Argument{};
+        Argument.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
+        D3D12_COMMAND_SIGNATURE_DESC Signature{};
+        Signature.ByteStride = sizeof(RHIDrawIndexedArguments);
+        Signature.NumArgumentDescs = 1;
+        Signature.pArgumentDescs = &Argument;
+        Result = Device->CreateCommandSignature(&Signature, nullptr, IID_PPV_ARGS(CommandSignature.GetAddressOf()));
+        if (FAILED(Result))
+        {
+            SetErrorMessage(ErrorMessage, "CreateCommandSignature failed: " + FormatHResult(Result));
+            return false;
+        }
+
+        static_assert(sizeof(RHIDrawIndexedArguments) == sizeof(D3D12_DRAW_INDEXED_ARGUMENTS));
         return true;
     }
 
@@ -314,6 +329,22 @@ namespace ShadowEngine
     void D3D12CommandList::DrawIndexed(uint32 IndexCount, uint32 FirstIndex, int32 VertexOffset)
     {
         CommandList->DrawIndexedInstanced(IndexCount, 1, FirstIndex, VertexOffset, 0);
+    }
+
+    void D3D12CommandList::ExecuteIndirect(RHIBuffer& Arguments, uint32 CommandCount)
+    {
+        if (CommandCount == 0 || CommandSignature == nullptr)
+        {
+            return;
+        }
+
+        CommandList->ExecuteIndirect(
+            CommandSignature.Get(),
+            CommandCount,
+            static_cast<D3D12Buffer&>(Arguments).GetResource(),
+            0,
+            nullptr,
+            0);
     }
 
     ID3D12GraphicsCommandList* D3D12CommandList::GetHandle() const

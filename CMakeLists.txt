@@ -106,9 +106,6 @@ target_link_libraries(ThirdPartyAdapter
     Cgltf
     MeshOptimizer
 )
-if(WIN32)
-    target_link_libraries(ThirdPartyAdapter PRIVATE ImGuiWin32)
-endif()
 
 # Slang (headers only, slang-compiler.dll is loaded at runtime by ShaderCompiler)
 add_library(SlangHeaders INTERFACE)
@@ -251,7 +248,7 @@ if(WIN32)
 
     target_link_libraries(WindowsPlatform
         PUBLIC Framework
-        PRIVATE user32 gdi32
+        PRIVATE user32 gdi32 ImGuiWin32
     )
 
     set(SHADOW_PLATFORM_TARGET WindowsPlatform)

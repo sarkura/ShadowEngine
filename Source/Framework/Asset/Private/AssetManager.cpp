@@ -50,6 +50,7 @@ namespace ShadowEngine
             bool bRequireTexCoord = false;
             std::vector<MeshVertex> Vertices;
             std::vector<uint32> Indices;
+            std::vector<Meshlet> Meshlets;
         };
 
         MeshBlock* FindBlock(std::vector<MeshBlock>& Blocks, uint32 Slot)
@@ -310,17 +311,25 @@ namespace ShadowEngine
                 return {};
             }
 
+            if (CookedSection.Meshlets.empty())
+            {
+                SetErrorMessage(ErrorMessage, "Cooked mesh has no meshlets, run AssetImportTool meshlets: " + SourcePath);
+                return {};
+            }
+
             Block->Vertices = std::move(CookedSection.Vertices);
             Block->Indices = std::move(CookedSection.Indices);
+            Block->Meshlets = std::move(CookedSection.Meshlets);
         }
 
         std::vector<MeshSection> Sections;
         Sections.reserve(Blocks.size());
         size_t VertexCount = 0;
         size_t IndexCount = 0;
+        size_t MeshletCount = 0;
         for (MeshBlock& Block : Blocks)
         {
-            if (Block.Vertices.empty() || Block.Indices.empty())
+            if (Block.Vertices.empty() || Block.Indices.empty() || Block.Meshlets.empty())
             {
                 SetErrorMessage(
                     ErrorMessage,
@@ -330,10 +339,12 @@ namespace ShadowEngine
 
             VertexCount += Block.Vertices.size();
             IndexCount += Block.Indices.size();
+            MeshletCount += Block.Meshlets.size();
             MeshSection Section;
             Section.Material = Block.Material;
             Section.Vertices = std::move(Block.Vertices);
             Section.Indices = std::move(Block.Indices);
+            Section.Meshlets = std::move(Block.Meshlets);
             Sections.push_back(std::move(Section));
         }
 
@@ -347,12 +358,13 @@ namespace ShadowEngine
 
         Meshes.push_back(Loaded);
         Log::Info(
-            "Loaded mesh {} from {} ({} sections, {} vertices, {} indices)",
+            "Loaded mesh {} from {} ({} sections, {} vertices, {} indices, {} meshlets)",
             DescriptionPath,
             SourcePath,
             Loaded->GetSections().size(),
             VertexCount,
-            IndexCount);
+            IndexCount,
+            MeshletCount);
         MeshHandle Handle;
         Handle.Index = static_cast<uint32>(Meshes.size() - 1);
         return Handle;

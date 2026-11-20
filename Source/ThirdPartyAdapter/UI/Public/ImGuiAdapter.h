@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cstdint>
-
 #include <imgui.h>
 
 namespace ShadowEngine
@@ -36,10 +34,5 @@ namespace ShadowEngine
             static void PopID();
             static void TextUnformatted(const char* Text);
             static void Text(const char* Format, ...);
-
-            static bool Win32Init(void* Window);
-            static void Win32Shutdown();
-            static void Win32NewFrame();
-            static std::intptr_t Win32WndProc(void* Window, unsigned int Message, std::uintptr_t WParam, std::intptr_t LParam);
     };
 }

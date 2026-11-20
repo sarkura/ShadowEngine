@@ -29,6 +29,7 @@ namespace ShadowEngine
             [[nodiscard]] EUIPipeline GetPipeline() const;
 
             void ToggleVisible();
+            void SetPlatformFrameCallback(void (*Callback)());
             void BeginFrame();
 
             struct PostState
@@ -76,5 +77,6 @@ namespace ShadowEngine
             EUIPipeline Pipeline = EUIPipeline::None;
             bool bActive = false;
             bool bVisible = false;
+            void (*PlatformFrame)() = nullptr;
     };
 }

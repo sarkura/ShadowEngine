@@ -39,6 +39,15 @@ namespace ShadowEngine
         std::span<const uint8> Data;
     };
 
+    struct RHIDrawIndexedArguments
+    {
+        uint32 IndexCountPerInstance = 0;
+        uint32 InstanceCount = 1;
+        uint32 StartIndexLocation = 0;
+        int32 BaseVertexLocation = 0;
+        uint32 StartInstanceLocation = 0;
+    };
+
     struct RHITextureMipDesc
     {
         uint32 Width = 0;
