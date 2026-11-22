@@ -96,6 +96,16 @@
             "Radius": 14.0
         },
         {
+            "Type": "AreaLight",
+            "Position": [0, 4, 0],
+            "Direction": [0, -1, 0],
+            "Width": 3.0,
+            "Height": 1.5,
+            "Color": [1.0, 0.72, 0.42],
+            "Intensity": 14.0,
+            "Radius": 12.0
+        },
+        {
             "Type": "SkyLight",
             "Color": [0.45, 0.55, 0.75],
             "Intensity": 0.25

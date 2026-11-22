@@ -44,6 +44,7 @@ namespace ShadowEngine
     void ShaderManager::Finalize()
     {
         Records.clear();
+        StageShaders.clear();
         if (Compiler != nullptr)
         {
             Compiler->Finalize();
@@ -153,6 +154,61 @@ namespace ShadowEngine
         }
 
         return Record.PixelShader != nullptr;
+    }
+
+    RHIShader* ShaderManager::LoadStandalone(
+        RHIDevice& Device,
+        const std::filesystem::path& SourcePath,
+        const char* EntryPoint,
+        ERHIShaderStage Stage,
+        std::string* ErrorMessage)
+    {
+        if (!bFormatSet)
+        {
+            SetShaderFormat(Device.GetShaderFormat());
+        }
+
+        if (Compiler == nullptr || EntryPoint == nullptr || SourcePath.empty())
+        {
+            SetErrorMessage(ErrorMessage, "Standalone shader is missing its source");
+            return nullptr;
+        }
+
+        const std::string Key = SourcePath.generic_string();
+        for (const StageShader& Existing : StageShaders)
+        {
+            if (Existing.Stage == Stage && Existing.EntryPoint == EntryPoint &&
+                Existing.SourcePath.generic_string() == Key && Existing.Shader != nullptr)
+            {
+                return Existing.Shader.get();
+            }
+        }
+
+        ShaderCompileRequest Request;
+        Request.SourcePath = ShaderDirectory / SourcePath;
+        Request.EntryPoint = EntryPoint;
+        Request.Stage = Stage;
+        Request.Format = ShaderFormat;
+        ShaderBytecode Bytecode;
+        ShaderReflection Reflection;
+        if (!Compiler->Compile(Request, Bytecode, Reflection, ErrorMessage))
+        {
+            return nullptr;
+        }
+
+        std::unique_ptr<RHIShader> Shader = CreateShader(Device, Bytecode, ErrorMessage);
+        if (Shader == nullptr)
+        {
+            return nullptr;
+        }
+
+        StageShader Record;
+        Record.SourcePath = SourcePath;
+        Record.EntryPoint = EntryPoint;
+        Record.Stage = Stage;
+        Record.Shader = std::move(Shader);
+        StageShaders.push_back(std::move(Record));
+        return StageShaders.back().Shader.get();
     }
 
     RHIShader* ShaderManager::GetVertexShader(ShaderHandle Handle) const

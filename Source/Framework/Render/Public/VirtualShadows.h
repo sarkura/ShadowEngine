@@ -29,6 +29,7 @@ namespace ShadowEngine
                 const Camera& View,
                 const DirectLightRenderProxy* DirectLight,
                 const std::vector<PointLightRenderProxy>& PointLights,
+                const std::vector<AreaLightRenderProxy>& AreaLights,
                 std::string* ErrorMessage) override;
 
             bool Record(
@@ -40,6 +41,16 @@ namespace ShadowEngine
             {
                 return Binding;
             }
+
+            struct WorldCaster
+            {
+                const MeshBatch* Batch = nullptr;
+                float World[16] = {};
+                float NormalMatrix[16] = {};
+                float Min[3] = {};
+                float Max[3] = {};
+                bool bTwoSided = false;
+            };
 
         private:
             struct ClipLevel
@@ -63,6 +74,7 @@ namespace ShadowEngine
                 float MinY = 0.0F;
                 float MaxX = 0.0F;
                 float MaxY = 0.0F;
+                float DrawClip[16] = {};
             };
 
             struct CasterBound
@@ -81,37 +93,29 @@ namespace ShadowEngine
                 RHIDevice& Device,
                 ShaderManager& Shaders,
                 const char* ShaderPath,
+                const char* MeshShaderPath,
                 ERHICullMode Cull,
                 std::string* ErrorMessage);
 
             std::unique_ptr<RHITexture> Atlas;
             std::unique_ptr<RHITexture> PageTable;
-            std::unique_ptr<RHITexture> PointMaps[4];
             std::unique_ptr<RHIPipeline> DirectionalPipeline;
             std::unique_ptr<RHIPipeline> DirectionalTwoSidedPipeline;
-            std::unique_ptr<RHIPipeline> PointPipeline;
-            std::unique_ptr<RHIPipeline> PointTwoSidedPipeline;
             std::unique_ptr<RHIBuffer> ConstantBuffer;
-            std::unique_ptr<RHISampler> ComparisonSampler;
             std::unique_ptr<RHISampler> PageSampler;
             ForwardShadowBinding Binding;
             ClipLevel Levels[4];
             std::vector<VirtualPage> Pages;
             std::vector<CasterBound> CasterBounds;
+            std::vector<WorldCaster> WorldCasters;
             std::vector<uint8> PagePixels;
-            float LightView[16] = {};
             PointLightRenderProxy ActivePoints[4];
+            AreaLightRenderProxy ActiveAreas[1];
+            float LightView[16] = {};
             uint32 AtlasDescriptor = InvalidShaderDescriptor;
             uint32 PageDescriptor = InvalidShaderDescriptor;
             uint32 PageSamplerDescriptor = InvalidShaderDescriptor;
-            uint32 PointDescriptors[4] = {
-                InvalidShaderDescriptor,
-                InvalidShaderDescriptor,
-                InvalidShaderDescriptor,
-                InvalidShaderDescriptor};
-            uint32 ComparisonDescriptor = InvalidShaderDescriptor;
             bool bDirectActive = false;
-            bool bPointActive[4] = {};
             bool bReady = false;
     };
 }

@@ -104,6 +104,56 @@ float4 PixelMain(float4 Position : SV_Position) : SV_Target
         Light.Point += ShadeDeferredGgx(Albedo, Metallic, Roughness, Normal, ToView, ToLight, Radiance);
     }
 
+    Light.Area = float3(0.0, 0.0, 0.0);
+    for (int AreaIndex = 0; AreaIndex < ForwardAreaLightCapacity; ++AreaIndex)
+    {
+        const ForwardAreaLight AreaLight = Area[AreaIndex];
+        if (AreaLight.Color.a <= 0.0)
+        {
+            continue;
+        }
+
+        const float3 Direction = normalize(AreaLight.Direction.xyz);
+        const float3 Tangent = normalize(AreaLight.Tangent.xyz);
+        const float3 Bitangent = cross(Direction, Tangent);
+        const float3 ToCenter = WorldPosition - AreaLight.Position.xyz;
+        if (dot(ToCenter, Direction) <= 0.0)
+        {
+            continue;
+        }
+
+        const float HalfWidth = AreaLight.Direction.w * 0.5;
+        const float HalfHeight = AreaLight.Tangent.w * 0.5;
+        const float3 Local = ToCenter - Direction * dot(ToCenter, Direction);
+        const float U = clamp(dot(Local, Tangent), -HalfWidth, HalfWidth);
+        const float V = clamp(dot(Local, Bitangent), -HalfHeight, HalfHeight);
+        const float3 Closest = AreaLight.Position.xyz + Tangent * U + Bitangent * V;
+        const float3 Offset = WorldPosition - Closest;
+        const float Distance2 = dot(Offset, Offset);
+        const float Radius = max(AreaLight.Position.w, 0.001);
+        const float Radius2 = Radius * Radius;
+        if (Distance2 >= Radius2)
+        {
+            continue;
+        }
+
+        const float Distance = sqrt(Distance2);
+        const float3 ToLight = Offset / max(Distance, 0.001);
+        if (dot(Normal, ToLight) <= 0.0)
+        {
+            continue;
+        }
+
+        const float Falloff = Distance2 / Radius2;
+        const float Window = saturate(1.0 - Falloff * Falloff);
+        const float Attenuation = Window * Window / (Distance2 + 1.0);
+        const float Cosine = saturate(dot(Direction, -ToLight));
+        const float FarPlane = max(Radius + 0.5 * length(float2(AreaLight.Direction.w, AreaLight.Tangent.w)), 0.15);
+        const float Visibility = AreaShadowVisibility(AreaIndex, WorldPosition, AreaLight.Position.xyz, Direction, Tangent, FarPlane, Normal);
+        const float3 Radiance = AreaLight.Color.rgb * AreaLight.Color.a * Attenuation * Cosine * Visibility;
+        Light.Area += ShadeDeferredGgx(Albedo, Metallic, Roughness, Normal, ToView, ToLight, Radiance);
+    }
+
     Light.Sky = EvaluateIBL(
         Albedo,
         Metallic,
@@ -119,5 +169,5 @@ float4 PixelMain(float4 Position : SV_Position) : SV_Target
         ImageBasedLight.BrdfLut,
         ImageBasedLight.EnvironmentSampler,
         ImageBasedLight.BrdfSampler) * Sky.Color.rgb * Sky.Color.a;
-    return float4(Light.Direct + Light.Point + Light.Sky, 1.0);
+    return float4(Light.Direct + Light.Point + Light.Area + Light.Sky, 1.0);
 }

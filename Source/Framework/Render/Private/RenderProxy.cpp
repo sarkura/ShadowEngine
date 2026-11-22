@@ -60,6 +60,27 @@ namespace ShadowEngine
             Out.PointLights.push_back(Light);
         }
 
+        Out.AreaLights.clear();
+        Out.AreaLights.reserve(InScene.GetAreaLights().size());
+        for (const AreaLight& Item : InScene.GetAreaLights())
+        {
+            AreaLightRenderProxy Light;
+            Item.GetPosition(Light.Position);
+            Item.GetDirection(Light.Direction);
+            Item.GetColor(Light.Color);
+            Light.Radius = Item.GetRadius();
+            Light.Width = Item.GetWidth();
+            Light.Height = Item.GetHeight();
+            Light.Intensity = Item.GetIntensity();
+            const Vec3 Forward(Light.Direction[0], Light.Direction[1], Light.Direction[2]);
+            const Vec3 Reference = (Forward.y > 0.99F || Forward.y < -0.99F) ? Vec3(0.0F, 0.0F, 1.0F) : Vec3(0.0F, 1.0F, 0.0F);
+            const Vec3 Tangent = GLMAdapter::Normalize(GLMAdapter::Cross(Reference, Forward));
+            Light.Tangent[0] = Tangent.x;
+            Light.Tangent[1] = Tangent.y;
+            Light.Tangent[2] = Tangent.z;
+            Out.AreaLights.push_back(Light);
+        }
+
         Out.bHasSkyLight = InScene.HasSkyLight();
         Out.SkyLight = {};
         if (Out.bHasSkyLight)

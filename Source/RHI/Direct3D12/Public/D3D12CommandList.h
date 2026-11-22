@@ -8,6 +8,7 @@
 
 namespace ShadowEngine
 {
+    class D3D12Pipeline;
     class D3D12Texture;
 
     class D3D12CommandList final : public RHICommandList
@@ -45,6 +46,12 @@ namespace ShadowEngine
             void Draw(uint32 VertexCount, uint32 FirstVertex = 0) override;
             void DrawIndexed(uint32 IndexCount, uint32 FirstIndex = 0, int32 VertexOffset = 0) override;
             void ExecuteIndirect(RHIBuffer& Arguments, uint32 CommandCount) override;
+            void DrawMeshlets(
+                RHIBuffer& Vertices,
+                RHIBuffer& VertexIds,
+                RHIBuffer& PrimitiveIndices,
+                RHIBuffer& Meshlets,
+                uint32 MeshletCount) override;
 
             [[nodiscard]] ID3D12GraphicsCommandList* GetHandle() const;
 
@@ -53,7 +60,9 @@ namespace ShadowEngine
 
             ComPtr<ID3D12CommandAllocator> Allocator;
             ComPtr<ID3D12GraphicsCommandList> CommandList;
+            ComPtr<ID3D12GraphicsCommandList6> MeshCommands;
             ComPtr<ID3D12CommandSignature> CommandSignature;
+            D3D12Pipeline* CurrentPipeline = nullptr;
             ComPtr<ID3D12Resource> TextureUpload;
             ID3D12Device* D3DDevice = nullptr;
             uint8* TextureUploadMapped = nullptr;

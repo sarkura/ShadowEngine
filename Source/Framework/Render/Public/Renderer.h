@@ -75,6 +75,7 @@ namespace ShadowEngine
 
             bool CollectVisibleItems(const RenderItemFilter& Filter, RenderQueue& Queue);
             void SelectVisiblePointLights(uint32 Limit, std::vector<PointLightRenderProxy>& Out) const;
+            void SelectVisibleAreaLights(uint32 Limit, std::vector<AreaLightRenderProxy>& Out) const;
             void ReleaseUploadedTexture(TextureAssetHandle Handle);
 
             RHIDevice* Device = nullptr;

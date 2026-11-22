@@ -80,6 +80,54 @@ float3 ShadePoint(ForwardPointLight Light, int LightIndex, MaterialSample Materi
     return ShadeGgx(Material.Albedo, Material.Metallic, Material.Roughness, Normal, ToView, ToLight, Radiance);
 }
 
+float3 ShadeArea(ForwardAreaLight Light, int LightIndex, MaterialSample Material, float3 Normal, float3 WorldPosition, float3 ToView)
+{
+    if (Light.Color.a <= 0.0)
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+
+    const float3 Direction = normalize(Light.Direction.xyz);
+    const float3 Tangent = normalize(Light.Tangent.xyz);
+    const float3 Bitangent = cross(Direction, Tangent);
+    const float3 ToCenter = WorldPosition - Light.Position.xyz;
+    if (dot(ToCenter, Direction) <= 0.0)
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+
+    const float HalfWidth = Light.Direction.w * 0.5;
+    const float HalfHeight = Light.Tangent.w * 0.5;
+    const float3 Local = ToCenter - Direction * dot(ToCenter, Direction);
+    const float U = clamp(dot(Local, Tangent), -HalfWidth, HalfWidth);
+    const float V = clamp(dot(Local, Bitangent), -HalfHeight, HalfHeight);
+    const float3 Closest = Light.Position.xyz + Tangent * U + Bitangent * V;
+    const float3 Offset = WorldPosition - Closest;
+    const float Distance2 = dot(Offset, Offset);
+    const float Radius = max(Light.Position.w, 0.001);
+    const float Radius2 = Radius * Radius;
+    if (Distance2 >= Radius2)
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+
+    const float Distance = sqrt(Distance2);
+    const float3 ToLight = Offset / max(Distance, 0.001);
+    if (dot(Normal, ToLight) <= 0.0)
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+
+    const float Falloff = Distance2 / Radius2;
+    const float Window = saturate(1.0 - Falloff * Falloff);
+    const float Attenuation = Window * Window / (Distance2 + 1.0);
+    const float Cosine = saturate(dot(Direction, -ToLight));
+    const float FarPlane = max(Radius + 0.5 * length(float2(Light.Direction.w, Light.Tangent.w)), 0.15);
+    const float Visibility = AreaShadowVisibility(LightIndex, WorldPosition, Light.Position.xyz, Direction, Tangent, FarPlane, Normal);
+    const float3 Radiance = Light.Color.rgb * Light.Color.a * Attenuation * Cosine * Visibility;
+    return ShadeGgx(Material.Albedo, Material.Metallic, Material.Roughness, Normal, ToView, ToLight, Radiance);
+}
+
 ForwardLightSample EvaluateLight(MaterialSample Material, VertexOutput Input)
 {
     const float3 Normal = normalize(Material.Normal);
@@ -90,6 +138,11 @@ ForwardLightSample EvaluateLight(MaterialSample Material, VertexOutput Input)
     for (int Index = 0; Index < ForwardPointLightCapacity; ++Index)
     {
         Sample.Point += ShadePoint(Point[Index], Index, Material, Normal, Input.WorldPosition, ToView);
+    }
+    Sample.Area = float3(0.0, 0.0, 0.0);
+    for (int AreaIndex = 0; AreaIndex < ForwardAreaLightCapacity; ++AreaIndex)
+    {
+        Sample.Area += ShadeArea(Area[AreaIndex], AreaIndex, Material, Normal, Input.WorldPosition, ToView);
     }
     Sample.Sky = EvaluateIBL(
         Material.Albedo,

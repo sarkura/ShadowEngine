@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <map>
@@ -193,6 +194,39 @@ namespace ShadowEngine
         if (LoggedCount != Out.size())
         {
             Log::Warning("View contains {} point lights and keeps the first {}", Out.size(), Limit);
+            LoggedCount = Out.size();
+        }
+        Out.resize(Limit);
+    }
+
+    void Renderer::SelectVisibleAreaLights(uint32 Limit, std::vector<AreaLightRenderProxy>& Out) const
+    {
+        Out.clear();
+        if (!FrameFrustum.bValid)
+        {
+            return;
+        }
+
+        for (const AreaLightRenderProxy& Light : SceneProxy.AreaLights)
+        {
+            const float HalfDiagonal = 0.5F * std::sqrt(Light.Width * Light.Width + Light.Height * Light.Height);
+            const float Radius = std::max(Light.Radius + HalfDiagonal, 0.15F);
+            const Vec3 Center(Light.Position[0], Light.Position[1], Light.Position[2]);
+            if (SphereIntersectsFrustum(FrameFrustum.Planes, Center, Radius))
+            {
+                Out.push_back(Light);
+            }
+        }
+
+        if (Out.size() <= Limit)
+        {
+            return;
+        }
+
+        static size_t LoggedCount = 0;
+        if (LoggedCount != Out.size())
+        {
+            Log::Warning("View contains {} area lights and keeps the first {}", Out.size(), Limit);
             LoggedCount = Out.size();
         }
         Out.resize(Limit);
@@ -455,74 +489,110 @@ namespace ShadowEngine
                 return false;
             }
 
-            const uint32 MaxIndex = *std::max_element(Indices.begin(), Indices.end());
-            const bool bUint16 = MaxIndex <= 0xFFFF;
-            std::vector<uint16> Indices16;
-            RHIBufferDesc IndexDesc;
-            if (bUint16)
-            {
-                Indices16.reserve(Indices.size());
-                for (const uint32 Index : Indices)
-                {
-                    Indices16.push_back(static_cast<uint16>(Index));
-                }
-                IndexDesc.Stride = sizeof(uint16);
-                IndexDesc.Data = AsBytes(Indices16.data(), Indices16.size() * sizeof(uint16));
-                Batch.IndexBuffer = Device->CreateIndexBuffer(IndexDesc, ERHIIndexFormat::Uint16, ErrorMessage);
-            }
-            else
-            {
-                IndexDesc.Stride = sizeof(uint32);
-                IndexDesc.Data = AsBytes(Indices.data(), Indices.size() * sizeof(uint32));
-                Batch.IndexBuffer = Device->CreateIndexBuffer(IndexDesc, ERHIIndexFormat::Uint32, ErrorMessage);
-            }
-            if (Batch.IndexBuffer == nullptr)
-            {
-                return false;
-            }
-
-            Batch.IndexCount = static_cast<uint32>(Indices.size());
             if (Section.Meshlets.empty())
             {
                 SetErrorMessage(ErrorMessage, "Mesh section has no meshlets: " + Mesh.GetPath().generic_string());
                 return false;
             }
 
-            std::vector<RHIDrawIndexedArguments> IndirectArguments;
-            IndirectArguments.reserve(Section.Meshlets.size());
+            struct GpuMeshlet
+            {
+                uint32 VertexOffset = 0;
+                uint32 VertexCount = 0;
+                uint32 PrimitiveOffset = 0;
+                uint32 PrimitiveCount = 0;
+                float CenterX = 0.0F;
+                float CenterY = 0.0F;
+                float CenterZ = 0.0F;
+                float Radius = 0.0F;
+            };
+            static_assert(sizeof(GpuMeshlet) == 32);
+
+            std::vector<uint32> VertexIds;
+            std::vector<uint32> PrimitiveIndices;
+            std::vector<GpuMeshlet> GpuMeshlets;
+            GpuMeshlets.reserve(Section.Meshlets.size());
             uint32 CoveredIndices = 0;
             for (const Meshlet& MeshletData : Section.Meshlets)
             {
-                if (MeshletData.IndexCount == 0 || MeshletData.IndexOffset + MeshletData.IndexCount > Indices.size())
+                if (MeshletData.IndexCount == 0 || MeshletData.IndexCount % 3 != 0 || MeshletData.IndexCount / 3 > 124 ||
+                    MeshletData.IndexOffset + MeshletData.IndexCount > Indices.size())
                 {
                     SetErrorMessage(ErrorMessage, "Meshlet range is outside the index buffer: " + Mesh.GetPath().generic_string());
                     return false;
                 }
 
-                RHIDrawIndexedArguments Argument;
-                Argument.IndexCountPerInstance = MeshletData.IndexCount;
-                Argument.InstanceCount = 1;
-                Argument.StartIndexLocation = MeshletData.IndexOffset;
-                Argument.BaseVertexLocation = 0;
-                Argument.StartInstanceLocation = 0;
-                IndirectArguments.push_back(Argument);
+                std::vector<uint32> Unique;
+                Unique.reserve(MeshletData.VertexCount);
+                GpuMeshlet Record;
+                Record.VertexOffset = static_cast<uint32>(VertexIds.size());
+                Record.PrimitiveOffset = static_cast<uint32>(PrimitiveIndices.size());
+                Record.PrimitiveCount = MeshletData.IndexCount / 3;
+                Record.CenterX = MeshletData.Center[0];
+                Record.CenterY = MeshletData.Center[1];
+                Record.CenterZ = MeshletData.Center[2];
+                Record.Radius = MeshletData.Radius;
+                for (uint32 Index = 0; Index < MeshletData.IndexCount; ++Index)
+                {
+                    const uint32 Global = Indices[MeshletData.IndexOffset + Index];
+                    if (Global >= Vertices.size())
+                    {
+                        SetErrorMessage(ErrorMessage, "Meshlet index is outside the vertex buffer: " + Mesh.GetPath().generic_string());
+                        return false;
+                    }
+
+                    uint32 Local = 0;
+                    bool bFound = false;
+                    for (uint32 Slot = 0; Slot < Unique.size(); ++Slot)
+                    {
+                        if (Unique[Slot] == Global)
+                        {
+                            Local = Slot;
+                            bFound = true;
+                            break;
+                        }
+                    }
+                    if (!bFound)
+                    {
+                        if (Unique.size() >= 64)
+                        {
+                            SetErrorMessage(ErrorMessage, "Meshlet has more than 64 vertices: " + Mesh.GetPath().generic_string());
+                            return false;
+                        }
+                        Local = static_cast<uint32>(Unique.size());
+                        Unique.push_back(Global);
+                    }
+                    PrimitiveIndices.push_back(Local);
+                }
+                Record.VertexCount = static_cast<uint32>(Unique.size());
+                VertexIds.insert(VertexIds.end(), Unique.begin(), Unique.end());
+                GpuMeshlets.push_back(Record);
                 CoveredIndices += MeshletData.IndexCount;
             }
-            if (CoveredIndices != Indices.size())
+            if (CoveredIndices != Indices.size() || VertexIds.empty() || PrimitiveIndices.empty())
             {
                 SetErrorMessage(ErrorMessage, "Meshlets do not cover the index buffer: " + Mesh.GetPath().generic_string());
                 return false;
             }
 
-            RHIBufferDesc IndirectDesc;
-            IndirectDesc.Stride = sizeof(RHIDrawIndexedArguments);
-            IndirectDesc.Data = AsBytes(IndirectArguments.data(), IndirectArguments.size() * sizeof(RHIDrawIndexedArguments));
-            Batch.IndirectArguments = Device->CreateIndirectBuffer(IndirectDesc, ErrorMessage);
-            if (Batch.IndirectArguments == nullptr)
+            const auto CreateRawBuffer = [&](const void* Data, uint32 Size, uint32 Stride) -> std::unique_ptr<RHIBuffer>
+            {
+                RHIBufferDesc BufferDesc;
+                BufferDesc.Stride = Stride;
+                BufferDesc.Data = AsBytes(Data, Size);
+                return Device->CreateVertexBuffer(BufferDesc, ErrorMessage);
+            };
+            Batch.MeshletVertexIds = CreateRawBuffer(VertexIds.data(), static_cast<uint32>(VertexIds.size() * sizeof(uint32)), sizeof(uint32));
+            Batch.MeshletIndices = CreateRawBuffer(
+                PrimitiveIndices.data(),
+                static_cast<uint32>(PrimitiveIndices.size() * sizeof(uint32)),
+                sizeof(uint32));
+            Batch.Meshlets = CreateRawBuffer(GpuMeshlets.data(), static_cast<uint32>(GpuMeshlets.size() * sizeof(GpuMeshlet)), sizeof(GpuMeshlet));
+            if (Batch.MeshletVertexIds == nullptr || Batch.MeshletIndices == nullptr || Batch.Meshlets == nullptr)
             {
                 return false;
             }
-            Batch.MeshletCount = static_cast<uint32>(IndirectArguments.size());
+            Batch.MeshletCount = static_cast<uint32>(GpuMeshlets.size());
 
             constexpr RHIInputElement InputLayout[] = {
                 {"POSITION", 0, 0, ERHIVertexFormat::Float32x3},
@@ -544,8 +614,19 @@ namespace ShadowEngine
             Batch.bTwoSided = Instance->FindTwoSided(GetName());
             const bool bDeferred = std::strcmp(GetName(), "DeferredRenderer") == 0;
 
+            RHIShader* SurfaceMesh = Shaders.LoadStandalone(
+                *Device,
+                "Mesh/SurfaceMesh.slang",
+                "MeshMain",
+                ERHIShaderStage::Mesh,
+                ErrorMessage);
+            if (SurfaceMesh == nullptr)
+            {
+                return false;
+            }
+
             RHIGraphicsPipelineDesc PipelineDesc;
-            PipelineDesc.VertexShader = Batch.VertexShader;
+            PipelineDesc.MeshShader = SurfaceMesh;
             PipelineDesc.PixelShader = Batch.PixelShader;
             PipelineDesc.Layout = &Batch.Layout;
             PipelineDesc.RenderTargetFormats[0] = GetSceneColorFormat();
@@ -661,7 +742,7 @@ namespace ShadowEngine
 
                     const RHIPipelineLayout ShadowLayout = RHIPipelineLayout::FromReflection(*ShadowVertex, *ShadowPixel);
                     RHIGraphicsPipelineDesc ShadowDesc;
-                    ShadowDesc.VertexShader = Shaders.GetVertexShader(ShadowShader);
+                    ShadowDesc.MeshShader = SurfaceMesh;
                     ShadowDesc.PixelShader = Shaders.GetPixelShader(ShadowShader);
                     ShadowDesc.Layout = &ShadowLayout;
                     ShadowDesc.RenderTargetCount = 0;
@@ -677,8 +758,7 @@ namespace ShadowEngine
                 };
 
                 Batch.DirectionalShadowPipeline = CreateCutoutShadowPipeline("Depth/CutoutDirectionalShadow.slang");
-                Batch.PointShadowPipeline = CreateCutoutShadowPipeline("Depth/CutoutPointShadow.slang");
-                if (Batch.DirectionalShadowPipeline == nullptr || Batch.PointShadowPipeline == nullptr)
+                if (Batch.DirectionalShadowPipeline == nullptr)
                 {
                     return false;
                 }

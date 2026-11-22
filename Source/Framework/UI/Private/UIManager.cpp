@@ -45,9 +45,7 @@ namespace ShadowEngine
         {
             UIManager::LightState State;
             State.bDirectionalShadow = Setting.bDirectionalShadow;
-            State.bPointShadow = Setting.bPointShadow;
             State.ShadowNormalBias = Setting.ShadowNormalBias;
-            State.PointShadowDepthBias = Setting.PointShadowDepthBias;
             State.bImageBasedLighting = Setting.bImageBasedLighting;
             State.bSkyBackground = Setting.bSkyBackground;
             return State;

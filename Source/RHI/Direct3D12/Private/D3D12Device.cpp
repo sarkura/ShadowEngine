@@ -71,6 +71,17 @@ namespace ShadowEngine
             ReportedModel >> 4,
             ReportedModel & 0xF);
 
+        D3D12_FEATURE_DATA_D3D12_OPTIONS7 Options7{};
+        const HRESULT MeshResult = Device->CheckFeatureSupport(
+            D3D12_FEATURE_D3D12_OPTIONS7,
+            &Options7,
+            sizeof(Options7));
+        if (FAILED(MeshResult) || Options7.MeshShaderTier == D3D12_MESH_SHADER_TIER_NOT_SUPPORTED)
+        {
+            SetErrorMessage(ErrorMessage, "The adapter or its driver does not support mesh shaders");
+            return false;
+        }
+
         if (Desc.bEnableDebugLayer)
         {
             Device.As(&InfoQueue);
@@ -277,11 +288,6 @@ namespace ShadowEngine
         return D3D12Texture::CreateDepth(Device.Get(), Width, Height, ErrorMessage);
     }
 
-    std::unique_ptr<RHITexture> D3D12Device::CreateCubeDepth(uint32 FaceSize, std::string* ErrorMessage)
-    {
-        return D3D12Texture::CreateCubeDepth(Device.Get(), FaceSize, ErrorMessage);
-    }
-
     std::unique_ptr<RHITexture> D3D12Device::CreateColorTarget(
         uint32 Width,
         uint32 Height,
@@ -404,38 +410,6 @@ namespace ShadowEngine
         Desc.MipLODBias = 0.0F;
         Desc.MaxAnisotropy = 1;
         Desc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
-        Desc.MinLOD = 0.0F;
-        Desc.MaxLOD = D3D12_FLOAT32_MAX;
-
-        D3D12_CPU_DESCRIPTOR_HANDLE Cpu = SamplerHeap->GetCPUDescriptorHandleForHeapStart();
-        Cpu.ptr += static_cast<SIZE_T>(SamplerCount) * SamplerIncrement;
-        Device->CreateSampler(&Desc, Cpu);
-        const uint32 Index = SamplerCount;
-        ++SamplerCount;
-        return std::make_unique<D3D12Sampler>(Index);
-    }
-
-    std::unique_ptr<RHISampler> D3D12Device::CreateComparisonSampler(std::string* ErrorMessage)
-    {
-        constexpr uint32 SamplerCapacity = 64;
-        if (SamplerHeap == nullptr || SamplerCount >= SamplerCapacity)
-        {
-            SetErrorMessage(ErrorMessage, "Sampler descriptor heap is full");
-            return nullptr;
-        }
-
-        D3D12_SAMPLER_DESC Desc{};
-        Desc.Filter = D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
-        Desc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-        Desc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-        Desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-        Desc.MipLODBias = 0.0F;
-        Desc.MaxAnisotropy = 1;
-        Desc.ComparisonFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
-        Desc.BorderColor[0] = 1.0F;
-        Desc.BorderColor[1] = 1.0F;
-        Desc.BorderColor[2] = 1.0F;
-        Desc.BorderColor[3] = 1.0F;
         Desc.MinLOD = 0.0F;
         Desc.MaxLOD = D3D12_FLOAT32_MAX;
 

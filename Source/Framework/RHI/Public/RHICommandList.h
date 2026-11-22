@@ -59,5 +59,11 @@ namespace ShadowEngine
             virtual void Draw(uint32 VertexCount, uint32 FirstVertex = 0) = 0;
             virtual void DrawIndexed(uint32 IndexCount, uint32 FirstIndex = 0, int32 VertexOffset = 0) = 0;
             virtual void ExecuteIndirect(RHIBuffer& Arguments, uint32 CommandCount) = 0;
+            virtual void DrawMeshlets(
+                RHIBuffer& Vertices,
+                RHIBuffer& VertexIds,
+                RHIBuffer& PrimitiveIndices,
+                RHIBuffer& Meshlets,
+                uint32 MeshletCount) = 0;
     };
 }

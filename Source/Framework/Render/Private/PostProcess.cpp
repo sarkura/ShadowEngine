@@ -70,8 +70,19 @@ namespace ShadowEngine
             constexpr RHIInputElement InputLayout[] = {
                 {"POSITION", 0, 0, ERHIVertexFormat::Float32x3},
             };
+            RHIShader* MeshShader = Shaders.LoadStandalone(
+                Device,
+                "Mesh/VelocityMesh.slang",
+                "MeshMain",
+                ERHIShaderStage::Mesh,
+                ErrorMessage);
+            if (MeshShader == nullptr)
+            {
+                return false;
+            }
+
             RHIGraphicsPipelineDesc PipelineDesc;
-            PipelineDesc.VertexShader = Shaders.GetVertexShader(VelocityShader);
+            PipelineDesc.MeshShader = MeshShader;
             PipelineDesc.PixelShader = Shaders.GetPixelShader(VelocityShader);
             PipelineDesc.Layout = &Layout;
             PipelineDesc.RenderTargetFormats[0] = ERHIFormat::R16G16B16A16_Float;
@@ -363,18 +374,19 @@ namespace ShadowEngine
                 for (uint32 Index = 0; Index < static_cast<uint32>(Items.size()); ++Index)
                 {
                     const MeshBatch* Batch = FindMeshBatch(Batches, Items[Index].Mesh, Items[Index].Section);
-                    if (Batch == nullptr || Batch->VertexBuffer == nullptr || Batch->IndexBuffer == nullptr || Batch->IndirectArguments == nullptr)
+                    if (Batch == nullptr || Batch->VertexBuffer == nullptr || Batch->Meshlets == nullptr)
                     {
                         Log::Error("Forward velocity is missing a mesh");
                         Commands.EndRenderPass();
                         return false;
                     }
 
-                    Commands.SetPipeline(*(Batch->bTwoSided ? MeshVelocityTwoSidedPipeline : MeshVelocityPipeline));
-                    Commands.SetVertexBuffer(*Batch->VertexBuffer);
-                    Commands.SetIndexBuffer(*Batch->IndexBuffer);
-                    Commands.SetConstantBuffer(ObjectConstants, Index * ConstantAlignment);
-                    Commands.ExecuteIndirect(*Batch->IndirectArguments, Batch->MeshletCount);
+                    DrawMeshBatch(
+                        Commands,
+                        *Batch,
+                        *(Batch->bTwoSided ? MeshVelocityTwoSidedPipeline : MeshVelocityPipeline),
+                        ObjectConstants,
+                        Index * ConstantAlignment);
                 }
                 Commands.EndRenderPass();
                 Commands.UseAsShaderResource(*Motion.Texture);

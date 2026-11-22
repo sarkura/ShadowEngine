@@ -35,7 +35,6 @@ namespace ShadowEngine
         struct RHISetting
         {
             std::string Renderer;
-            std::string Shadow;
             std::string DefaultMaterial;
             std::string Backend;
             bool bVSync = true;
@@ -68,6 +67,7 @@ namespace ShadowEngine
         {
             Direct,
             Point,
+            Area,
             Sky
         };
 
@@ -79,6 +79,8 @@ namespace ShadowEngine
             std::vector<float> Color;
             float Intensity = 0.0F;
             float Radius = 0.0F;
+            float Width = 0.0F;
+            float Height = 0.0F;
         };
 
         struct Setting

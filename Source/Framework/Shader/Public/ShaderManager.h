@@ -57,6 +57,12 @@ namespace ShadowEngine
 
             [[nodiscard]] RHIShader* GetVertexShader(ShaderHandle Handle) const;
             [[nodiscard]] RHIShader* GetPixelShader(ShaderHandle Handle) const;
+            [[nodiscard]] RHIShader* LoadStandalone(
+                RHIDevice& Device,
+                const std::filesystem::path& SourcePath,
+                const char* EntryPoint,
+                ERHIShaderStage Stage,
+                std::string* ErrorMessage = nullptr);
             [[nodiscard]] const ShaderReflection* GetReflection(ShaderHandle Handle, ERHIShaderStage Stage) const;
             [[nodiscard]] bool HasSource(const std::filesystem::path& RelativePath) const;
             [[nodiscard]] bool GetCompileInputs(ShaderHandle Handle, ShaderCompileInputs& Out) const;
@@ -79,6 +85,14 @@ namespace ShadowEngine
                 bool bCompiled = false;
             };
 
+            struct StageShader
+            {
+                std::filesystem::path SourcePath;
+                std::string EntryPoint;
+                ERHIShaderStage Stage = ERHIShaderStage::Vertex;
+                std::unique_ptr<RHIShader> Shader;
+            };
+
             bool CompileRecord(ShaderRecord& Record, std::string* ErrorMessage);
 
             std::unique_ptr<RHIShader> CreateShader(
@@ -91,5 +105,6 @@ namespace ShadowEngine
             ERHIShaderFormat ShaderFormat = ERHIShaderFormat::DXIL;
             bool bFormatSet = false;
             std::vector<ShaderRecord> Records;
+            std::vector<StageShader> StageShaders;
     };
 }

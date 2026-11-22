@@ -153,6 +153,16 @@ namespace ShadowEngine
                 Light.SetIntensity(LightConfig.Intensity);
                 Light.SetRadius(LightConfig.Radius);
             }
+            else if (LightConfig.Type == SceneSetting::LightType::Area)
+            {
+                AreaLight& Light = MainScene->CreateAreaLight();
+                Light.SetPosition(LightConfig.Position[0], LightConfig.Position[1], LightConfig.Position[2]);
+                Light.SetDirection(LightConfig.Direction[0], LightConfig.Direction[1], LightConfig.Direction[2]);
+                Light.SetColor(LightConfig.Color[0], LightConfig.Color[1], LightConfig.Color[2]);
+                Light.SetIntensity(LightConfig.Intensity);
+                Light.SetRadius(LightConfig.Radius);
+                Light.SetSize(LightConfig.Width, LightConfig.Height);
+            }
             else
             {
                 if (!MainScene->CreateSkyLight())

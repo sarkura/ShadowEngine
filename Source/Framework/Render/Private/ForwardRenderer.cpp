@@ -17,6 +17,7 @@ namespace ShadowEngine
     namespace
     {
         constexpr uint32 ForwardPointLightLimit = 4;
+        constexpr uint32 ForwardAreaLightLimit = 1;
 
         float Halton(uint32 Index, uint32 Base)
         {
@@ -62,8 +63,20 @@ namespace ShadowEngine
             constexpr RHIInputElement InputLayout[] = {
                 {"POSITION", 0, 0, ERHIVertexFormat::Float32x3},
             };
+            RHIShader* MeshShader = ShaderLibrary->LoadStandalone(
+                *Device,
+                "Mesh/PositionMesh.slang",
+                "MeshMain",
+                ERHIShaderStage::Mesh,
+                &Error);
+            if (MeshShader == nullptr)
+            {
+                Log::Error("{}", Error);
+                return false;
+            }
+
             RHIGraphicsPipelineDesc PipelineDesc;
-            PipelineDesc.VertexShader = ShaderLibrary->GetVertexShader(DepthShader);
+            PipelineDesc.MeshShader = MeshShader;
             PipelineDesc.PixelShader = ShaderLibrary->GetPixelShader(DepthShader);
             PipelineDesc.Layout = &Layout;
             PipelineDesc.RenderTargetFormats[0] = ERHIFormat::R16G16B16A16_Float;
@@ -146,8 +159,9 @@ namespace ShadowEngine
         }
 
         SelectVisiblePointLights(ForwardPointLightLimit, VisiblePointLights);
+        SelectVisibleAreaLights(ForwardAreaLightLimit, VisibleAreaLights);
         const DirectLightRenderProxy* DirectLight = SceneProxy.bHasDirectLight ? &SceneProxy.DirectLight : nullptr;
-        if (!Shadows->Prepare(MeshBatches, SceneProxy.Meshes, *Assets, ViewCamera, DirectLight, VisiblePointLights, &Error))
+        if (!Shadows->Prepare(MeshBatches, SceneProxy.Meshes, *Assets, ViewCamera, DirectLight, VisiblePointLights, VisibleAreaLights, &Error))
         {
             Log::Error("{}", Error);
             return false;
@@ -160,6 +174,7 @@ namespace ShadowEngine
     {
         Renderer::PopulateContext(Context);
         Context.PointLights = &VisiblePointLights;
+        Context.AreaLights = &VisibleAreaLights;
         Context.SkyLight = SceneProxy.bHasSkyLight ? &SceneProxy.SkyLight : nullptr;
         Context.Shadow = &Shadows->GetBinding();
         Context.Shadows = Shadows.get();

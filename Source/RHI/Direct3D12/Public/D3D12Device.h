@@ -58,10 +58,6 @@ namespace ShadowEngine
                 uint32 Height,
                 std::string* ErrorMessage = nullptr) override;
 
-            std::unique_ptr<RHITexture> CreateCubeDepth(
-                uint32 FaceSize,
-                std::string* ErrorMessage = nullptr) override;
-
             std::unique_ptr<RHITexture> CreateColorTarget(
                 uint32 Width,
                 uint32 Height,
@@ -83,9 +79,6 @@ namespace ShadowEngine
                 std::string* ErrorMessage = nullptr) override;
 
             std::unique_ptr<RHISampler> CreatePointClampSampler(
-                std::string* ErrorMessage = nullptr) override;
-
-            std::unique_ptr<RHISampler> CreateComparisonSampler(
                 std::string* ErrorMessage = nullptr) override;
 
             bool CreateShaderResourceView(

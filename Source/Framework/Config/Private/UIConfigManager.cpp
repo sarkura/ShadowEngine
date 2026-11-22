@@ -38,7 +38,6 @@ namespace ShadowEngine
         void ClampLight(LightSetting& Setting)
         {
             Setting.ShadowNormalBias = ClampFloat(Setting.ShadowNormalBias, 0.0F, 0.2F);
-            Setting.PointShadowDepthBias = ClampFloat(Setting.PointShadowDepthBias, 0.0F, 0.05F);
         }
     }
 

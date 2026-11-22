@@ -52,9 +52,9 @@ Choose **Tools → ShadowEngine → Export ShadowEngine Scene**.
 
 Every `StaticMeshActor` is exported, including hidden ones. Actors that use the same static mesh and the same materials share one mesh file. Each actor still keeps its own position. A different material assignment on the same mesh is written as another asset and still uses that mesh file. Materials come from the actor, including a material override. A static mesh on a Blueprint, and instanced static meshes, are left out of the file.
 
-One directional light becomes `DirectLight`. Point lights become `PointLight`. The first sky light becomes `SkyLight`. If the level has no sky light, a default sky is written with color `(0.45, 0.55, 0.75)` and intensity `0.25`. Extra directional lights and extra sky lights are skipped. Spot lights and rect lights are skipped. Cameras, skeletal meshes, foliage, and other actor types are not written.
+One directional light becomes `DirectLight`. Point lights become `PointLight`. Rect lights become `AreaLight`. The first sky light becomes `SkyLight`. If the level has no sky light, a default sky is written with color `(0.45, 0.55, 0.75)` and intensity `0.25`. Extra directional lights and extra sky lights are skipped. Spot lights are skipped. Cameras, skeletal meshes, foliage, and other actor types are not written.
 
-A point light's intensity is its Unreal intensity multiplied by `0.01`. Its radius is the actor property `Radius` when that property exists, otherwise `10`. Directional and sky intensities are copied as written.
+A point or rect light's intensity is its Unreal intensity multiplied by `0.01`. Its radius is the actor property `Radius` when that property exists, otherwise `10`. A rect light shines along its forward axis. Its width and height are the source size after the actor scale, converted from centimeters to meters with the same glTF scale as mesh positions. Directional and sky intensities are copied as written.
 
 Mesh vertices and actor transforms use Unreal's glTF conversion: centimeters become meters, and the axes match the exported glTF mesh. Rotation is stored as pitch, yaw, roll in radians.
 

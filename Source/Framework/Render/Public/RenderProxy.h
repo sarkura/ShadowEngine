@@ -32,6 +32,18 @@ namespace ShadowEngine
         float Intensity = 1.0F;
     };
 
+    struct AreaLightRenderProxy
+    {
+        float Position[3] = {0.0F, 4.0F, 0.0F};
+        float Radius = 8.0F;
+        float Direction[3] = {0.0F, -1.0F, 0.0F};
+        float Width = 1.0F;
+        float Tangent[3] = {1.0F, 0.0F, 0.0F};
+        float Height = 1.0F;
+        float Color[3] = {1.0F, 1.0F, 1.0F};
+        float Intensity = 1.0F;
+    };
+
     struct SkyLightRenderProxy
     {
         float Color[3] = {0.5F, 0.6F, 0.8F};
@@ -44,6 +56,7 @@ namespace ShadowEngine
         DirectLightRenderProxy DirectLight;
         bool bHasDirectLight = false;
         std::vector<PointLightRenderProxy> PointLights;
+        std::vector<AreaLightRenderProxy> AreaLights;
         SkyLightRenderProxy SkyLight;
         bool bHasSkyLight = false;
     };

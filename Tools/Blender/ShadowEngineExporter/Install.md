@@ -83,7 +83,7 @@ The export is the current scene. You do not select meshes, and you do not export
 
 Every mesh in the scene is exported. Names that differ only by a numeric suffix, such as `Sphere` and `Sphere.001`, share one mesh file and the materials of the object whose name has no suffix. Each object still keeps its own position. An object with a different name is exported on its own, even when it uses the same mesh data. Two slots on that shared mesh whose material names differ only by the suffix write one material file, and the later slot replaces the earlier one.
 
-A Sun becomes the directional light. A second Sun is skipped. Point lights and the world background are written as well. A point light's intensity is its watt value multiplied by **Point Energy Scale** (default `0.01`). Its radius is the object property `Radius`, or **Point Radius** (default `10`) when that property is absent. Cameras, empties, curves, armatures, spot lights, and area lights are skipped. A hidden object is exported when it is still in the scene.
+A Sun becomes the directional light. A second Sun is skipped. Point lights, area lights, and the world background are written as well. A point or area light's intensity is its watt value multiplied by **Point Energy Scale** (default `0.01`). Its radius is the object property `Radius`, or **Point Radius** (default `10`) when that property is absent. An area light shines along its local negative Z axis. Square and rectangle shapes keep their size, including object scale. Disk and ellipse shapes are written as the rectangle around them. Cameras, empties, curves, armatures, and spot lights are skipped. A hidden object is exported when it is still in the scene.
 
 ## 6. Where the files go
 

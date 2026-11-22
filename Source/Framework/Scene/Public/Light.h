@@ -47,6 +47,40 @@ namespace ShadowEngine
             float Radius = 8.0F;
     };
 
+    class AreaLight final
+    {
+        public:
+            void SetPosition(float X, float Y, float Z);
+            void SetDirection(float X, float Y, float Z);
+            void SetColor(float R, float G, float B);
+            void SetIntensity(float Intensity);
+            void SetRadius(float Radius);
+            void SetSize(float Width, float Height);
+
+            void GetPosition(float Out[3]) const;
+            void GetDirection(float Out[3]) const;
+            void GetColor(float Out[3]) const;
+            [[nodiscard]] float GetIntensity() const;
+            [[nodiscard]] float GetRadius() const;
+            [[nodiscard]] float GetWidth() const;
+            [[nodiscard]] float GetHeight() const;
+
+        private:
+            float PositionX = 0.0F;
+            float PositionY = 4.0F;
+            float PositionZ = 0.0F;
+            float DirectionX = 0.0F;
+            float DirectionY = -1.0F;
+            float DirectionZ = 0.0F;
+            float ColorR = 1.0F;
+            float ColorG = 1.0F;
+            float ColorB = 1.0F;
+            float Intensity = 1.0F;
+            float Radius = 8.0F;
+            float Width = 1.0F;
+            float Height = 1.0F;
+    };
+
     class SkyLight final
     {
         public:

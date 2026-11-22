@@ -96,6 +96,87 @@ namespace ShadowEngine
             return D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
         }
 
+        template <typename Inner, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE TypeValue>
+        struct alignas(void*) PipelineSubobject
+        {
+            D3D12_PIPELINE_STATE_SUBOBJECT_TYPE Type = TypeValue;
+            Inner Value{};
+        };
+
+        bool CreateMeshPipelineState(
+            ID3D12Device* Device,
+            ID3D12RootSignature* RootSignature,
+            const D3D12_SHADER_BYTECODE& MeshShader,
+            const D3D12_SHADER_BYTECODE& PixelShader,
+            const RHIGraphicsPipelineDesc& Desc,
+            ComPtr<ID3D12PipelineState>& OutPipeline,
+            std::string* ErrorMessage)
+        {
+            ComPtr<ID3D12Device2> Device2;
+            if (FAILED(Device->QueryInterface(IID_PPV_ARGS(Device2.GetAddressOf()))))
+            {
+                SetErrorMessage(ErrorMessage, "Mesh shaders require ID3D12Device2");
+                return false;
+            }
+
+            struct MeshStream
+            {
+                PipelineSubobject<ID3D12RootSignature*, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE> Root;
+                PipelineSubobject<D3D12_SHADER_BYTECODE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_MS> Mesh;
+                PipelineSubobject<D3D12_SHADER_BYTECODE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PS> Pixel;
+                PipelineSubobject<D3D12_BLEND_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND> Blend;
+                PipelineSubobject<UINT, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_MASK> SampleMask;
+                PipelineSubobject<D3D12_RASTERIZER_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RASTERIZER> Rasterizer;
+                PipelineSubobject<D3D12_DEPTH_STENCIL_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL> Depth;
+                PipelineSubobject<D3D12_PRIMITIVE_TOPOLOGY_TYPE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PRIMITIVE_TOPOLOGY> Topology;
+                PipelineSubobject<D3D12_RT_FORMAT_ARRAY, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RENDER_TARGET_FORMATS> Targets;
+                PipelineSubobject<DXGI_FORMAT, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL_FORMAT> DepthFormat;
+                PipelineSubobject<DXGI_SAMPLE_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC> Sample;
+            };
+
+            MeshStream Stream;
+            Stream.Root.Value = RootSignature;
+            Stream.Mesh.Value = MeshShader;
+            Stream.Pixel.Value = PixelShader;
+            Stream.Blend.Value = MakeBlendDesc(Desc.bWriteColor, Desc.bAlphaBlend);
+            Stream.SampleMask.Value = UINT_MAX;
+            Stream.Rasterizer.Value = MakeRasterizerDesc(Desc);
+            Stream.Depth.Value = MakeDepthStencilDesc(Desc.bEnableDepth, Desc.bWriteDepth, Desc.bDepthEqual, Desc.bDepthLessEqual);
+            Stream.Topology.Value = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+            if (Desc.RenderTargetCount > 8)
+            {
+                SetErrorMessage(ErrorMessage, "A pipeline supports at most 8 color targets");
+                return false;
+            }
+            Stream.Targets.Value.NumRenderTargets = Desc.RenderTargetCount;
+            for (uint32 Index = 0; Index < Desc.RenderTargetCount; ++Index)
+            {
+                Stream.Targets.Value.RTFormats[Index] = ToDXGIFormat(Desc.RenderTargetFormats[Index]);
+            }
+            if (Desc.DepthFormat != ERHIFormat::Unknown)
+            {
+                Stream.DepthFormat.Value = ToDXGIFormat(Desc.DepthFormat);
+            }
+            else
+            {
+                Stream.DepthFormat.Value = Desc.bEnableDepth ? DXGI_FORMAT_D32_FLOAT : DXGI_FORMAT_UNKNOWN;
+            }
+            Stream.Sample.Value.Count = 1;
+            Stream.Sample.Value.Quality = 0;
+
+            D3D12_PIPELINE_STATE_STREAM_DESC StreamDesc{};
+            StreamDesc.SizeInBytes = sizeof(Stream);
+            StreamDesc.pPipelineStateSubobjectStream = &Stream;
+            const HRESULT Result = Device2->CreatePipelineState(&StreamDesc, IID_PPV_ARGS(OutPipeline.GetAddressOf()));
+            if (FAILED(Result))
+            {
+                SetErrorMessage(ErrorMessage, "CreatePipelineState failed for the mesh shader: " + FormatHResult(Result));
+                return false;
+            }
+
+            return true;
+        }
+
         DXGI_FORMAT ToVertexFormat(ERHIVertexFormat Format)
         {
             switch (Format)
@@ -117,15 +198,36 @@ namespace ShadowEngine
         const RHIGraphicsPipelineDesc& Desc,
         std::string* ErrorMessage)
     {
-        if (Desc.VertexShader == nullptr || Desc.PixelShader == nullptr)
+        if (Desc.PixelShader == nullptr || (Desc.MeshShader == nullptr && Desc.VertexShader == nullptr))
         {
-            SetErrorMessage(ErrorMessage, "Graphics pipeline requires a vertex and a pixel shader");
+            SetErrorMessage(ErrorMessage, "Graphics pipeline requires a pixel shader and either a vertex or mesh shader");
             return false;
         }
 
-        if (!CreateRootSignature(Device, Desc.Layout, ErrorMessage))
+        bMesh = Desc.MeshShader != nullptr;
+        if (!CreateRootSignature(Device, Desc.Layout, bMesh, ErrorMessage))
         {
             return false;
+        }
+
+        if (bMesh)
+        {
+            const auto* MeshShader = static_cast<const D3D12Shader*>(Desc.MeshShader);
+            const auto* PixelShader = static_cast<const D3D12Shader*>(Desc.PixelShader);
+            if (!CreateMeshPipelineState(
+                    Device,
+                    RootSignature.Get(),
+                    MeshShader->GetBytecode(),
+                    PixelShader->GetBytecode(),
+                    Desc,
+                    PipelineState,
+                    ErrorMessage))
+            {
+                return false;
+            }
+
+            Topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+            return true;
         }
 
         const auto* VertexShader = static_cast<const D3D12Shader*>(Desc.VertexShader);
@@ -200,6 +302,7 @@ namespace ShadowEngine
     bool D3D12Pipeline::CreateRootSignature(
         ID3D12Device* Device,
         const RHIPipelineLayout* Layout,
+        bool bUseMeshResources,
         std::string* ErrorMessage)
     {
         std::vector<D3D12_ROOT_PARAMETER> Parameters;
@@ -226,15 +329,32 @@ namespace ShadowEngine
             }
         }
 
+        MeshResourceRoot = static_cast<uint32>(Parameters.size());
+        if (bUseMeshResources)
+        {
+            for (UINT Register = 0; Register < 4; ++Register)
+            {
+                D3D12_ROOT_PARAMETER Parameter{};
+                Parameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+                Parameter.Descriptor.ShaderRegister = Register;
+                Parameter.Descriptor.RegisterSpace = 0;
+                Parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+                Parameters.push_back(Parameter);
+            }
+        }
+
         D3D12_ROOT_SIGNATURE_DESC Desc{};
         Desc.NumParameters = static_cast<UINT>(Parameters.size());
         Desc.pParameters = Parameters.data();
         Desc.NumStaticSamplers = 0;
         Desc.pStaticSamplers = nullptr;
         Desc.Flags =
-            D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
             D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED |
             D3D12_ROOT_SIGNATURE_FLAG_SAMPLER_HEAP_DIRECTLY_INDEXED;
+        if (!bUseMeshResources)
+        {
+            Desc.Flags |= D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+        }
 
         ComPtr<ID3DBlob> Signature;
         ComPtr<ID3DBlob> Error;
@@ -284,5 +404,15 @@ namespace ShadowEngine
     D3D_PRIMITIVE_TOPOLOGY D3D12Pipeline::GetTopology() const
     {
         return Topology;
+    }
+
+    bool D3D12Pipeline::IsMesh() const
+    {
+        return bMesh;
+    }
+
+    uint32 D3D12Pipeline::GetMeshResourceRoot() const
+    {
+        return MeshResourceRoot;
     }
 }

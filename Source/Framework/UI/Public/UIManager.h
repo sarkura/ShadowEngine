@@ -51,9 +51,7 @@ namespace ShadowEngine
             struct LightState
             {
                 bool bDirectionalShadow = true;
-                bool bPointShadow = true;
                 float ShadowNormalBias = 0.01F;
-                float PointShadowDepthBias = 0.004F;
                 bool bImageBasedLighting = true;
                 bool bSkyBackground = true;
             };

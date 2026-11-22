@@ -17,5 +17,5 @@ float4 PixelMain(VertexOutput Input, bool bFrontFace : SV_IsFrontFace) : SV_Targ
 
     const ForwardLightSample Light = EvaluateLight(Material, Input);
     const float Alpha = Material.CutoutThreshold > 0.0 ? 1.0 : Material.Opacity;
-    return float4(Light.Direct + Light.Point + Light.Sky + Material.Emissive, Alpha);
+    return float4(Light.Direct + Light.Point + Light.Area + Light.Sky + Material.Emissive, Alpha);
 }

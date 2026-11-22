@@ -13,6 +13,7 @@ cbuffer DeferredLightConstants : register(b0)
     float4 Viewport;
     ForwardDirectLight Direct;
     ForwardPointLight Point[ForwardPointLightCapacity];
+    ForwardAreaLight Area[ForwardAreaLightCapacity];
     ForwardSkyLight Sky;
     ImageBasedLightIndices ImageBasedLight;
     ForwardShadow Shadow;
@@ -25,4 +26,5 @@ cbuffer DeferredLightConstants : register(b0)
     uint Pad0;
     uint Pad1;
     uint Pad2;
+    uint Pad3;
 };

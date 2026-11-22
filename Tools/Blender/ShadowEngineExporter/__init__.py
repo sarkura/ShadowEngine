@@ -154,6 +154,19 @@ def to_gltf_vector(vector):
     return Vector((vector.x, vector.z, -vector.y))
 
 
+def area_extents(light, matrix_world):
+    scale_x = (matrix_world.to_3x3() @ Vector((1.0, 0.0, 0.0))).length
+    scale_y = (matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))).length
+    shape = getattr(light, "shape", "RECTANGLE")
+    if shape in {"SQUARE", "DISK"}:
+        width = light.size * scale_x
+        height = light.size * scale_y
+    else:
+        width = light.size * scale_x
+        height = light.size_y * scale_y
+    return width, height, shape in {"DISK", "ELLIPSE"}
+
+
 def save_image_copy(image, destination):
     destination.parent.mkdir(parents=True, exist_ok=True)
     source = Path(bpy.path.abspath(image.filepath)) if image.filepath else None
@@ -189,20 +202,20 @@ class SHADOWENGINE_OT_export(Operator):
     bl_idname = "export_scene.shadow_engine"
     bl_label = "ShadowEngine"
     bl_description = (
-        "Export the current scene. Meshes, the sun, point lights, and the world light are written. "
+        "Export the current scene. Meshes, the sun, point lights, area lights, and the world light are written. "
         "Other object types are skipped"
     )
     bl_options = {"REGISTER"}
 
     point_radius: FloatProperty(
         name="Point Radius",
-        description="Reach of a point light when the light object has no Radius property",
+        description="Reach of a point or area light when the light object has no Radius property",
         default=10.0,
         min=0.001,
     )
     point_energy_scale: FloatProperty(
         name="Point Energy Scale",
-        description="Blender point-light watts multiplied into ShadowEngine intensity",
+        description="Blender point and area light watts multiplied into ShadowEngine intensity",
         default=0.01,
         min=0.0,
     )
@@ -438,6 +451,30 @@ class SHADOWENGINE_OT_export(Operator):
                     "Intensity": rounded(max(light.energy, 0.0) * self.point_energy_scale),
                     "Radius": rounded(max(radius, 0.001)),
                 })
+            elif light.type == "AREA":
+                direction = to_gltf_vector(-(obj.matrix_world.to_3x3() @ Vector((0.0, 0.0, 1.0))))
+                if direction.length <= 0.0001:
+                    warnings.append(f"Skipped area light {obj.name}; its direction is zero.")
+                    continue
+                direction.normalize()
+                width, height, approximated = area_extents(light, obj.matrix_world)
+                if width <= 0.0001 or height <= 0.0001:
+                    warnings.append(f"Skipped area light {obj.name}; its size is zero.")
+                    continue
+                if approximated:
+                    warnings.append(f"{obj.name} is written as a rectangle around its {light.shape.lower()} shape.")
+                position = to_gltf_vector(obj.matrix_world.translation)
+                radius = float(obj["Radius"]) if "Radius" in obj else self.point_radius
+                lights.append({
+                    "Type": "AreaLight",
+                    "Position": color3(position),
+                    "Direction": color3(direction),
+                    "Width": rounded(width),
+                    "Height": rounded(height),
+                    "Color": color3(light.color),
+                    "Intensity": rounded(max(light.energy, 0.0) * self.point_energy_scale),
+                    "Radius": rounded(max(radius, 0.001)),
+                })
             else:
                 continue
 
@@ -454,7 +491,7 @@ class SHADOWENGINE_OT_export(Operator):
         for obj in scene.objects:
             if obj.type == "MESH":
                 continue
-            if obj.type == "LIGHT" and obj.data.type in {"SUN", "POINT"}:
+            if obj.type == "LIGHT" and obj.data.type in {"SUN", "POINT", "AREA"}:
                 continue
             grouped.setdefault(obj.type, []).append(obj.name)
         labels = {

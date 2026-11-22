@@ -31,19 +31,23 @@ namespace ShadowEngine
         constexpr uint32 PhysicalPageCount = PhysicalPagesX * PhysicalPagesY;
         constexpr uint32 AtlasWidth = PhysicalPagesX * PageSize;
         constexpr uint32 AtlasHeight = PhysicalPagesY * PageSize;
+        constexpr uint32 PointShadowCapacity = 4;
+        constexpr uint32 PointFaceCount = 6;
+        constexpr uint32 AreaShadowCapacity = 1;
+        constexpr uint32 AreaShadowBase = ClipLevelCount + PointShadowCapacity * PointFaceCount;
+        constexpr uint32 ShadowLevelCount = AreaShadowBase + AreaShadowCapacity;
+        const float AreaShadowTanHalf = std::tan(GLMAdapter::Radians(60.0F));
         constexpr uint32 PageTableWidth = PagesPerAxis;
-        constexpr uint32 PageTableHeight = PagesPerAxis * ClipLevelCount;
-        constexpr uint32 PointShadowFaceSize = 1024;
+        constexpr uint32 PageTableHeight = PagesPerAxis * ShadowLevelCount;
+        constexpr float PointShadowNear = 0.05F;
         constexpr uint32 ShadowConstantSlots = 4096;
         constexpr uint32 ShadowConstantStride = 1024;
         constexpr float LevelWorldSize[ClipLevelCount] = {8.0F, 16.0F, 32.0F, 64.0F};
-        constexpr float PointDepthBias = 0.004F;
 
         struct GpuShadowConstants
         {
             float ViewProjection[16];
             float World[16];
-            float LightPosition[4];
         };
 
         struct ShadowDraw
@@ -51,7 +55,6 @@ namespace ShadowEngine
             const MeshBatch* Batch = nullptr;
             float ViewProjection[16] = {};
             float World[16] = {};
-            float LightPosition[4] = {};
             float NormalMatrix[16] = {};
             RHITexture* Target = nullptr;
             RHIPipeline* Pipeline = nullptr;
@@ -59,7 +62,6 @@ namespace ShadowEngine
             float ViewportY = 0.0F;
             float ViewportW = 0.0F;
             float ViewportH = 0.0F;
-            uint32 Face = 0;
             bool bBegin = false;
             bool bViewport = false;
             bool bClip = false;
@@ -96,7 +98,7 @@ namespace ShadowEngine
             const MeshSection& Section,
             const Mat4& LightView)
         {
-            if (Batch.Surface == EMaterialSurface::Translucent || Batch.VertexBuffer == nullptr || Batch.IndexBuffer == nullptr)
+            if (Batch.Surface == EMaterialSurface::Translucent || Batch.VertexBuffer == nullptr || Batch.Meshlets == nullptr)
             {
                 return true;
             }
@@ -164,56 +166,231 @@ namespace ShadowEngine
             return true;
         }
 
-        void AddDraw(
+        void AddClear(
             std::vector<ShadowDraw>& Draws,
-            const ViewBox* Box,
-            const float ViewProjection[16],
-            const float LightPosition[4],
             RHITexture& Target,
-            RHIPipeline& Pipeline,
-            float ViewportX,
-            float ViewportY,
-            float ViewportW,
-            float ViewportH,
-            uint32 Face,
-            bool bBegin,
-            bool bViewport,
-            bool bPoint)
+            RHIPipeline& Pipeline)
         {
             ShadowDraw Draw;
-            if (Box != nullptr)
+            Draw.Target = &Target;
+            Draw.Pipeline = &Pipeline;
+            Draw.bBegin = true;
+            Draws.push_back(Draw);
+        }
+
+        const Vec3 FaceForward[PointFaceCount] = {
+            {1.0F, 0.0F, 0.0F},
+            {-1.0F, 0.0F, 0.0F},
+            {0.0F, 1.0F, 0.0F},
+            {0.0F, -1.0F, 0.0F},
+            {0.0F, 0.0F, 1.0F},
+            {0.0F, 0.0F, -1.0F},
+        };
+        const Vec3 FaceUp[PointFaceCount] = {
+            {0.0F, 1.0F, 0.0F},
+            {0.0F, 1.0F, 0.0F},
+            {0.0F, 0.0F, -1.0F},
+            {0.0F, 0.0F, 1.0F},
+            {0.0F, 1.0F, 0.0F},
+            {0.0F, 1.0F, 0.0F},
+        };
+
+        float AreaShadowFar(const AreaLightRenderProxy& Light)
+        {
+            const float HalfDiagonal = 0.5F * std::sqrt(Light.Width * Light.Width + Light.Height * Light.Height);
+            return std::max(Light.Radius + HalfDiagonal, PointShadowNear + 0.1F);
+        }
+
+        bool CollectWorldCasters(
+            std::vector<VirtualShadows::WorldCaster>& CastersOut,
+            const std::vector<MeshBatch>& Batches,
+            const std::vector<MeshRenderProxy>& Casters,
+            const AssetManager& Assets)
+        {
+            for (const MeshRenderProxy& Caster : Casters)
             {
-                Draw.Batch = Box->Batch;
-                std::memcpy(Draw.World, Box->Caster->World, sizeof(Draw.World));
-                std::memcpy(Draw.NormalMatrix, Box->Caster->NormalMatrix, sizeof(Draw.NormalMatrix));
-                Draw.bClip = Box->Batch->Surface == EMaterialSurface::Cutout;
-                if (Draw.bClip)
+                const MeshAsset* Mesh = Assets.ResolveMesh(Caster.Mesh);
+                if (Mesh == nullptr)
                 {
-                    RHIPipeline* ClipPipeline = bPoint ? Box->Batch->PointShadowPipeline.get() : Box->Batch->DirectionalShadowPipeline.get();
-                    Draw.Pipeline = ClipPipeline == nullptr ? &Pipeline : ClipPipeline;
+                    continue;
+                }
+
+                const std::vector<MeshSection>& Sections = Mesh->GetSections();
+                for (uint32 Section = 0; Section < Sections.size(); ++Section)
+                {
+                    const MeshBatch* Batch = FindMeshBatch(Batches, Caster.Mesh, Section);
+                    if (Batch == nullptr || Batch->Surface == EMaterialSurface::Translucent || Batch->VertexBuffer == nullptr ||
+                        Batch->Meshlets == nullptr)
+                    {
+                        continue;
+                    }
+
+                    VirtualShadows::WorldCaster Bound;
+                    Bound.Batch = Batch;
+                    std::memcpy(Bound.World, Caster.World, sizeof(Bound.World));
+                    std::memcpy(Bound.NormalMatrix, Caster.NormalMatrix, sizeof(Bound.NormalMatrix));
+                    Bound.bTwoSided = Batch->bTwoSided;
+                    bool bAny = false;
+                    for (uint32 Corner = 0; Corner < 8; ++Corner)
+                    {
+                        const Vec3 WorldPoint = TransformPoint(
+                            Caster.World,
+                            (Corner & 1U) != 0U ? Sections[Section].BoundsMax[0] : Sections[Section].BoundsMin[0],
+                            (Corner & 2U) != 0U ? Sections[Section].BoundsMax[1] : Sections[Section].BoundsMin[1],
+                            (Corner & 4U) != 0U ? Sections[Section].BoundsMax[2] : Sections[Section].BoundsMin[2]);
+                        if (!bAny)
+                        {
+                            Bound.Min[0] = WorldPoint.x;
+                            Bound.Min[1] = WorldPoint.y;
+                            Bound.Min[2] = WorldPoint.z;
+                            Bound.Max[0] = WorldPoint.x;
+                            Bound.Max[1] = WorldPoint.y;
+                            Bound.Max[2] = WorldPoint.z;
+                            bAny = true;
+                        }
+                        else
+                        {
+                            Bound.Min[0] = std::min(Bound.Min[0], WorldPoint.x);
+                            Bound.Min[1] = std::min(Bound.Min[1], WorldPoint.y);
+                            Bound.Min[2] = std::min(Bound.Min[2], WorldPoint.z);
+                            Bound.Max[0] = std::max(Bound.Max[0], WorldPoint.x);
+                            Bound.Max[1] = std::max(Bound.Max[1], WorldPoint.y);
+                            Bound.Max[2] = std::max(Bound.Max[2], WorldPoint.z);
+                        }
+                    }
+                    if (bAny)
+                    {
+                        CastersOut.push_back(Bound);
+                    }
                 }
             }
-            if (Draw.Pipeline == nullptr)
+            return true;
+        }
+
+        bool OverlapsLight(const Vec3& Light, float Radius, const float Min[3], const float Max[3])
+        {
+            const float X = std::clamp(Light.x, Min[0], Max[0]);
+            const float Y = std::clamp(Light.y, Min[1], Max[1]);
+            const float Z = std::clamp(Light.z, Min[2], Max[2]);
+            const Vec3 Delta(Light.x - X, Light.y - Y, Light.z - Z);
+            return GLMAdapter::Dot(Delta, Delta) <= Radius * Radius;
+        }
+
+        bool ContainsLight(const Vec3& Light, const float Min[3], const float Max[3])
+        {
+            return Light.x >= Min[0] && Light.x <= Max[0] && Light.y >= Min[1] && Light.y <= Max[1] && Light.z >= Min[2] &&
+                Light.z <= Max[2];
+        }
+
+        bool FaceUvBounds(
+            const Mat4& View,
+            const float Min[3],
+            const float Max[3],
+            float FarPlane,
+            float TanHalf,
+            float& OutU0,
+            float& OutV0,
+            float& OutU1,
+            float& OutV1)
+        {
+            Vec3 ViewMin(0.0F);
+            Vec3 ViewMax(0.0F);
+            bool bAny = false;
+            for (uint32 Corner = 0; Corner < 8; ++Corner)
             {
-                Draw.Pipeline = &Pipeline;
+                const Vec3 ViewPoint = Vec3(View * Vec4(
+                    (Corner & 1U) != 0U ? Max[0] : Min[0],
+                    (Corner & 2U) != 0U ? Max[1] : Min[1],
+                    (Corner & 4U) != 0U ? Max[2] : Min[2],
+                    1.0F));
+                if (!bAny)
+                {
+                    ViewMin = ViewPoint;
+                    ViewMax = ViewPoint;
+                    bAny = true;
+                }
+                else
+                {
+                    ViewMin = GLMAdapter::Min(ViewMin, ViewPoint);
+                    ViewMax = GLMAdapter::Max(ViewMax, ViewPoint);
+                }
             }
-            if (ViewProjection != nullptr)
+            if (!bAny || ViewMin.z > -PointShadowNear || ViewMax.z < -FarPlane)
             {
-                std::memcpy(Draw.ViewProjection, ViewProjection, sizeof(Draw.ViewProjection));
+                return false;
             }
-            if (LightPosition != nullptr)
+
+            const float ZLo = std::max(ViewMin.z, -FarPlane);
+            const float ZHi = std::min(ViewMax.z, -PointShadowNear);
+            if (ZLo > ZHi)
             {
-                std::memcpy(Draw.LightPosition, LightPosition, sizeof(Draw.LightPosition));
+                return false;
             }
-            Draw.Target = &Target;
-            Draw.ViewportX = ViewportX;
-            Draw.ViewportY = ViewportY;
-            Draw.ViewportW = ViewportW;
-            Draw.ViewportH = ViewportH;
-            Draw.Face = Face;
-            Draw.bBegin = bBegin;
-            Draw.bViewport = bViewport;
-            Draws.push_back(Draw);
+
+            bool bUv = false;
+            for (uint32 XBit = 0; XBit < 2; ++XBit)
+            {
+                for (uint32 YBit = 0; YBit < 2; ++YBit)
+                {
+                    for (uint32 ZBit = 0; ZBit < 2; ++ZBit)
+                    {
+                        const float X = XBit == 0U ? ViewMin.x : ViewMax.x;
+                        const float Y = YBit == 0U ? ViewMin.y : ViewMax.y;
+                        const float Z = ZBit == 0U ? ZLo : ZHi;
+                        const float NdcX = (X / -Z) / TanHalf;
+                        const float NdcY = (Y / -Z) / TanHalf;
+                        const float U = NdcX * 0.5F + 0.5F;
+                        const float V = -NdcY * 0.5F + 0.5F;
+                        if (!bUv)
+                        {
+                            OutU0 = U;
+                            OutV0 = V;
+                            OutU1 = U;
+                            OutV1 = V;
+                            bUv = true;
+                        }
+                        else
+                        {
+                            OutU0 = std::min(OutU0, U);
+                            OutV0 = std::min(OutV0, V);
+                            OutU1 = std::max(OutU1, U);
+                            OutV1 = std::max(OutV1, V);
+                        }
+                    }
+                }
+            }
+            if (!bUv || OutU1 < 0.0F || OutV1 < 0.0F || OutU0 > 1.0F || OutV0 > 1.0F)
+            {
+                return false;
+            }
+            OutU0 = std::clamp(OutU0, 0.0F, 1.0F);
+            OutV0 = std::clamp(OutV0, 0.0F, 1.0F);
+            OutU1 = std::clamp(OutU1, 0.0F, 1.0F);
+            OutV1 = std::clamp(OutV1, 0.0F, 1.0F);
+            return OutU0 < OutU1 && OutV0 < OutV1;
+        }
+
+        Mat4 PageProjection(const Mat4& FaceClip, uint32 PageX, uint32 PageY)
+        {
+            const float U0 = static_cast<float>(PageX) / static_cast<float>(PagesPerAxis);
+            const float U1 = static_cast<float>(PageX + 1) / static_cast<float>(PagesPerAxis);
+            const float V0 = static_cast<float>(PageY) / static_cast<float>(PagesPerAxis);
+            const float V1 = static_cast<float>(PageY + 1) / static_cast<float>(PagesPerAxis);
+            const float X0 = U0 * 2.0F - 1.0F;
+            const float X1 = U1 * 2.0F - 1.0F;
+            const float Y0 = 1.0F - V1 * 2.0F;
+            const float Y1 = 1.0F - V0 * 2.0F;
+            const float ScaleX = 2.0F / (X1 - X0);
+            const float ScaleY = 2.0F / (Y1 - Y0);
+            const float OffsetX = -(X0 + X1) / (X1 - X0);
+            const float OffsetY = -(Y0 + Y1) / (Y1 - Y0);
+            const float Scale[16] = {
+                ScaleX, 0.0F, 0.0F, 0.0F,
+                0.0F, ScaleY, 0.0F, 0.0F,
+                0.0F, 0.0F, 1.0F, 0.0F,
+                OffsetX, OffsetY, 0.0F, 1.0F,
+            };
+            return GLMAdapter::MakeMat4(Scale) * FaceClip;
         }
     }
 
@@ -224,6 +401,7 @@ namespace ShadowEngine
         RHIDevice& Device,
         ShaderManager& Shaders,
         const char* ShaderPath,
+        const char* MeshShaderPath,
         ERHICullMode Cull,
         std::string* ErrorMessage)
     {
@@ -241,8 +419,14 @@ namespace ShadowEngine
         constexpr RHIInputElement InputLayout[] = {
             {"POSITION", 0, 0, ERHIVertexFormat::Float32x3},
         };
+        RHIShader* MeshShader = Shaders.LoadStandalone(Device, MeshShaderPath, "MeshMain", ERHIShaderStage::Mesh, ErrorMessage);
+        if (MeshShader == nullptr)
+        {
+            return nullptr;
+        }
+
         RHIGraphicsPipelineDesc PipelineDesc;
-        PipelineDesc.VertexShader = Shaders.GetVertexShader(Shader);
+        PipelineDesc.MeshShader = MeshShader;
         PipelineDesc.PixelShader = Shaders.GetPixelShader(Shader);
         PipelineDesc.Layout = &Layout;
         PipelineDesc.RenderTargetCount = 0;
@@ -259,19 +443,28 @@ namespace ShadowEngine
 
     bool VirtualShadows::Ensure(RHIDevice& Device, ShaderManager& Shaders, std::string* ErrorMessage)
     {
-        static_assert(sizeof(GpuShadowConstants) == 144);
+        static_assert(sizeof(GpuShadowConstants) == 128);
         static_assert(sizeof(GpuShadowConstants) <= ShadowConstantStride);
         if (bReady)
         {
             return true;
         }
 
-        DirectionalPipeline = CreateDepthPipeline(Device, Shaders, "Depth/DirectionalShadow.slang", ERHICullMode::Back, ErrorMessage);
-        DirectionalTwoSidedPipeline = CreateDepthPipeline(Device, Shaders, "Depth/DirectionalShadow.slang", ERHICullMode::None, ErrorMessage);
-        PointPipeline = CreateDepthPipeline(Device, Shaders, "Depth/PointShadow.slang", ERHICullMode::Back, ErrorMessage);
-        PointTwoSidedPipeline = CreateDepthPipeline(Device, Shaders, "Depth/PointShadow.slang", ERHICullMode::None, ErrorMessage);
-        if (DirectionalPipeline == nullptr || DirectionalTwoSidedPipeline == nullptr || PointPipeline == nullptr ||
-            PointTwoSidedPipeline == nullptr)
+        DirectionalPipeline = CreateDepthPipeline(
+            Device,
+            Shaders,
+            "Depth/DirectionalShadow.slang",
+            "Mesh/PositionMesh.slang",
+            ERHICullMode::Back,
+            ErrorMessage);
+        DirectionalTwoSidedPipeline = CreateDepthPipeline(
+            Device,
+            Shaders,
+            "Depth/DirectionalShadow.slang",
+            "Mesh/PositionMesh.slang",
+            ERHICullMode::None,
+            ErrorMessage);
+        if (DirectionalPipeline == nullptr || DirectionalTwoSidedPipeline == nullptr)
         {
             return false;
         }
@@ -297,33 +490,23 @@ namespace ShadowEngine
             return false;
         }
 
-        for (uint32 Index = 0; Index < 4; ++Index)
-        {
-            PointMaps[Index] = Device.CreateCubeDepth(PointShadowFaceSize, ErrorMessage);
-            if (PointMaps[Index] == nullptr || !Device.CreateShaderResourceView(*PointMaps[Index], PointDescriptors[Index], ErrorMessage))
-            {
-                return false;
-            }
-        }
-
-        ComparisonSampler = Device.CreateComparisonSampler(ErrorMessage);
         PageSampler = Device.CreatePointClampSampler(ErrorMessage);
         ConstantBuffer = Device.CreateConstantBuffer(ShadowConstantSlots * ShadowConstantStride, ErrorMessage);
-        if (ComparisonSampler == nullptr || PageSampler == nullptr || ConstantBuffer == nullptr)
+        if (PageSampler == nullptr || ConstantBuffer == nullptr)
         {
             return false;
         }
 
-        ComparisonDescriptor = ComparisonSampler->GetDescriptorIndex();
         PageSamplerDescriptor = PageSampler->GetDescriptorIndex();
         bReady = true;
         Log::Info(
-            "Virtual shadows ready: {} clip levels, page {}, atlas {}x{}, point cube {}",
+            "Virtual shadows ready: {} clip levels, {} point faces, {} area face, page {}, atlas {}x{}",
             ClipLevelCount,
+            PointFaceCount,
+            AreaShadowCapacity,
             PageSize,
             AtlasWidth,
-            AtlasHeight,
-            PointShadowFaceSize);
+            AtlasHeight);
         return true;
     }
 
@@ -334,6 +517,7 @@ namespace ShadowEngine
         const Camera& View,
         const DirectLightRenderProxy* DirectLight,
         const std::vector<PointLightRenderProxy>& PointLights,
+        const std::vector<AreaLightRenderProxy>& AreaLights,
         std::string* ErrorMessage)
     {
         if (!bReady)
@@ -343,12 +527,14 @@ namespace ShadowEngine
         }
 
         bDirectActive = false;
-        for (bool& Active : bPointActive)
-        {
-            Active = false;
-        }
         Pages.clear();
         CasterBounds.clear();
+        WorldCasters.clear();
+        ActivePoints[0] = {};
+        ActivePoints[1] = {};
+        ActivePoints[2] = {};
+        ActivePoints[3] = {};
+        ActiveAreas[0] = {};
         std::fill(PagePixels.begin(), PagePixels.end(), static_cast<uint8>(0));
         for (ClipLevel& Level : Levels)
         {
@@ -357,39 +543,21 @@ namespace ShadowEngine
 
         const UIManager::LightState LightSettings = UIManager::Get().GetState().Light;
         Binding = {};
-        Binding.ComparisonSampler = ComparisonDescriptor;
-        Binding.Settings[0] = 1.0F / static_cast<float>(PageSize * PagesPerAxis);
+        Binding.Settings[0] = static_cast<float>(ShadowLevelCount);
         Binding.Settings[1] = LightSettings.ShadowNormalBias;
-        Binding.Settings[2] = 2.0F / static_cast<float>(PointShadowFaceSize);
-        Binding.Settings[3] = LightSettings.PointShadowDepthBias;
         Binding.VirtualInfo[0] = static_cast<float>(PagesPerAxis);
         Binding.VirtualInfo[1] = static_cast<float>(PageSize);
         Binding.VirtualInfo[2] = static_cast<float>(PhysicalPagesX);
         Binding.VirtualInfo[3] = static_cast<float>(PhysicalPagesY);
 
-        const size_t PointCount = LightSettings.bPointShadow
-            ? std::min(PointLights.size(), static_cast<size_t>(4))
-            : 0;
-        for (size_t Index = 0; Index < PointCount; ++Index)
-        {
-            if (PointLights[Index].Intensity <= 0.0F || PointLights[Index].Radius <= 0.0F)
-            {
-                continue;
-            }
-
-            ActivePoints[Index] = PointLights[Index];
-            Binding.PointMap[Index] = PointDescriptors[Index];
-            bPointActive[Index] = true;
-        }
-
         const Vec3 RawDirection = DirectLight == nullptr
             ? Vec3(0.0F)
             : Vec3(DirectLight->Direction[0], DirectLight->Direction[1], DirectLight->Direction[2]);
-        if (!LightSettings.bDirectionalShadow || DirectLight == nullptr || DirectLight->Intensity <= 0.0F ||
-            GLMAdapter::Length(RawDirection) < 0.0001F)
+        const bool bMarkDirectional = LightSettings.bDirectionalShadow && DirectLight != nullptr && DirectLight->Intensity > 0.0F &&
+            GLMAdapter::Length(RawDirection) >= 0.0001F;
+        uint32 Physical = 0;
+        if (bMarkDirectional)
         {
-            return true;
-        }
 
         const Vec3 Direction = GLMAdapter::Normalize(RawDirection);
         const Vec3 Up = std::abs(Direction.y) > 0.99F ? Vec3(0.0F, 0.0F, 1.0F) : Vec3(0.0F, 1.0F, 0.0F);
@@ -418,7 +586,6 @@ namespace ShadowEngine
         }
 
         const Vec3 CameraView = Vec3(ViewMatrix * Vec4(CameraPosition, 1.0F));
-        uint32 Physical = 0;
         for (uint32 LevelIndex = 0; LevelIndex < ClipLevelCount; ++LevelIndex)
         {
             ClipLevel& Level = Levels[LevelIndex];
@@ -534,12 +701,135 @@ namespace ShadowEngine
                 }
             }
         }
+        }
+
+        if (!CollectWorldCasters(WorldCasters, Batches, Casters, Assets))
+        {
+            return false;
+        }
+        const auto MarkPerspectiveFace = [&](const Mat4& ViewMatrix, const Mat4& FaceClip, const Vec3& Eye, float FarPlane, float TanHalf, uint32 LevelIndex)
+        {
+            bool Marked[PagesPerAxis][PagesPerAxis] = {};
+            for (const WorldCaster& Caster : WorldCasters)
+            {
+                if (!OverlapsLight(Eye, FarPlane, Caster.Min, Caster.Max))
+                {
+                    continue;
+                }
+
+                float U0 = 0.0F;
+                float V0 = 0.0F;
+                float U1 = 1.0F;
+                float V1 = 1.0F;
+                if (ContainsLight(Eye, Caster.Min, Caster.Max))
+                {
+                    U0 = 0.0F;
+                    V0 = 0.0F;
+                    U1 = 1.0F;
+                    V1 = 1.0F;
+                }
+                else if (!FaceUvBounds(ViewMatrix, Caster.Min, Caster.Max, FarPlane, TanHalf, U0, V0, U1, V1))
+                {
+                    continue;
+                }
+
+                const int32 PageMinX = std::clamp(static_cast<int32>(std::floor(U0 * static_cast<float>(PagesPerAxis))), 0, static_cast<int32>(PagesPerAxis - 1));
+                const int32 PageMinY = std::clamp(static_cast<int32>(std::floor(V0 * static_cast<float>(PagesPerAxis))), 0, static_cast<int32>(PagesPerAxis - 1));
+                const int32 PageMaxX = std::clamp(static_cast<int32>(std::floor(std::min(U1, 0.9999F) * static_cast<float>(PagesPerAxis))), 0, static_cast<int32>(PagesPerAxis - 1));
+                const int32 PageMaxY = std::clamp(static_cast<int32>(std::floor(std::min(V1, 0.9999F) * static_cast<float>(PagesPerAxis))), 0, static_cast<int32>(PagesPerAxis - 1));
+                for (int32 PageY = PageMinY; PageY <= PageMaxY; ++PageY)
+                {
+                    for (int32 PageX = PageMinX; PageX <= PageMaxX; ++PageX)
+                    {
+                        Marked[PageX][PageY] = true;
+                    }
+                }
+            }
+
+            for (uint32 PageY = 0; PageY < PagesPerAxis; ++PageY)
+            {
+                for (uint32 PageX = 0; PageX < PagesPerAxis; ++PageX)
+                {
+                    if (!Marked[PageX][PageY] || Physical >= PhysicalPageCount)
+                    {
+                        continue;
+                    }
+
+                    VirtualPage Page;
+                    Page.Level = LevelIndex;
+                    Page.X = PageX;
+                    Page.Y = PageY;
+                    Page.Physical = Physical;
+                    Page.MinX = static_cast<float>(PageX) / static_cast<float>(PagesPerAxis);
+                    Page.MinY = static_cast<float>(PageY) / static_cast<float>(PagesPerAxis);
+                    Page.MaxX = static_cast<float>(PageX + 1) / static_cast<float>(PagesPerAxis);
+                    Page.MaxY = static_cast<float>(PageY + 1) / static_cast<float>(PagesPerAxis);
+                    const Mat4 DrawClip = PageProjection(FaceClip, PageX, PageY);
+                    std::memcpy(Page.DrawClip, GLMAdapter::ValuePtr(DrawClip), sizeof(Page.DrawClip));
+                    Pages.push_back(Page);
+
+                    const uint32 PhysX = Physical % PhysicalPagesX;
+                    const uint32 PhysY = Physical / PhysicalPagesX;
+                    const uint32 Pixel = ((LevelIndex * PagesPerAxis + PageY) * PageTableWidth + PageX) * 4;
+                    PagePixels[Pixel] = static_cast<uint8>(PhysX);
+                    PagePixels[Pixel + 1] = static_cast<uint8>(PhysY);
+                    PagePixels[Pixel + 2] = 255;
+                    PagePixels[Pixel + 3] = 255;
+                    ++Physical;
+                }
+            }
+        };
+
+        const size_t PointCount = std::min(PointLights.size(), static_cast<size_t>(PointShadowCapacity));
+        for (size_t LightIndex = 0; LightIndex < PointCount; ++LightIndex)
+        {
+            const PointLightRenderProxy& Point = PointLights[LightIndex];
+            if (Point.Intensity <= 0.0F || Point.Radius <= PointShadowNear)
+            {
+                continue;
+            }
+
+            ActivePoints[LightIndex] = Point;
+            const Vec3 Eye(Point.Position[0], Point.Position[1], Point.Position[2]);
+            const float FarPlane = std::max(Point.Radius, PointShadowNear + 0.1F);
+            const Mat4 Projection = GLMAdapter::PerspectiveRH_ZO(GLMAdapter::Radians(90.0F), 1.0F, PointShadowNear, FarPlane);
+            for (uint32 Face = 0; Face < PointFaceCount; ++Face)
+            {
+                const Mat4 ViewMatrix = GLMAdapter::LookAtRH(Eye, Eye + FaceForward[Face], FaceUp[Face]);
+                const uint32 LevelIndex = ClipLevelCount + static_cast<uint32>(LightIndex) * PointFaceCount + Face;
+                MarkPerspectiveFace(ViewMatrix, Projection * ViewMatrix, Eye, FarPlane, 1.0F, LevelIndex);
+            }
+        }
+
+        const size_t AreaCount = std::min(AreaLights.size(), static_cast<size_t>(AreaShadowCapacity));
+        for (size_t LightIndex = 0; LightIndex < AreaCount; ++LightIndex)
+        {
+            const AreaLightRenderProxy& Area = AreaLights[LightIndex];
+            if (Area.Intensity <= 0.0F || Area.Radius <= PointShadowNear)
+            {
+                continue;
+            }
+
+            ActiveAreas[LightIndex] = Area;
+            const Vec3 Eye(Area.Position[0], Area.Position[1], Area.Position[2]);
+            const Vec3 Forward(Area.Direction[0], Area.Direction[1], Area.Direction[2]);
+            const Vec3 Up(Area.Tangent[0], Area.Tangent[1], Area.Tangent[2]);
+            const float FarPlane = AreaShadowFar(Area);
+            const Mat4 Projection = GLMAdapter::PerspectiveRH_ZO(GLMAdapter::Radians(120.0F), 1.0F, PointShadowNear, FarPlane);
+            const Mat4 ViewMatrix = GLMAdapter::LookAtRH(Eye, Eye + Forward, Up);
+            MarkPerspectiveFace(
+                ViewMatrix,
+                Projection * ViewMatrix,
+                Eye,
+                FarPlane,
+                AreaShadowTanHalf,
+                AreaShadowBase + static_cast<uint32>(LightIndex));
+        }
 
         if (!Pages.empty())
         {
             const float WorldTexel = LevelWorldSize[0] / static_cast<float>(PagesPerAxis * PageSize);
             Binding.Settings[1] = std::max(WorldTexel * 3.0F, LightSettings.ShadowNormalBias);
-            StoreRows(GLMAdapter::MakeMat4(Levels[0].Clip), Binding.DirectRow);
             Binding.DirectMap = AtlasDescriptor;
             Binding.PageTable = PageDescriptor;
             Binding.PageSampler = PageSamplerDescriptor;
@@ -550,8 +840,8 @@ namespace ShadowEngine
 
     bool VirtualShadows::Record(
         RHICommandList& Commands,
-        const std::vector<MeshBatch>& Batches,
-        const std::vector<MeshRenderProxy>& Casters)
+        const std::vector<MeshBatch>&,
+        const std::vector<MeshRenderProxy>&)
     {
         if (!bReady || ConstantBuffer == nullptr || PageTable == nullptr)
         {
@@ -568,26 +858,99 @@ namespace ShadowEngine
         std::vector<ShadowDraw> Draws;
         if (bDirectActive && Atlas != nullptr && DirectionalPipeline != nullptr && DirectionalTwoSidedPipeline != nullptr)
         {
-            AddDraw(Draws, nullptr, nullptr, nullptr, *Atlas, *DirectionalPipeline, 0.0F, 0.0F, 0.0F, 0.0F, 0, true, false, false);
+            AddClear(Draws, *Atlas, *DirectionalPipeline);
             const Mat4 ViewMatrix = GLMAdapter::MakeMat4(LightView);
             for (const VirtualPage& Page : Pages)
             {
-                const Mat4 Clip = GLMAdapter::OrthoRH_ZO(
-                    Page.MinX,
-                    Page.MaxX,
-                    Page.MinY,
-                    Page.MaxY,
-                    Levels[Page.Level].Near,
-                    Levels[Page.Level].Far) * ViewMatrix;
                 float ViewProjection[16];
-                std::memcpy(ViewProjection, GLMAdapter::ValuePtr(Clip), sizeof(ViewProjection));
                 const float OriginX = static_cast<float>((Page.Physical % PhysicalPagesX) * PageSize);
                 const float OriginY = static_cast<float>((Page.Physical / PhysicalPagesX) * PageSize);
                 bool bFirst = true;
-                for (const CasterBound& Bound : CasterBounds)
+                if (Page.Level < ClipLevelCount)
                 {
-                    if (Bound.Batch == nullptr || Bound.MaxX < Page.MinX || Bound.MinX > Page.MaxX || Bound.MaxY < Page.MinY ||
-                        Bound.MinY > Page.MaxY)
+                    const Mat4 Clip = GLMAdapter::OrthoRH_ZO(
+                        Page.MinX,
+                        Page.MaxX,
+                        Page.MinY,
+                        Page.MaxY,
+                        Levels[Page.Level].Near,
+                        Levels[Page.Level].Far) * ViewMatrix;
+                    std::memcpy(ViewProjection, GLMAdapter::ValuePtr(Clip), sizeof(ViewProjection));
+                    for (const CasterBound& Bound : CasterBounds)
+                    {
+                        if (Bound.Batch == nullptr || Bound.MaxX < Page.MinX || Bound.MinX > Page.MaxX || Bound.MaxY < Page.MinY ||
+                            Bound.MinY > Page.MaxY)
+                        {
+                            continue;
+                        }
+
+                        RHIPipeline* Pipeline = Bound.bTwoSided ? DirectionalTwoSidedPipeline.get() : DirectionalPipeline.get();
+                        if (Bound.Batch->Surface == EMaterialSurface::Cutout)
+                        {
+                            Pipeline = Bound.Batch->DirectionalShadowPipeline.get();
+                            if (Pipeline == nullptr)
+                            {
+                                Log::Error("Cutout shadow pipeline is missing");
+                                return false;
+                            }
+                        }
+
+                        ShadowDraw Draw;
+                        Draw.Batch = Bound.Batch;
+                        std::memcpy(Draw.ViewProjection, ViewProjection, sizeof(Draw.ViewProjection));
+                        std::memcpy(Draw.World, Bound.World, sizeof(Draw.World));
+                        std::memcpy(Draw.NormalMatrix, Bound.NormalMatrix, sizeof(Draw.NormalMatrix));
+                        Draw.Target = Atlas.get();
+                        Draw.Pipeline = Pipeline;
+                        Draw.ViewportX = OriginX;
+                        Draw.ViewportY = OriginY;
+                        Draw.ViewportW = static_cast<float>(PageSize);
+                        Draw.ViewportH = static_cast<float>(PageSize);
+                        Draw.bBegin = false;
+                        Draw.bViewport = bFirst;
+                        Draw.bClip = Bound.Batch->Surface == EMaterialSurface::Cutout;
+                        Draws.push_back(Draw);
+                        bFirst = false;
+                    }
+                    continue;
+                }
+
+                std::memcpy(ViewProjection, Page.DrawClip, sizeof(ViewProjection));
+                Vec3 Eye(0.0F);
+                float FarPlane = PointShadowNear + 0.1F;
+                float TanHalf = 1.0F;
+                Mat4 FaceView(1.0F);
+                if (Page.Level < AreaShadowBase)
+                {
+                    const uint32 PointSlot = (Page.Level - ClipLevelCount) / PointFaceCount;
+                    const uint32 Face = (Page.Level - ClipLevelCount) % PointFaceCount;
+                    const PointLightRenderProxy& Point = ActivePoints[PointSlot];
+                    Eye = Vec3(Point.Position[0], Point.Position[1], Point.Position[2]);
+                    FarPlane = std::max(Point.Radius, PointShadowNear + 0.1F);
+                    FaceView = GLMAdapter::LookAtRH(Eye, Eye + FaceForward[Face], FaceUp[Face]);
+                }
+                else
+                {
+                    const AreaLightRenderProxy& Area = ActiveAreas[Page.Level - AreaShadowBase];
+                    Eye = Vec3(Area.Position[0], Area.Position[1], Area.Position[2]);
+                    FarPlane = AreaShadowFar(Area);
+                    TanHalf = AreaShadowTanHalf;
+                    const Vec3 Forward(Area.Direction[0], Area.Direction[1], Area.Direction[2]);
+                    const Vec3 Up(Area.Tangent[0], Area.Tangent[1], Area.Tangent[2]);
+                    FaceView = GLMAdapter::LookAtRH(Eye, Eye + Forward, Up);
+                }
+                for (const WorldCaster& Bound : WorldCasters)
+                {
+                    float U0 = 0.0F;
+                    float V0 = 0.0F;
+                    float U1 = 0.0F;
+                    float V1 = 0.0F;
+                    const bool bInside = ContainsLight(Eye, Bound.Min, Bound.Max);
+                    if (!bInside && !FaceUvBounds(FaceView, Bound.Min, Bound.Max, FarPlane, TanHalf, U0, V0, U1, V1))
+                    {
+                        continue;
+                    }
+                    if (!bInside && (U1 < Page.MinX || U0 > Page.MaxX || V1 < Page.MinY || V0 > Page.MaxY))
                     {
                         continue;
                     }
@@ -623,95 +986,6 @@ namespace ShadowEngine
             }
         }
 
-        static const Vec3 FaceDirection[6] = {
-            {1.0F, 0.0F, 0.0F},
-            {-1.0F, 0.0F, 0.0F},
-            {0.0F, 1.0F, 0.0F},
-            {0.0F, -1.0F, 0.0F},
-            {0.0F, 0.0F, 1.0F},
-            {0.0F, 0.0F, -1.0F},
-        };
-        static const Vec3 FaceUp[6] = {
-            {0.0F, 1.0F, 0.0F},
-            {0.0F, 1.0F, 0.0F},
-            {0.0F, 0.0F, -1.0F},
-            {0.0F, 0.0F, 1.0F},
-            {0.0F, 1.0F, 0.0F},
-            {0.0F, 1.0F, 0.0F},
-        };
-        for (uint32 LightIndex = 0; LightIndex < 4; ++LightIndex)
-        {
-            if (!bPointActive[LightIndex] || PointMaps[LightIndex] == nullptr || PointPipeline == nullptr || PointTwoSidedPipeline == nullptr)
-            {
-                continue;
-            }
-
-            const PointLightRenderProxy& Point = ActivePoints[LightIndex];
-            const Vec3 Eye(Point.Position[0], Point.Position[1], Point.Position[2]);
-            const float Far = std::max(Point.Radius, 0.1F);
-            const Mat4 Projection = GLMAdapter::PerspectiveRH_ZO(GLMAdapter::Radians(90.0F), 1.0F, 0.05F, Far);
-            const float LightPosition[4] = {Point.Position[0], Point.Position[1], Point.Position[2], Point.Radius};
-            for (uint32 Face = 0; Face < 6; ++Face)
-            {
-                const Mat4 Clip = Projection * GLMAdapter::LookAtRH(Eye, Eye + FaceDirection[Face], FaceUp[Face]);
-                float ViewProjection[16];
-                std::memcpy(ViewProjection, GLMAdapter::ValuePtr(Clip), sizeof(ViewProjection));
-                bool bFirst = true;
-                bool bAny = false;
-                for (const MeshRenderProxy& Caster : Casters)
-                {
-                    for (const MeshBatch& Batch : Batches)
-                    {
-                        if (Batch.Mesh.Index != Caster.Mesh.Index || Batch.Surface == EMaterialSurface::Translucent ||
-                            Batch.VertexBuffer == nullptr || Batch.IndexBuffer == nullptr)
-                        {
-                            continue;
-                        }
-
-                        ViewBox Box;
-                        Box.Caster = &Caster;
-                        Box.Batch = &Batch;
-                        RHIPipeline& Pipeline = Batch.bTwoSided ? *PointTwoSidedPipeline : *PointPipeline;
-                        AddDraw(
-                            Draws,
-                            &Box,
-                            ViewProjection,
-                            LightPosition,
-                            *PointMaps[LightIndex],
-                            Pipeline,
-                            0.0F,
-                            0.0F,
-                            static_cast<float>(PointShadowFaceSize),
-                            static_cast<float>(PointShadowFaceSize),
-                            Face,
-                            bFirst,
-                            bFirst,
-                            true);
-                        bFirst = false;
-                        bAny = true;
-                    }
-                }
-                if (!bAny)
-                {
-                    AddDraw(
-                        Draws,
-                        nullptr,
-                        ViewProjection,
-                        LightPosition,
-                        *PointMaps[LightIndex],
-                        *PointPipeline,
-                        0.0F,
-                        0.0F,
-                        static_cast<float>(PointShadowFaceSize),
-                        static_cast<float>(PointShadowFaceSize),
-                        Face,
-                        true,
-                        true,
-                        true);
-                }
-            }
-        }
-
         if (Draws.size() > ShadowConstantSlots)
         {
             Log::Error("Shadow constant buffer is full");
@@ -738,13 +1012,11 @@ namespace ShadowEngine
                 std::memcpy(Destination, Draw.ViewProjection, sizeof(Draw.ViewProjection));
                 std::memcpy(Destination + 64, Draw.World, sizeof(Draw.World));
                 std::memcpy(Destination + 128, Draw.NormalMatrix, sizeof(Draw.NormalMatrix));
-                std::memcpy(Destination + 192, Draw.LightPosition, sizeof(Draw.LightPosition));
             }
             else
             {
                 std::memcpy(Destination, Draw.ViewProjection, sizeof(Draw.ViewProjection));
                 std::memcpy(Destination + 64, Draw.World, sizeof(Draw.World));
-                std::memcpy(Destination + 128, Draw.LightPosition, sizeof(Draw.LightPosition));
             }
         }
         if (!Draws.empty() && !ConstantBuffer->Update(0, Constants))
@@ -763,7 +1035,7 @@ namespace ShadowEngine
                 {
                     Commands.UseAsShaderResource(*OpenTarget);
                 }
-                Commands.BeginDepthPass(*Draw.Target, true, Draw.Face);
+                Commands.BeginDepthPass(*Draw.Target, true, 0);
                 OpenTarget = Draw.Target;
             }
             if (Draw.bViewport)
@@ -780,12 +1052,12 @@ namespace ShadowEngine
                 continue;
             }
 
-            Commands.SetPipeline(*Draw.Pipeline);
-            Commands.BindShaderResources();
-            Commands.SetVertexBuffer(*Draw.Batch->VertexBuffer);
-            Commands.SetIndexBuffer(*Draw.Batch->IndexBuffer);
-            Commands.SetConstantBuffer(*ConstantBuffer, static_cast<uint32>(Index) * ShadowConstantStride);
-            Commands.ExecuteIndirect(*Draw.Batch->IndirectArguments, Draw.Batch->MeshletCount);
+            DrawMeshBatch(
+                Commands,
+                *Draw.Batch,
+                *Draw.Pipeline,
+                *ConstantBuffer,
+                static_cast<uint32>(Index) * ShadowConstantStride);
         }
         if (OpenTarget != nullptr)
         {

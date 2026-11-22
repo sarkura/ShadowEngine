@@ -38,6 +38,7 @@ namespace ShadowEngine
         const std::unordered_map<uint32, std::unique_ptr<RHISampler>>* Samplers = nullptr;
         const DirectLightRenderProxy* DirectLight = nullptr;
         const std::vector<PointLightRenderProxy>* PointLights = nullptr;
+        const std::vector<AreaLightRenderProxy>* AreaLights = nullptr;
         const SkyLightRenderProxy* SkyLight = nullptr;
         RHIPipeline* SkyPipeline = nullptr;
         RHIPipeline* DepthPrepassPipeline = nullptr;

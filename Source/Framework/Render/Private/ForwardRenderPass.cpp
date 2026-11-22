@@ -1,7 +1,6 @@
 #include "ThirdPartyAdapter/Mathematics/Public/GLMAdapter.h"
 #include "Framework/Render/Public/ForwardRenderPass.h"
 
-#include "Framework/Render/Public/ForwardShadows.h"
 #include "Framework/Render/Public/ImageBasedLighting.h"
 #include "Framework/Render/Public/PostProcess.h"
 #include "Framework/Render/Public/RenderGraph.h"
@@ -90,11 +89,7 @@ namespace ShadowEngine
         bool WriteShadow(uint8* Destination, const RHIPipelineLayout& Layout, const ForwardShadowBinding& Binding)
         {
             const float Settings[4] = {Binding.Settings[0], Binding.Settings[1], Binding.Settings[2], Binding.Settings[3]};
-            if (!WriteShadowUniform(Destination, Layout, "ForwardShadow.DirectRow0", Binding.DirectRow[0]) ||
-                !WriteShadowUniform(Destination, Layout, "ForwardShadow.DirectRow1", Binding.DirectRow[1]) ||
-                !WriteShadowUniform(Destination, Layout, "ForwardShadow.DirectRow2", Binding.DirectRow[2]) ||
-                !WriteShadowUniform(Destination, Layout, "ForwardShadow.DirectRow3", Binding.DirectRow[3]) ||
-                !WriteShadowUniform(Destination, Layout, "ForwardShadow.Settings", Settings) ||
+            if (!WriteShadowUniform(Destination, Layout, "ForwardShadow.Settings", Settings) ||
                 !WriteShadowUniform(Destination, Layout, "ForwardShadow.VirtualInfo", Binding.VirtualInfo))
             {
                 return false;
@@ -138,11 +133,6 @@ namespace ShadowEngine
             };
 
             return Write("DirectMap", Binding.DirectMap) &&
-                Write("PointMap0", Binding.PointMap[0]) &&
-                Write("PointMap1", Binding.PointMap[1]) &&
-                Write("PointMap2", Binding.PointMap[2]) &&
-                Write("PointMap3", Binding.PointMap[3]) &&
-                Write("ComparisonSampler", Binding.ComparisonSampler) &&
                 Write("PageTable", Binding.PageTable) &&
                 Write("PageSampler", Binding.PageSampler);
         }
@@ -168,7 +158,7 @@ namespace ShadowEngine
             Context.ConstantBuffer == nullptr || Context.DepthBuffer == nullptr || Context.Assets == nullptr ||
             Context.Shaders == nullptr || Context.View == nullptr || Context.Batches == nullptr ||
             Context.TextureDescriptors == nullptr || Context.Samplers == nullptr ||
-            Context.PointLights == nullptr || Context.SceneColor == nullptr ||
+            Context.PointLights == nullptr || Context.AreaLights == nullptr || Context.SceneColor == nullptr ||
             Context.DepthPrepassPipeline == nullptr || Context.DepthPrepassTwoSidedPipeline == nullptr ||
             Context.ImageBasedLight == nullptr || Context.Post == nullptr ||
             Context.Shadow == nullptr || Context.Shadows == nullptr || Context.ShadowCasters == nullptr)
@@ -366,6 +356,31 @@ namespace ShadowEngine
                     Batch->Layout.WriteUniform(Destination, Prefix + ".Position", PointPosition);
                     Batch->Layout.WriteUniform(Destination, Prefix + ".Color", PointColor);
                 }
+                const AreaLightRenderProxy* Area = Context.AreaLights->empty() ? nullptr : &Context.AreaLights->front();
+                const float AreaPosition[4] = {
+                    Area == nullptr ? 0.0F : Area->Position[0],
+                    Area == nullptr ? 0.0F : Area->Position[1],
+                    Area == nullptr ? 0.0F : Area->Position[2],
+                    Area == nullptr ? 0.0F : Area->Radius};
+                const float AreaDirection[4] = {
+                    Area == nullptr ? 0.0F : Area->Direction[0],
+                    Area == nullptr ? 0.0F : Area->Direction[1],
+                    Area == nullptr ? 0.0F : Area->Direction[2],
+                    Area == nullptr ? 0.0F : Area->Width};
+                const float AreaTangent[4] = {
+                    Area == nullptr ? 0.0F : Area->Tangent[0],
+                    Area == nullptr ? 0.0F : Area->Tangent[1],
+                    Area == nullptr ? 0.0F : Area->Tangent[2],
+                    Area == nullptr ? 0.0F : Area->Height};
+                const float AreaColor[4] = {
+                    Area == nullptr ? 0.0F : Area->Color[0],
+                    Area == nullptr ? 0.0F : Area->Color[1],
+                    Area == nullptr ? 0.0F : Area->Color[2],
+                    Area == nullptr ? 0.0F : Area->Intensity};
+                Batch->Layout.WriteUniform(Destination, "ForwardAreaLight[0].Position", AreaPosition);
+                Batch->Layout.WriteUniform(Destination, "ForwardAreaLight[0].Direction", AreaDirection);
+                Batch->Layout.WriteUniform(Destination, "ForwardAreaLight[0].Tangent", AreaTangent);
+                Batch->Layout.WriteUniform(Destination, "ForwardAreaLight[0].Color", AreaColor);
                 Batch->Layout.WriteUniform(Destination, "ForwardSkyLight.Color", SkyColor);
                 Batch->Layout.WriteDescriptors(Destination, TextureIndices, SamplerDescriptor);
                 ForwardShadowBinding ShadowBinding = *Context.Shadow;
@@ -373,10 +388,6 @@ namespace ShadowEngine
                 {
                     ShadowBinding.DirectMap = InvalidShaderDescriptor;
                     ShadowBinding.PageTable = InvalidShaderDescriptor;
-                    for (uint32& PointMap : ShadowBinding.PointMap)
-                    {
-                        PointMap = InvalidShaderDescriptor;
-                    }
                 }
                 if (!WriteImageBasedLight(Destination, Batch->Layout, *Context.ImageBasedLight) ||
                     !WriteShadow(Destination, Batch->Layout, ShadowBinding))
@@ -427,12 +438,12 @@ namespace ShadowEngine
         const auto DrawShaded = [&](uint32 Index)
         {
             const MeshBatch* Batch = FindMeshBatch(*Context.Batches, Items[Index].Mesh, Items[Index].Section);
-            Context.CommandList->SetPipeline(*Batch->Pipeline);
-            Context.CommandList->BindShaderResources();
-            Context.CommandList->SetVertexBuffer(*Batch->VertexBuffer);
-            Context.CommandList->SetIndexBuffer(*Batch->IndexBuffer);
-            Context.CommandList->SetConstantBuffer(*Context.ConstantBuffer, Index * Context.ConstantAlignment);
-            Context.CommandList->ExecuteIndirect(*Batch->IndirectArguments, Batch->MeshletCount);
+            DrawMeshBatch(
+                *Context.CommandList,
+                *Batch,
+                *Batch->Pipeline,
+                *Context.ConstantBuffer,
+                Index * Context.ConstantAlignment);
         };
 
         RenderGraph Graph;
@@ -467,12 +478,12 @@ namespace ShadowEngine
                     DepthPipeline = Batch->DepthPipeline.get();
                 }
 
-                Context.CommandList->SetPipeline(*DepthPipeline);
-                Context.CommandList->BindShaderResources();
-                Context.CommandList->SetVertexBuffer(*Batch->VertexBuffer);
-                Context.CommandList->SetIndexBuffer(*Batch->IndexBuffer);
-                Context.CommandList->SetConstantBuffer(*Context.ConstantBuffer, Index * Context.ConstantAlignment);
-                Context.CommandList->ExecuteIndirect(*Batch->IndirectArguments, Batch->MeshletCount);
+                DrawMeshBatch(
+                    *Context.CommandList,
+                    *Batch,
+                    *DepthPipeline,
+                    *Context.ConstantBuffer,
+                    Index * Context.ConstantAlignment);
             }
             Context.CommandList->EndRenderPass();
             return true;

@@ -1,6 +1,5 @@
 {
     "Renderer": "DeferredRenderer",
-    "Shadow": "VirtualShadow",
     "DefaultMaterial": "Assets/EngineAsset/DefaultAsset.material.json",
     "RHISetting":
     {

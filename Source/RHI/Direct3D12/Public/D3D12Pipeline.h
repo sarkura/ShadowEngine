@@ -19,15 +19,20 @@ namespace ShadowEngine
             [[nodiscard]] ID3D12RootSignature* GetRootSignature() const;
             [[nodiscard]] ID3D12PipelineState* GetPipelineState() const;
             [[nodiscard]] D3D_PRIMITIVE_TOPOLOGY GetTopology() const;
+            [[nodiscard]] bool IsMesh() const;
+            [[nodiscard]] uint32 GetMeshResourceRoot() const;
 
         private:
             bool CreateRootSignature(
                 ID3D12Device* Device,
                 const RHIPipelineLayout* Layout,
+                bool bMesh,
                 std::string* ErrorMessage);
 
             ComPtr<ID3D12RootSignature> RootSignature;
             ComPtr<ID3D12PipelineState> PipelineState;
             D3D_PRIMITIVE_TOPOLOGY Topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+            bool bMesh = false;
+            uint32 MeshResourceRoot = 0;
     };
 }

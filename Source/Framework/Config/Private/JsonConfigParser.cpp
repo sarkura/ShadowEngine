@@ -339,6 +339,20 @@ namespace ShadowEngine
                        ReadFloat(Item, "Radius", Light.Radius, ErrorMessage);
             }
 
+            if (Type == "AreaLight")
+            {
+                const char* const Members[] = {"Type", "Position", "Direction", "Width", "Height", "Color", "Intensity", "Radius"};
+                Light.Type = SceneSetting::LightType::Area;
+                return RequireMembers(Item, Members, 8, "AreaLight", ErrorMessage) &&
+                       ReadVec3(Item, "Position", Light.Position, ErrorMessage) &&
+                       ReadVec3(Item, "Direction", Light.Direction, ErrorMessage) &&
+                       ReadFloat(Item, "Width", Light.Width, ErrorMessage) &&
+                       ReadFloat(Item, "Height", Light.Height, ErrorMessage) &&
+                       ReadColor(Item, "Color", Light.Color, ErrorMessage) &&
+                       ReadFloat(Item, "Intensity", Light.Intensity, ErrorMessage) &&
+                       ReadFloat(Item, "Radius", Light.Radius, ErrorMessage);
+            }
+
             if (Type == "SkyLight")
             {
                 const char* const Members[] = {"Type", "Color", "Intensity"};
@@ -348,7 +362,7 @@ namespace ShadowEngine
                        ReadFloat(Item, "Intensity", Light.Intensity, ErrorMessage);
             }
 
-            SetError(ErrorMessage, "Light Type must be DirectLight, PointLight, or SkyLight");
+            SetError(ErrorMessage, "Light Type must be DirectLight, PointLight, AreaLight, or SkyLight");
             return false;
         }
 
@@ -618,15 +632,10 @@ namespace ShadowEngine
         }
 
         RenderSetting::RHISetting ParsedSetting;
-        if (!ReadString(
+        if (            !ReadString(
                 Document,
                 "Renderer",
                 ParsedSetting.Renderer,
-                ErrorMessage) ||
-            !ReadString(
-                Document,
-                "Shadow",
-                ParsedSetting.Shadow,
                 ErrorMessage) ||
             !ReadString(
                 Document,
@@ -674,12 +683,6 @@ namespace ShadowEngine
             Setting.Renderer != "ForwardRenderer" && Setting.Renderer != "DeferredRenderer")
         {
             SetError(ErrorMessage, "Renderer must be BlinnPhongRenderer, DebugRenderer, ForwardRenderer, or DeferredRenderer");
-            return false;
-        }
-
-        if (Setting.Shadow != "PCF" && Setting.Shadow != "VirtualShadow")
-        {
-            SetError(ErrorMessage, "Shadow must be PCF or VirtualShadow");
             return false;
         }
 
@@ -875,6 +878,36 @@ namespace ShadowEngine
                 if (Light.Radius <= 0.0F)
                 {
                     SetError(ErrorMessage, "PointLight Radius must be positive");
+                    return false;
+                }
+            }
+            else if (Light.Type == SceneSetting::LightType::Area)
+            {
+                if (Light.Position.size() != 3)
+                {
+                    SetError(ErrorMessage, "AreaLight Position must contain 3 numbers");
+                    return false;
+                }
+
+                if (Light.Direction.size() != 3)
+                {
+                    SetError(ErrorMessage, "AreaLight Direction must contain 3 numbers");
+                    return false;
+                }
+
+                const float Length =
+                    Light.Direction[0] * Light.Direction[0] +
+                    Light.Direction[1] * Light.Direction[1] +
+                    Light.Direction[2] * Light.Direction[2];
+                if (Length <= 0.0F)
+                {
+                    SetError(ErrorMessage, "AreaLight Direction cannot be zero");
+                    return false;
+                }
+
+                if (Light.Width <= 0.0F || Light.Height <= 0.0F || Light.Radius <= 0.0F)
+                {
+                    SetError(ErrorMessage, "AreaLight Width, Height, and Radius must be positive");
                     return false;
                 }
             }

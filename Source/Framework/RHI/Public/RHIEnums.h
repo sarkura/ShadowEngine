@@ -17,7 +17,8 @@ namespace ShadowEngine
     enum class ERHIShaderStage : uint8
     {
         Vertex,
-        Pixel
+        Pixel,
+        Mesh
     };
 
     enum class ERHIShaderFormat : uint8

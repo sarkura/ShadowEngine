@@ -6,6 +6,7 @@ struct ForwardLightSample
 {
     float3 Direct;
     float3 Point;
+    float3 Area;
     float3 Sky;
 };
 

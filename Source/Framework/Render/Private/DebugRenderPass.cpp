@@ -174,12 +174,12 @@ namespace ShadowEngine
             for (uint32 Index = 0; Index < static_cast<uint32>(Items.size()); ++Index)
             {
                 const MeshBatch* Batch = FindMeshBatch(*Context.Batches, Items[Index].Mesh, Items[Index].Section);
-                Context.CommandList->SetPipeline(*Batch->Pipeline);
-                Context.CommandList->BindShaderResources();
-                Context.CommandList->SetVertexBuffer(*Batch->VertexBuffer);
-                Context.CommandList->SetIndexBuffer(*Batch->IndexBuffer);
-                Context.CommandList->SetConstantBuffer(*Context.ConstantBuffer, Index * Context.ConstantAlignment);
-                Context.CommandList->ExecuteIndirect(*Batch->IndirectArguments, Batch->MeshletCount);
+                DrawMeshBatch(
+                    *Context.CommandList,
+                    *Batch,
+                    *Batch->Pipeline,
+                    *Context.ConstantBuffer,
+                    Index * Context.ConstantAlignment);
             }
             Context.CommandList->EndRenderPass();
             return true;

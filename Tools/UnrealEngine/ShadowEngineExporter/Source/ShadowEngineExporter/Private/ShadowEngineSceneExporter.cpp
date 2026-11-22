@@ -265,6 +265,13 @@ namespace
 		return OutTexture != nullptr;
 	}
 
+	float EngineLength(float Centimeters)
+	{
+		const FGLTFVector3 Origin = FGLTFCoreUtilities::ConvertPosition(FVector3f::ZeroVector);
+		const FGLTFVector3 Offset = FGLTFCoreUtilities::ConvertPosition(FVector3f(Centimeters, 0.f, 0.f));
+		return FVector(Offset.X - Origin.X, Offset.Y - Origin.Y, Offset.Z - Origin.Z).Size();
+	}
+
 	float ReadPointRadius(const AActor* Actor)
 	{
 		if (Actor != nullptr)
@@ -613,7 +620,6 @@ namespace
 		bool bWroteDirect = false;
 		bool bWroteSky = false;
 		int32 SkippedSpots = 0;
-		int32 SkippedRects = 0;
 
 		for (TActorIterator<AActor> It(World); It; ++It)
 		{
@@ -672,9 +678,41 @@ namespace
 				{
 					++SkippedSpots;
 				}
-				else if (Cast<URectLightComponent>(Component))
+				else if (URectLightComponent* Rect = Cast<URectLightComponent>(Component))
 				{
-					++SkippedRects;
+					const FVector Scale = Rect->GetComponentScale();
+					const float Width = EngineLength(Rect->SourceWidth * FMath::Abs(Scale.Y));
+					const float Height = EngineLength(Rect->SourceHeight * FMath::Abs(Scale.Z));
+					if (Width <= 0.0001f || Height <= 0.0001f)
+					{
+						Warnings.Add(FString::Printf(
+							TEXT("Skipped rect light %s; its size is zero."),
+							*ActorLabel(Rect)));
+						continue;
+					}
+
+					const FGLTFVector3 Converted = FGLTFCoreUtilities::ConvertVector(FVector3f(Rect->GetForwardVector()));
+					FVector Direction(Converted.X, Converted.Y, Converted.Z);
+					if (!Direction.Normalize())
+					{
+						Warnings.Add(FString::Printf(
+							TEXT("Skipped rect light %s; its direction is zero."),
+							*ActorLabel(Rect)));
+						continue;
+					}
+
+					const FGLTFVector3 Position = FGLTFCoreUtilities::ConvertPosition(FVector3f(Rect->GetComponentLocation()));
+					const FLinearColor Color = Rect->GetLightColor();
+					TSharedRef<FJsonObject> Light = MakeShared<FJsonObject>();
+					Light->SetStringField(TEXT("Type"), TEXT("AreaLight"));
+					Light->SetArrayField(TEXT("Position"), Number3(Position.X, Position.Y, Position.Z));
+					Light->SetArrayField(TEXT("Direction"), Number3(Direction.X, Direction.Y, Direction.Z));
+					Light->SetNumberField(TEXT("Width"), Round6(Width));
+					Light->SetNumberField(TEXT("Height"), Round6(Height));
+					Light->SetArrayField(TEXT("Color"), Number3(Color.R, Color.G, Color.B));
+					Light->SetNumberField(TEXT("Intensity"), Round6(FMath::Max(Rect->Intensity, 0.f) * PointIntensityScale));
+					Light->SetNumberField(TEXT("Radius"), Round6(ReadPointRadius(Rect->GetOwner())));
+					OutLights.Add(MakeShared<FJsonValueObject>(Light));
 				}
 				else if (UPointLightComponent* Point = Cast<UPointLightComponent>(Component))
 				{
@@ -702,10 +740,6 @@ namespace
 		if (SkippedSpots > 0)
 		{
 			Warnings.Add(FString::Printf(TEXT("Skipped %d spot light(s)."), SkippedSpots));
-		}
-		if (SkippedRects > 0)
-		{
-			Warnings.Add(FString::Printf(TEXT("Skipped %d rect light(s)."), SkippedRects));
 		}
 	}
 }

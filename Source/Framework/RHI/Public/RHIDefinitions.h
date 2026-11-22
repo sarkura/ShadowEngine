@@ -83,6 +83,7 @@ namespace ShadowEngine
     struct RHIGraphicsPipelineDesc
     {
         RHIShader* VertexShader = nullptr;
+        RHIShader* MeshShader = nullptr;
         RHIShader* PixelShader = nullptr;
         const RHIPipelineLayout* Layout = nullptr;
         ERHIFormat RenderTargetFormats[8] = {ERHIFormat::R8G8B8A8_UNorm};

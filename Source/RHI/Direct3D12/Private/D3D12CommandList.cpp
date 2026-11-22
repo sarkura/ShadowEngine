@@ -39,6 +39,13 @@ namespace ShadowEngine
             return false;
         }
 
+        Result = CommandList->QueryInterface(IID_PPV_ARGS(MeshCommands.GetAddressOf()));
+        if (FAILED(Result))
+        {
+            SetErrorMessage(ErrorMessage, "Mesh shaders require ID3D12GraphicsCommandList6");
+            return false;
+        }
+
         CommandList->Close();
 
         D3D12_INDIRECT_ARGUMENT_DESC Argument{};
@@ -179,9 +186,13 @@ namespace ShadowEngine
         auto& D3D12PipelineObject = static_cast<D3D12Pipeline&>(Pipeline);
         ID3D12DescriptorHeap* Heaps[] = {ResourceHeap, SamplerHeap};
         CommandList->SetDescriptorHeaps(2, Heaps);
+        CurrentPipeline = &D3D12PipelineObject;
         CommandList->SetGraphicsRootSignature(D3D12PipelineObject.GetRootSignature());
         CommandList->SetPipelineState(D3D12PipelineObject.GetPipelineState());
-        CommandList->IASetPrimitiveTopology(D3D12PipelineObject.GetTopology());
+        if (!D3D12PipelineObject.IsMesh())
+        {
+            CommandList->IASetPrimitiveTopology(D3D12PipelineObject.GetTopology());
+        }
     }
 
     void D3D12CommandList::SetVertexBuffer(RHIBuffer& Buffer)
@@ -345,6 +356,30 @@ namespace ShadowEngine
             0,
             nullptr,
             0);
+    }
+
+    void D3D12CommandList::DrawMeshlets(
+        RHIBuffer& Vertices,
+        RHIBuffer& VertexIds,
+        RHIBuffer& PrimitiveIndices,
+        RHIBuffer& Meshlets,
+        uint32 MeshletCount)
+    {
+        if (MeshletCount == 0 || CurrentPipeline == nullptr || !CurrentPipeline->IsMesh() || MeshCommands == nullptr)
+        {
+            return;
+        }
+
+        const UINT Root = CurrentPipeline->GetMeshResourceRoot();
+        const auto Address = [](RHIBuffer& Buffer)
+        {
+            return static_cast<D3D12Buffer&>(Buffer).GetGPUVirtualAddress();
+        };
+        CommandList->SetGraphicsRootShaderResourceView(Root + 0, Address(Vertices));
+        CommandList->SetGraphicsRootShaderResourceView(Root + 1, Address(VertexIds));
+        CommandList->SetGraphicsRootShaderResourceView(Root + 2, Address(PrimitiveIndices));
+        CommandList->SetGraphicsRootShaderResourceView(Root + 3, Address(Meshlets));
+        MeshCommands->DispatchMesh(MeshletCount, 1, 1);
     }
 
     ID3D12GraphicsCommandList* D3D12CommandList::GetHandle() const

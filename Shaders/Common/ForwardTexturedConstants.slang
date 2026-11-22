@@ -31,6 +31,7 @@ cbuffer SceneConstants : register(b0)
     MaterialDescriptorIndices Descriptors;
     ForwardDirectLight Direct;
     ForwardPointLight Point[ForwardPointLightCapacity];
+    ForwardAreaLight Area[ForwardAreaLightCapacity];
     ForwardSkyLight Sky;
     ImageBasedLightIndices ImageBasedLight;
     ForwardShadow Shadow;

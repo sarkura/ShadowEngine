@@ -20,17 +20,10 @@ namespace ShadowEngine
 
     struct ForwardShadowBinding
     {
-        float DirectRow[4][4] = {};
         float LevelRow[4][4][4] = {};
         float Settings[4] = {};
         float VirtualInfo[4] = {};
         uint32 DirectMap = InvalidShaderDescriptor;
-        uint32 PointMap[4] = {
-            InvalidShaderDescriptor,
-            InvalidShaderDescriptor,
-            InvalidShaderDescriptor,
-            InvalidShaderDescriptor};
-        uint32 ComparisonSampler = InvalidShaderDescriptor;
         uint32 PageTable = InvalidShaderDescriptor;
         uint32 PageSampler = InvalidShaderDescriptor;
     };
@@ -49,6 +42,7 @@ namespace ShadowEngine
                 const Camera& View,
                 const DirectLightRenderProxy* DirectLight,
                 const std::vector<PointLightRenderProxy>& PointLights,
+                const std::vector<AreaLightRenderProxy>& AreaLights,
                 std::string* ErrorMessage) = 0;
 
             virtual bool Record(

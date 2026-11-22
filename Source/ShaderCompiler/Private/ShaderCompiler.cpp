@@ -114,6 +114,8 @@ namespace ShadowEngine
                     return SLANG_STAGE_VERTEX;
                 case ERHIShaderStage::Pixel:
                     return SLANG_STAGE_FRAGMENT;
+                case ERHIShaderStage::Mesh:
+                    return SLANG_STAGE_MESH;
             }
 
             return SLANG_STAGE_NONE;
@@ -231,8 +233,9 @@ namespace ShadowEngine
                 const size_t Count = Type == nullptr ? 0 : Api.GetElementCount(Type);
                 const size_t Stride = Api.GetElementStride(TypeLayout, SLANG_PARAMETER_CATEGORY_UNIFORM);
                 const size_t ArrayOffset = Api.GetOffset(Variable, SLANG_PARAMETER_CATEGORY_UNIFORM);
-                if (ElementLayout == nullptr || ElementTypeName == nullptr ||
-                    std::string(ElementTypeName) != "ForwardPointLight" || Count == 0 ||
+                const std::string ElementName = ElementTypeName == nullptr ? std::string() : std::string(ElementTypeName);
+                const bool bLightArray = ElementName == "ForwardPointLight" || ElementName == "ForwardAreaLight";
+                if (ElementLayout == nullptr || !bLightArray || Count == 0 ||
                     Count == SLANG_UNKNOWN_SIZE || Count == SLANG_UNBOUNDED_SIZE ||
                     Stride == SLANG_UNKNOWN_SIZE || Stride == SLANG_UNBOUNDED_SIZE ||
                     ArrayOffset == SLANG_UNKNOWN_SIZE)
@@ -244,7 +247,7 @@ namespace ShadowEngine
                 const uint32_t FieldCount = Api.GetFieldCount(ElementLayout);
                 for (size_t Index = 0; Index < Count; ++Index)
                 {
-                    const std::string ElementParent = std::string("ForwardPointLight[") + std::to_string(Index) + "]";
+                    const std::string ElementParent = ElementName + "[" + std::to_string(Index) + "]";
                     const uint32 ElementBase = ArrayBase + static_cast<uint32>(Index * Stride);
                     for (uint32_t FieldIndex = 0; FieldIndex < FieldCount; ++FieldIndex)
                     {

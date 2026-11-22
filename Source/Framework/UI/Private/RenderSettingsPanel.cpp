@@ -94,10 +94,6 @@ namespace ShadowEngine
                     ImGuiAdapter::BeginDisabled(!Light.bDirectionalShadow);
                     bChanged |= Slider("Normal Bias", &Light.ShadowNormalBias, 0.0F, 0.2F);
                     ImGuiAdapter::EndDisabled();
-                    bChanged |= ImGuiAdapter::Checkbox("Point", &Light.bPointShadow);
-                    ImGuiAdapter::BeginDisabled(!Light.bPointShadow);
-                    bChanged |= Slider("Depth Bias", &Light.PointShadowDepthBias, 0.0F, 0.05F);
-                    ImGuiAdapter::EndDisabled();
                     ImGuiAdapter::TreePop();
                 }
 

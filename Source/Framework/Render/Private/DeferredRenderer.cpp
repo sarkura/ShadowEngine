@@ -17,6 +17,7 @@ namespace ShadowEngine
     namespace
     {
         constexpr uint32 PointLightLimit = 4;
+        constexpr uint32 AreaLightLimit = 1;
 
         float Halton(uint32 Index, uint32 Base)
         {
@@ -105,7 +106,7 @@ namespace ShadowEngine
             {
                 for (const ShaderBinding& Binding : PixelReflection->Bindings)
                 {
-                    if (Binding.Kind == EShaderBindingKind::ConstantBuffer && Binding.Size != 0 && Binding.Size != 720)
+                    if (Binding.Kind == EShaderBindingKind::ConstantBuffer && Binding.Size != 0 && Binding.Size != 704)
                     {
                         SetErrorMessage(
                             ErrorMessage,
@@ -230,8 +231,9 @@ namespace ShadowEngine
         }
 
         SelectVisiblePointLights(PointLightLimit, VisiblePointLights);
+        SelectVisibleAreaLights(AreaLightLimit, VisibleAreaLights);
         const DirectLightRenderProxy* DirectLight = SceneProxy.bHasDirectLight ? &SceneProxy.DirectLight : nullptr;
-        if (!Shadows->Prepare(MeshBatches, SceneProxy.Meshes, *Assets, ViewCamera, DirectLight, VisiblePointLights, &Error))
+        if (!Shadows->Prepare(MeshBatches, SceneProxy.Meshes, *Assets, ViewCamera, DirectLight, VisiblePointLights, VisibleAreaLights, &Error))
         {
             Log::Error("{}", Error);
             return false;
@@ -244,6 +246,7 @@ namespace ShadowEngine
     {
         Renderer::PopulateContext(Context);
         Context.PointLights = &VisiblePointLights;
+        Context.AreaLights = &VisibleAreaLights;
         Context.SkyLight = SceneProxy.bHasSkyLight ? &SceneProxy.SkyLight : nullptr;
         Context.Shadow = &Shadows->GetBinding();
         Context.Shadows = Shadows.get();

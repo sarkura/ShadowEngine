@@ -53,6 +53,7 @@ namespace ShadowEngine
             uint32 GBufferCDescriptor = 0xffffffff;
             uint32 DepthDescriptor = 0xffffffff;
             std::vector<PointLightRenderProxy> VisiblePointLights;
+            std::vector<AreaLightRenderProxy> VisibleAreaLights;
             float ProjectionJitterX = 0.0F;
             float ProjectionJitterY = 0.0F;
             float PreviousViewProjection[16] = {};

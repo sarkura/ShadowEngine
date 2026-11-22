@@ -17,6 +17,7 @@ cbuffer SceneConstants : register(b0)
     uint4 MaterialPadding1;
     ForwardDirectLight Direct;
     ForwardPointLight Point[ForwardPointLightCapacity];
+    ForwardAreaLight Area[ForwardAreaLightCapacity];
     ForwardSkyLight Sky;
     ImageBasedLightIndices ImageBasedLight;
     ForwardShadow Shadow;

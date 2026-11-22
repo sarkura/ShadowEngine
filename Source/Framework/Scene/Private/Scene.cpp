@@ -26,6 +26,12 @@ namespace ShadowEngine
         return PointLights.back();
     }
 
+    AreaLight& Scene::CreateAreaLight()
+    {
+        AreaLights.emplace_back();
+        return AreaLights.back();
+    }
+
     bool Scene::CreateSkyLight()
     {
         if (bHasSkyLight)
@@ -61,6 +67,11 @@ namespace ShadowEngine
     const std::deque<PointLight>& Scene::GetPointLights() const
     {
         return PointLights;
+    }
+
+    const std::deque<AreaLight>& Scene::GetAreaLights() const
+    {
+        return AreaLights;
     }
 
     bool Scene::HasSkyLight() const

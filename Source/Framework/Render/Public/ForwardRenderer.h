@@ -47,6 +47,7 @@ namespace ShadowEngine
             std::unique_ptr<RHIPipeline> DepthPrepassPipeline;
             std::unique_ptr<RHIPipeline> DepthPrepassTwoSidedPipeline;
             std::vector<PointLightRenderProxy> VisiblePointLights;
+            std::vector<AreaLightRenderProxy> VisibleAreaLights;
             float ProjectionJitterX = 0.0F;
             float ProjectionJitterY = 0.0F;
             float PreviousViewProjection[16] = {};

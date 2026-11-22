@@ -31,7 +31,7 @@ float SampleVirtualPage(
     }
 
     const float2 PageUv = frac(VirtualTexel / PageSize);
-    const float TableHeight = PagesPerAxis * 4.0;
+    const float TableHeight = PagesPerAxis * Shadow.Settings.x;
     const float2 TableUv = float2(
         (float(Page.x) + 0.5) / PagesPerAxis,
         (Level * PagesPerAxis + float(Page.y) + 0.5) / TableHeight);
@@ -77,7 +77,7 @@ bool EvaluateClipLevel(
 
     const float PagesPerAxis = Shadow.VirtualInfo.x;
     const int2 Page = int2(floor(Uv * PagesPerAxis));
-    const float TableHeight = PagesPerAxis * 4.0;
+    const float TableHeight = PagesPerAxis * Shadow.Settings.x;
     const float2 TableUv = float2(
         (float(Page.x) + 0.5) / PagesPerAxis,
         (Level * PagesPerAxis + float(Page.y) + 0.5) / TableHeight);
@@ -125,107 +125,164 @@ float VirtualDirectVisibility(float3 WorldPosition, float3 Normal)
 
 float DirectShadowVisibility(float3 WorldPosition, float3 Normal)
 {
-    if (ShadowIndices.PageTable != 0xffffffff && ShadowIndices.PageSampler != 0xffffffff &&
-        ShadowIndices.DirectMap != 0xffffffff && ShadowIndices.ComparisonSampler != 0xffffffff)
+    if (ShadowIndices.DirectMap == 0xffffffff || ShadowIndices.PageTable == 0xffffffff ||
+        ShadowIndices.PageSampler == 0xffffffff)
     {
-        return VirtualDirectVisibility(WorldPosition, Normal);
+        return 1.0;
     }
 
-    if (ShadowIndices.DirectMap == 0xffffffff || ShadowIndices.ComparisonSampler == 0xffffffff)
+    return VirtualDirectVisibility(WorldPosition, Normal);
+}
+
+void PointFaceAxes(int Face, out float3 Forward, out float3 Up)
+{
+    if (Face == 0)
+    {
+        Forward = float3(1.0, 0.0, 0.0);
+        Up = float3(0.0, 1.0, 0.0);
+    }
+    else if (Face == 1)
+    {
+        Forward = float3(-1.0, 0.0, 0.0);
+        Up = float3(0.0, 1.0, 0.0);
+    }
+    else if (Face == 2)
+    {
+        Forward = float3(0.0, 1.0, 0.0);
+        Up = float3(0.0, 0.0, -1.0);
+    }
+    else if (Face == 3)
+    {
+        Forward = float3(0.0, -1.0, 0.0);
+        Up = float3(0.0, 0.0, 1.0);
+    }
+    else if (Face == 4)
+    {
+        Forward = float3(0.0, 0.0, 1.0);
+        Up = float3(0.0, 1.0, 0.0);
+    }
+    else
+    {
+        Forward = float3(0.0, 0.0, -1.0);
+        Up = float3(0.0, 1.0, 0.0);
+    }
+}
+
+int PointFaceIndex(float3 Direction)
+{
+    const float3 Absolute = abs(Direction);
+    if (Absolute.x >= Absolute.y && Absolute.x >= Absolute.z)
+    {
+        return Direction.x >= 0.0 ? 0 : 1;
+    }
+    if (Absolute.y >= Absolute.z)
+    {
+        return Direction.y >= 0.0 ? 2 : 3;
+    }
+    return Direction.z >= 0.0 ? 4 : 5;
+}
+
+void PerspectiveFaceRows(
+    float3 Eye,
+    float FarPlane,
+    float3 Forward,
+    float3 Up,
+    float TanHalf,
+    out float4 Row0,
+    out float4 Row1,
+    out float4 Row2,
+    out float4 Row3)
+{
+    const float3 F = normalize(Forward);
+    const float3 S = normalize(cross(F, Up));
+    const float3 U = cross(S, F);
+    const float Scale = 1.0 / TanHalf;
+    const float4 View0 = float4(S, -dot(S, Eye));
+    const float4 View1 = float4(U, -dot(U, Eye));
+    const float4 View2 = float4(-F, dot(F, Eye));
+    const float NearPlane = 0.05;
+    const float C = FarPlane / (NearPlane - FarPlane);
+    const float D = -(FarPlane * NearPlane) / (FarPlane - NearPlane);
+    Row0 = View0 * Scale;
+    Row1 = View1 * Scale;
+    Row2 = C * View2 + float4(0.0, 0.0, 0.0, D);
+    Row3 = -View2;
+}
+
+void PointFaceRows(float3 Eye, float FarPlane, int Face, out float4 Row0, out float4 Row1, out float4 Row2, out float4 Row3)
+{
+    float3 Forward;
+    float3 Up;
+    PointFaceAxes(Face, Forward, Up);
+    PerspectiveFaceRows(Eye, FarPlane, Forward, Up, 1.0, Row0, Row1, Row2, Row3);
+}
+
+float PointShadowVisibility(int LightIndex, float3 WorldPosition, float3 LightPosition, float Radius, float3 Normal)
+{
+    if (ShadowIndices.DirectMap == 0xffffffff || ShadowIndices.PageTable == 0xffffffff ||
+        ShadowIndices.PageSampler == 0xffffffff)
     {
         return 1.0;
     }
 
     const float3 UnitNormal = normalize(Normal);
-    const float3 ToLight = normalize(-Direct.Direction.xyz);
+    const float3 ToLight = normalize(LightPosition - WorldPosition);
     const float3 SamplePosition = WorldPosition + (UnitNormal + ToLight) * Shadow.Settings.y;
-    const float4 Homogeneous = float4(SamplePosition, 1.0);
-    const float4 Clip = float4(
-        dot(Shadow.DirectRow0, Homogeneous),
-        dot(Shadow.DirectRow1, Homogeneous),
-        dot(Shadow.DirectRow2, Homogeneous),
-        dot(Shadow.DirectRow3, Homogeneous));
-    if (Clip.w <= 0.0)
-    {
-        return 1.0;
-    }
-
-    const float3 Ndc = Clip.xyz / Clip.w;
-    const float2 Uv = float2(Ndc.x * 0.5 + 0.5, -Ndc.y * 0.5 + 0.5);
-    if (Uv.x < 0.0 || Uv.y < 0.0 || Uv.x > 1.0 || Uv.y > 1.0 || Ndc.z < 0.0 || Ndc.z > 1.0)
-    {
-        return 1.0;
-    }
-
-    const Texture2D Map = LoadResourceDescriptor<Texture2D>(ShadowIndices.DirectMap);
-    const SamplerComparisonState Comparison = LoadSamplerDescriptor<SamplerComparisonState>(ShadowIndices.ComparisonSampler);
-    const float2 Texel = float2(Shadow.Settings.x, Shadow.Settings.x);
+    const float3 FromLight = SamplePosition - LightPosition;
+    const int Face = PointFaceIndex(FromLight);
+    const float FarPlane = max(Radius, 0.15);
+    float4 Row0;
+    float4 Row1;
+    float4 Row2;
+    float4 Row3;
+    PointFaceRows(LightPosition, FarPlane, Face, Row0, Row1, Row2, Row3);
+    const float Level = 4.0 + float(LightIndex) * 6.0 + float(Face);
     const float Slope = 1.0 - saturate(dot(UnitNormal, ToLight));
-    const float Reference = Ndc.z - (0.0004 + Slope * 0.002);
-    float Sum = 0.0;
-    [unroll]
-    for (int Y = -1; Y <= 1; ++Y)
+    const float Bias = 0.0004 + Slope * 0.002;
+    const Texture2D Atlas = LoadResourceDescriptor<Texture2D>(ShadowIndices.DirectMap);
+    const Texture2D Pages = LoadResourceDescriptor<Texture2D>(ShadowIndices.PageTable);
+    const SamplerState PointSampler = LoadSamplerDescriptor<SamplerState>(ShadowIndices.PageSampler);
+    float Visibility = 1.0;
+    if (EvaluateClipLevel(Row0, Row1, Row2, Row3, Level, SamplePosition, Bias, Atlas, Pages, PointSampler, Visibility))
     {
-        [unroll]
-        for (int X = -1; X <= 1; ++X)
-        {
-            Sum += Map.SampleCmpLevelZero(Comparison, Uv + float2(X, Y) * Texel * 0.5, Reference);
-        }
+        return Visibility;
     }
-    return Sum / 9.0;
+    return 1.0;
 }
 
-float PointShadowVisibility(int LightIndex, float3 WorldPosition, float3 LightPosition, float Radius, float3 Normal)
+float AreaShadowVisibility(
+    int LightIndex,
+    float3 WorldPosition,
+    float3 LightPosition,
+    float3 Forward,
+    float3 Up,
+    float FarPlane,
+    float3 Normal)
 {
-    uint MapIndex = 0xffffffff;
-    if (LightIndex == 0)
-    {
-        MapIndex = ShadowIndices.PointMap0;
-    }
-    else if (LightIndex == 1)
-    {
-        MapIndex = ShadowIndices.PointMap1;
-    }
-    else if (LightIndex == 2)
-    {
-        MapIndex = ShadowIndices.PointMap2;
-    }
-    else if (LightIndex == 3)
-    {
-        MapIndex = ShadowIndices.PointMap3;
-    }
-
-    if (MapIndex == 0xffffffff || ShadowIndices.ComparisonSampler == 0xffffffff)
+    if (ShadowIndices.DirectMap == 0xffffffff || ShadowIndices.PageTable == 0xffffffff ||
+        ShadowIndices.PageSampler == 0xffffffff)
     {
         return 1.0;
     }
 
-    const float3 SamplePosition = WorldPosition + normalize(Normal) * 0.02;
-    const float3 Offset = SamplePosition - LightPosition;
-    const float Distance = length(Offset);
-    if (Distance <= 0.0001)
+    const float3 UnitNormal = normalize(Normal);
+    const float3 ToLight = normalize(LightPosition - WorldPosition);
+    const float3 SamplePosition = WorldPosition + (UnitNormal + ToLight) * Shadow.Settings.y;
+    float4 Row0;
+    float4 Row1;
+    float4 Row2;
+    float4 Row3;
+    PerspectiveFaceRows(LightPosition, FarPlane, Forward, Up, tan(radians(60.0)), Row0, Row1, Row2, Row3);
+    const float Level = 28.0 + float(LightIndex);
+    const float Slope = 1.0 - saturate(dot(UnitNormal, ToLight));
+    const float Bias = 0.0004 + Slope * 0.002;
+    const Texture2D Atlas = LoadResourceDescriptor<Texture2D>(ShadowIndices.DirectMap);
+    const Texture2D Pages = LoadResourceDescriptor<Texture2D>(ShadowIndices.PageTable);
+    const SamplerState PointSampler = LoadSamplerDescriptor<SamplerState>(ShadowIndices.PageSampler);
+    float Visibility = 1.0;
+    if (EvaluateClipLevel(Row0, Row1, Row2, Row3, Level, SamplePosition, Bias, Atlas, Pages, PointSampler, Visibility))
     {
-        return 1.0;
+        return Visibility;
     }
-
-    const float3 Direction = Offset / Distance;
-    const float3 Up = abs(Direction.y) > 0.999 ? float3(0.0, 0.0, 1.0) : float3(0.0, 1.0, 0.0);
-    const float3 Tangent = normalize(cross(Up, Direction));
-    const float3 Bitangent = cross(Direction, Tangent);
-    const float Texel = Shadow.Settings.z;
-    const float Reference = saturate(Distance / max(Radius, 0.001)) - Shadow.Settings.w;
-    const TextureCube Map = LoadResourceDescriptor<TextureCube>(MapIndex);
-    const SamplerComparisonState Comparison = LoadSamplerDescriptor<SamplerComparisonState>(ShadowIndices.ComparisonSampler);
-    float Sum = 0.0;
-    [unroll]
-    for (int Y = -1; Y <= 1; ++Y)
-    {
-        [unroll]
-        for (int X = -1; X <= 1; ++X)
-        {
-            const float3 SampleDirection = Direction + (Tangent * float(X) + Bitangent * float(Y)) * Texel;
-            Sum += Map.SampleCmpLevelZero(Comparison, SampleDirection, Reference);
-        }
-    }
-    return Sum / 9.0;
+    return 1.0;
 }
