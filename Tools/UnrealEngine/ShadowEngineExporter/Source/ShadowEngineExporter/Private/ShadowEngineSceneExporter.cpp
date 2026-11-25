@@ -744,7 +744,7 @@ namespace
 	}
 }
 
-void FShadowEngineSceneExporter::ExportCurrentLevel()
+void FShadowEngineSceneExporter::ExportAssets()
 {
 	UWorld* World = GEditor != nullptr ? GEditor->GetEditorWorldContext().World() : nullptr;
 	if (World == nullptr)
@@ -767,17 +767,19 @@ void FShadowEngineSceneExporter::ExportCurrentLevel()
 
 	const FString ExportRoot = FPaths::ConvertRelativePathToFull(
 		FPaths::Combine(Plugin->GetBaseDir(), TEXT("ExportData")));
-	if (IFileManager::Get().DirectoryExists(*ExportRoot) &&
-		!IFileManager::Get().DeleteDirectory(*ExportRoot, false, true))
-	{
-		Fail(FString::Printf(TEXT("Could not clear %s."), *ExportRoot));
-		return;
-	}
+	const FString AssetsPath = FPaths::Combine(ExportRoot, TEXT("Assets"));
+	const FString ScenePath = FPaths::Combine(ExportRoot, TEXT("Config/Scene.json"));
+	IFileManager::Get().DeleteDirectory(*AssetsPath, false, true);
+	IFileManager::Get().Delete(*ScenePath);
 	IFileManager::Get().MakeDirectory(*ExportRoot, true);
-	FFileHelper::SaveStringToFile(
-		FString(),
-		*FPaths::Combine(ExportRoot, TEXT(".gitkeep")),
-		FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+	const FString GitKeep = FPaths::Combine(ExportRoot, TEXT(".gitkeep"));
+	if (!IFileManager::Get().FileExists(*GitKeep))
+	{
+		FFileHelper::SaveStringToFile(
+			FString(),
+			*GitKeep,
+			FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+	}
 
 	struct FMeshGroup
 	{
@@ -888,13 +890,8 @@ void FShadowEngineSceneExporter::ExportCurrentLevel()
 		MeshObject->SetArrayField(AssetPath, Instances);
 	}
 
-	TArray<TSharedPtr<FJsonValue>> Lights;
-	CollectLights(World, Lights, Warnings);
-
 	TSharedRef<FJsonObject> Scene = MakeShared<FJsonObject>();
 	Scene->SetObjectField(TEXT("Mesh"), MeshObject);
-	Scene->SetArrayField(TEXT("Light"), Lights);
-	const FString ScenePath = ToDisk(ExportRoot, TEXT("Config/Scene.json"));
 	if (!SaveJson(ScenePath, Scene))
 	{
 		Fail(FString::Printf(TEXT("Could not write %s."), *ScenePath));
@@ -911,6 +908,55 @@ void FShadowEngineSceneExporter::ExportCurrentLevel()
 		Groups.Num(),
 		InstanceCount,
 		*ScenePath);
+	if (Warnings.Num() > 0)
+	{
+		Message += FString::Printf(TEXT(" %d warning(s) are in the Output Log."), Warnings.Num());
+	}
+	Notify(Message, Warnings.Num() == 0);
+}
+
+void FShadowEngineSceneExporter::ExportEnvironment()
+{
+	UWorld* World = GEditor != nullptr ? GEditor->GetEditorWorldContext().World() : nullptr;
+	if (World == nullptr)
+	{
+		Fail(TEXT("No editor world is open."));
+		return;
+	}
+
+	const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("ShadowEngineExporter"));
+	if (!Plugin.IsValid())
+	{
+		Fail(TEXT("ShadowEngineExporter plugin was not found."));
+		return;
+	}
+
+	const FString ExportRoot = FPaths::ConvertRelativePathToFull(
+		FPaths::Combine(Plugin->GetBaseDir(), TEXT("ExportData")));
+	IFileManager::Get().MakeDirectory(*ExportRoot, true);
+
+	TArray<FString> Warnings;
+	TArray<TSharedPtr<FJsonValue>> Lights;
+	CollectLights(World, Lights, Warnings);
+
+	TSharedRef<FJsonObject> Environment = MakeShared<FJsonObject>();
+	Environment->SetArrayField(TEXT("Light"), Lights);
+	const FString EnvironmentPath = ToDisk(ExportRoot, TEXT("Config/Environment.json"));
+	if (!SaveJson(EnvironmentPath, Environment))
+	{
+		Fail(FString::Printf(TEXT("Could not write %s."), *EnvironmentPath));
+		return;
+	}
+
+	for (const FString& Warning : Warnings)
+	{
+		UE_LOG(LogShadowEngineExport, Warning, TEXT("%s"), *Warning);
+	}
+
+	FString Message = FString::Printf(
+		TEXT("Exported %d light(s) to %s."),
+		Lights.Num(),
+		*EnvironmentPath);
 	if (Warnings.Num() > 0)
 	{
 		Message += FString::Printf(TEXT(" %d warning(s) are in the Output Log."), Warnings.Num());

@@ -25,11 +25,17 @@ void FShadowEngineExporterModule::RegisterMenus()
 		"ShadowEngine",
 		LOCTEXT("ShadowEngineSection", "ShadowEngine"));
 	Section.AddMenuEntry(
-		"ExportShadowEngineScene",
-		LOCTEXT("ExportLabel", "Export ShadowEngine Scene"),
-		LOCTEXT("ExportTip", "Write StaticMesh actors and lights into this plugin's ExportData folder."),
+		"ExportShadowEngineAssets",
+		LOCTEXT("ExportAssetsLabel", "Export Assets"),
+		LOCTEXT("ExportAssetsTip", "Write StaticMesh actors and Config/Scene.json into this plugin's ExportData folder."),
 		FSlateIcon(),
-		FUIAction(FExecuteAction::CreateStatic(&FShadowEngineSceneExporter::ExportCurrentLevel)));
+		FUIAction(FExecuteAction::CreateStatic(&FShadowEngineSceneExporter::ExportAssets)));
+	Section.AddMenuEntry(
+		"ExportShadowEngineEnvironment",
+		LOCTEXT("ExportEnvironmentLabel", "Export Environment"),
+		LOCTEXT("ExportEnvironmentTip", "Write directional, point, area, and sky lights to Config/Environment.json."),
+		FSlateIcon(),
+		FUIAction(FExecuteAction::CreateStatic(&FShadowEngineSceneExporter::ExportEnvironment)));
 }
 
 #undef LOCTEXT_NAMESPACE

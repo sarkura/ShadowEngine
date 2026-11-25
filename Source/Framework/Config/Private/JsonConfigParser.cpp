@@ -309,7 +309,7 @@ namespace ShadowEngine
 
         bool ReadSceneLight(
             const RapidJSONValue& Item,
-            SceneSetting::Light& Light,
+            EnvironmentSetting::Light& Light,
             std::string* ErrorMessage)
         {
             std::string Type;
@@ -321,7 +321,7 @@ namespace ShadowEngine
             if (Type == "DirectLight")
             {
                 const char* const Members[] = {"Type", "Direction", "Color", "Intensity"};
-                Light.Type = SceneSetting::LightType::Direct;
+                Light.Type = EnvironmentSetting::LightType::Direct;
                 return RequireMembers(Item, Members, 4, "DirectLight", ErrorMessage) &&
                        ReadVec3(Item, "Direction", Light.Direction, ErrorMessage) &&
                        ReadColor(Item, "Color", Light.Color, ErrorMessage) &&
@@ -331,7 +331,7 @@ namespace ShadowEngine
             if (Type == "PointLight")
             {
                 const char* const Members[] = {"Type", "Position", "Color", "Intensity", "Radius"};
-                Light.Type = SceneSetting::LightType::Point;
+                Light.Type = EnvironmentSetting::LightType::Point;
                 return RequireMembers(Item, Members, 5, "PointLight", ErrorMessage) &&
                        ReadVec3(Item, "Position", Light.Position, ErrorMessage) &&
                        ReadColor(Item, "Color", Light.Color, ErrorMessage) &&
@@ -342,7 +342,7 @@ namespace ShadowEngine
             if (Type == "AreaLight")
             {
                 const char* const Members[] = {"Type", "Position", "Direction", "Width", "Height", "Color", "Intensity", "Radius"};
-                Light.Type = SceneSetting::LightType::Area;
+                Light.Type = EnvironmentSetting::LightType::Area;
                 return RequireMembers(Item, Members, 8, "AreaLight", ErrorMessage) &&
                        ReadVec3(Item, "Position", Light.Position, ErrorMessage) &&
                        ReadVec3(Item, "Direction", Light.Direction, ErrorMessage) &&
@@ -356,7 +356,7 @@ namespace ShadowEngine
             if (Type == "SkyLight")
             {
                 const char* const Members[] = {"Type", "Color", "Intensity"};
-                Light.Type = SceneSetting::LightType::Sky;
+                Light.Type = EnvironmentSetting::LightType::Sky;
                 return RequireMembers(Item, Members, 3, "SkyLight", ErrorMessage) &&
                        ReadColor(Item, "Color", Light.Color, ErrorMessage) &&
                        ReadFloat(Item, "Intensity", Light.Intensity, ErrorMessage);
@@ -727,13 +727,6 @@ namespace ShadowEngine
             return false;
         }
 
-        RapidJSONValue Lights =
-            FindArray(Document, "Light", ErrorMessage);
-        if (Lights == nullptr)
-        {
-            return false;
-        }
-
         SceneSetting::Setting ParsedSetting;
         for (size_t MemberIndex = 0; MemberIndex < Meshes.MemberCount(); ++MemberIndex)
         {
@@ -777,25 +770,6 @@ namespace ShadowEngine
             ParsedSetting.Meshes.push_back(std::move(Mesh));
         }
 
-        ParsedSetting.Lights.reserve(Lights.Size());
-        for (size_t ItemIndex = 0; ItemIndex < Lights.Size(); ++ItemIndex)
-        {
-            const RapidJSONValue Item = Lights[ItemIndex];
-            if (!Item.IsObject())
-            {
-                SetError(ErrorMessage, "Each Light entry must be an object");
-                return false;
-            }
-
-            SceneSetting::Light Light;
-            if (!ReadSceneLight(Item, Light, ErrorMessage))
-            {
-                return false;
-            }
-
-            ParsedSetting.Lights.push_back(std::move(Light));
-        }
-
         if (!ValidateSceneSetting(ParsedSetting, ErrorMessage))
         {
             return false;
@@ -835,7 +809,61 @@ namespace ShadowEngine
             }
         }
 
-        for (const SceneSetting::Light& Light : Setting.Lights)
+        return true;
+    }
+
+    bool JsonConfigParser::LoadEnvironmentSetting(
+        const std::filesystem::path& FilePath,
+        EnvironmentSetting::Setting& Setting,
+        std::string* ErrorMessage)
+    {
+        RapidJSONDocument Document;
+        if (!ParseJsonFile(FilePath, Document, ErrorMessage))
+        {
+            return false;
+        }
+
+        RapidJSONValue Lights =
+            FindArray(Document, "Light", ErrorMessage);
+        if (Lights == nullptr)
+        {
+            return false;
+        }
+
+        EnvironmentSetting::Setting ParsedSetting;
+        ParsedSetting.Lights.reserve(Lights.Size());
+        for (size_t ItemIndex = 0; ItemIndex < Lights.Size(); ++ItemIndex)
+        {
+            const RapidJSONValue Item = Lights[ItemIndex];
+            if (!Item.IsObject())
+            {
+                SetError(ErrorMessage, "Each Light entry must be an object");
+                return false;
+            }
+
+            EnvironmentSetting::Light Light;
+            if (!ReadSceneLight(Item, Light, ErrorMessage))
+            {
+                return false;
+            }
+
+            ParsedSetting.Lights.push_back(std::move(Light));
+        }
+
+        if (!ValidateEnvironmentSetting(ParsedSetting, ErrorMessage))
+        {
+            return false;
+        }
+
+        Setting = std::move(ParsedSetting);
+        return true;
+    }
+
+    bool JsonConfigParser::ValidateEnvironmentSetting(
+        const EnvironmentSetting::Setting& Setting,
+        std::string* ErrorMessage)
+    {
+        for (const EnvironmentSetting::Light& Light : Setting.Lights)
         {
             if (Light.Color.size() != 3 && Light.Color.size() != 4)
             {
@@ -849,7 +877,7 @@ namespace ShadowEngine
                 return false;
             }
 
-            if (Light.Type == SceneSetting::LightType::Direct)
+            if (Light.Type == EnvironmentSetting::LightType::Direct)
             {
                 if (Light.Direction.size() != 3)
                 {
@@ -867,7 +895,7 @@ namespace ShadowEngine
                     return false;
                 }
             }
-            else if (Light.Type == SceneSetting::LightType::Point)
+            else if (Light.Type == EnvironmentSetting::LightType::Point)
             {
                 if (Light.Position.size() != 3)
                 {
@@ -881,7 +909,7 @@ namespace ShadowEngine
                     return false;
                 }
             }
-            else if (Light.Type == SceneSetting::LightType::Area)
+            else if (Light.Type == EnvironmentSetting::LightType::Area)
             {
                 if (Light.Position.size() != 3)
                 {

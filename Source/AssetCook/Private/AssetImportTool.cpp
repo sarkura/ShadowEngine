@@ -285,7 +285,7 @@ namespace
             return false;
         }
 
-        Output << "{\n    \"Mesh\": {},\n    \"Light\": []\n}\n";
+        Output << "{\n    \"Mesh\": {}\n}\n";
         if (!Output)
         {
             if (ErrorMessage != nullptr)
@@ -295,7 +295,29 @@ namespace
             return false;
         }
 
+        const std::filesystem::path EnvironmentPath = ProjectRoot / "Config" / "Environment.json";
+        std::ofstream EnvironmentOutput(EnvironmentPath, std::ios::binary | std::ios::trunc);
+        if (!EnvironmentOutput)
+        {
+            if (ErrorMessage != nullptr)
+            {
+                *ErrorMessage = "Unable to write " + EnvironmentPath.generic_string();
+            }
+            return false;
+        }
+
+        EnvironmentOutput << "{\n    \"Light\": []\n}\n";
+        if (!EnvironmentOutput)
+        {
+            if (ErrorMessage != nullptr)
+            {
+                *ErrorMessage = "Unable to write " + EnvironmentPath.generic_string();
+            }
+            return false;
+        }
+
         std::cout << "Cleared scene " << ScenePath.generic_string() << '\n';
+        std::cout << "Cleared environment " << EnvironmentPath.generic_string() << '\n';
         return true;
     }
 

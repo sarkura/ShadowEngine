@@ -3,5 +3,6 @@
 class FShadowEngineSceneExporter
 {
 public:
-	static void ExportCurrentLevel();
+	static void ExportAssets();
+	static void ExportEnvironment();
 };

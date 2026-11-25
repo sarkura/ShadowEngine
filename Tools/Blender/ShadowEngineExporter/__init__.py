@@ -50,15 +50,14 @@ def relative_asset(path):
     return path.as_posix()
 
 
-def clear_export_directory(root):
+def clear_asset_export(root):
     root.mkdir(parents=True, exist_ok=True)
-    for child in root.iterdir():
-        if child.name == ".gitkeep":
-            continue
-        if child.is_dir():
-            shutil.rmtree(child)
-        else:
-            child.unlink()
+    assets = root / "Assets"
+    if assets.exists():
+        shutil.rmtree(assets)
+    scene_path = root / "Config" / "Scene.json"
+    if scene_path.exists():
+        scene_path.unlink()
 
 
 def write_json(path, payload):
@@ -198,27 +197,11 @@ def texture_document(image_path, encoding):
     }
 
 
-class SHADOWENGINE_OT_export(Operator):
-    bl_idname = "export_scene.shadow_engine"
-    bl_label = "ShadowEngine"
-    bl_description = (
-        "Export the current scene. Meshes, the sun, point lights, area lights, and the world light are written. "
-        "Other object types are skipped"
-    )
+class SHADOWENGINE_OT_export_assets(Operator):
+    bl_idname = "export_scene.shadow_engine_assets"
+    bl_label = "Export Assets"
+    bl_description = "Export meshes and write their placement to Config/Scene.json"
     bl_options = {"REGISTER"}
-
-    point_radius: FloatProperty(
-        name="Point Radius",
-        description="Reach of a point or area light when the light object has no Radius property",
-        default=10.0,
-        min=0.001,
-    )
-    point_energy_scale: FloatProperty(
-        name="Point Energy Scale",
-        description="Blender point and area light watts multiplied into ShadowEngine intensity",
-        default=0.01,
-        min=0.0,
-    )
 
     @classmethod
     def poll(cls, context):
@@ -235,7 +218,7 @@ class SHADOWENGINE_OT_export(Operator):
             return {"CANCELLED"}
 
         root = Path(__file__).resolve().parent / "ExportData"
-        clear_export_directory(root)
+        clear_asset_export(root)
 
         meshes = [obj for obj in context.scene.objects if obj.type == "MESH"]
 
@@ -266,13 +249,11 @@ class SHADOWENGINE_OT_export(Operator):
                     }
                 })
 
-        lights, light_warnings = self.export_lights(context)
-        warnings.extend(light_warnings)
-        skipped = self.skipped_objects(context.scene)
+        skipped = skipped_objects(context.scene)
         if skipped:
             warnings.append("Skipped " + ", ".join(skipped) + ".")
         scene_path = root / "Config" / "Scene.json"
-        write_json(scene_path, {"Mesh": scene_meshes, "Light": lights})
+        write_json(scene_path, {"Mesh": scene_meshes})
 
         message = f"Exported {len(groups)} mesh(es), {len(meshes)} instance(s) to {scene_path}"
         if warnings:
@@ -417,108 +398,109 @@ class SHADOWENGINE_OT_export(Operator):
         })
         return relative_asset(material_relative), ""
 
-    def export_lights(self, context):
-        lights = []
-        warnings = []
-        wrote_sun = False
-        for obj in context.scene.objects:
-            if obj.type != "LIGHT":
+def export_lights(context, point_radius, point_energy_scale):
+    lights = []
+    warnings = []
+    wrote_sun = False
+    for obj in context.scene.objects:
+        if obj.type != "LIGHT":
+            continue
+        light = obj.data
+        if light.type == "SUN":
+            if wrote_sun:
+                warnings.append(f"Skipped extra sun {obj.name}; the scene allows one DirectLight.")
                 continue
-            light = obj.data
-            if light.type == "SUN":
-                if wrote_sun:
-                    warnings.append(f"Skipped extra sun {obj.name}; the scene allows one DirectLight.")
-                    continue
-                direction = to_gltf_vector(-(obj.matrix_world.to_3x3() @ Vector((0.0, 0.0, 1.0))))
-                if direction.length <= 0.0001:
-                    warnings.append(f"Skipped sun {obj.name}; its direction is zero.")
-                    continue
-                direction.normalize()
-                lights.append({
-                    "Type": "DirectLight",
-                    "Direction": color3(direction),
-                    "Color": color3(light.color),
-                    "Intensity": rounded(light.energy),
-                })
-                wrote_sun = True
-            elif light.type == "POINT":
-                position = to_gltf_vector(obj.matrix_world.translation)
-                radius = float(obj["Radius"]) if "Radius" in obj else self.point_radius
-                lights.append({
-                    "Type": "PointLight",
-                    "Position": color3(position),
-                    "Color": color3(light.color),
-                    "Intensity": rounded(max(light.energy, 0.0) * self.point_energy_scale),
-                    "Radius": rounded(max(radius, 0.001)),
-                })
-            elif light.type == "AREA":
-                direction = to_gltf_vector(-(obj.matrix_world.to_3x3() @ Vector((0.0, 0.0, 1.0))))
-                if direction.length <= 0.0001:
-                    warnings.append(f"Skipped area light {obj.name}; its direction is zero.")
-                    continue
-                direction.normalize()
-                width, height, approximated = area_extents(light, obj.matrix_world)
-                if width <= 0.0001 or height <= 0.0001:
-                    warnings.append(f"Skipped area light {obj.name}; its size is zero.")
-                    continue
-                if approximated:
-                    warnings.append(f"{obj.name} is written as a rectangle around its {light.shape.lower()} shape.")
-                position = to_gltf_vector(obj.matrix_world.translation)
-                radius = float(obj["Radius"]) if "Radius" in obj else self.point_radius
-                lights.append({
-                    "Type": "AreaLight",
-                    "Position": color3(position),
-                    "Direction": color3(direction),
-                    "Width": rounded(width),
-                    "Height": rounded(height),
-                    "Color": color3(light.color),
-                    "Intensity": rounded(max(light.energy, 0.0) * self.point_energy_scale),
-                    "Radius": rounded(max(radius, 0.001)),
-                })
-            else:
+            direction = to_gltf_vector(-(obj.matrix_world.to_3x3() @ Vector((0.0, 0.0, 1.0))))
+            if direction.length <= 0.0001:
+                warnings.append(f"Skipped sun {obj.name}; its direction is zero.")
                 continue
+            direction.normalize()
+            lights.append({
+                "Type": "DirectLight",
+                "Direction": color3(direction),
+                "Color": color3(light.color),
+                "Intensity": rounded(light.energy),
+            })
+            wrote_sun = True
+        elif light.type == "POINT":
+            position = to_gltf_vector(obj.matrix_world.translation)
+            radius = float(obj["Radius"]) if "Radius" in obj else point_radius
+            lights.append({
+                "Type": "PointLight",
+                "Position": color3(position),
+                "Color": color3(light.color),
+                "Intensity": rounded(max(light.energy, 0.0) * point_energy_scale),
+                "Radius": rounded(max(radius, 0.001)),
+            })
+        elif light.type == "AREA":
+            direction = to_gltf_vector(-(obj.matrix_world.to_3x3() @ Vector((0.0, 0.0, 1.0))))
+            if direction.length <= 0.0001:
+                warnings.append(f"Skipped area light {obj.name}; its direction is zero.")
+                continue
+            direction.normalize()
+            width, height, approximated = area_extents(light, obj.matrix_world)
+            if width <= 0.0001 or height <= 0.0001:
+                warnings.append(f"Skipped area light {obj.name}; its size is zero.")
+                continue
+            if approximated:
+                warnings.append(f"{obj.name} is written as a rectangle around its {light.shape.lower()} shape.")
+            position = to_gltf_vector(obj.matrix_world.translation)
+            radius = float(obj["Radius"]) if "Radius" in obj else point_radius
+            lights.append({
+                "Type": "AreaLight",
+                "Position": color3(position),
+                "Direction": color3(direction),
+                "Width": rounded(width),
+                "Height": rounded(height),
+                "Color": color3(light.color),
+                "Intensity": rounded(max(light.energy, 0.0) * point_energy_scale),
+                "Radius": rounded(max(radius, 0.001)),
+            })
+        else:
+            continue
 
-        sky_color, sky_intensity = world_sky(context.scene.world)
-        lights.append({
-            "Type": "SkyLight",
-            "Color": color3(sky_color),
-            "Intensity": rounded(max(sky_intensity, 0.0)),
-        })
-        return lights, warnings
+    sky_color, sky_intensity = world_sky(context.scene.world)
+    lights.append({
+        "Type": "SkyLight",
+        "Color": color3(sky_color),
+        "Intensity": rounded(max(sky_intensity, 0.0)),
+    })
+    return lights, warnings
 
-    def skipped_objects(self, scene):
-        grouped = {}
-        for obj in scene.objects:
-            if obj.type == "MESH":
-                continue
-            if obj.type == "LIGHT" and obj.data.type in {"SUN", "POINT", "AREA"}:
-                continue
-            grouped.setdefault(obj.type, []).append(obj.name)
-        labels = {
-            "CAMERA": "camera",
-            "EMPTY": "empty",
-            "CURVE": "curve",
-            "SURFACE": "surface",
-            "META": "metaball",
-            "FONT": "text",
-            "ARMATURE": "armature",
-            "LATTICE": "lattice",
-            "SPEAKER": "speaker",
-            "LIGHT": "unsupported light",
-            "LIGHT_PROBE": "light probe",
-            "VOLUME": "volume",
-            "GREASEPENCIL": "grease pencil",
-            "CURVES": "curves",
-            "POINTCLOUD": "point cloud",
-        }
-        summary = []
-        for obj_type, names in grouped.items():
-            label = labels.get(obj_type, obj_type.lower())
-            if len(names) == 1:
-                summary.append(f"{label} {names[0]}")
-            else:
-                summary.append(f"{len(names)} {label}s")
-        return summary
+
+def skipped_objects(scene):
+    grouped = {}
+    for obj in scene.objects:
+        if obj.type == "MESH":
+            continue
+        if obj.type == "LIGHT" and obj.data.type in {"SUN", "POINT", "AREA"}:
+            continue
+        grouped.setdefault(obj.type, []).append(obj.name)
+    labels = {
+        "CAMERA": "camera",
+        "EMPTY": "empty",
+        "CURVE": "curve",
+        "SURFACE": "surface",
+        "META": "metaball",
+        "FONT": "text",
+        "ARMATURE": "armature",
+        "LATTICE": "lattice",
+        "SPEAKER": "speaker",
+        "LIGHT": "unsupported light",
+        "LIGHT_PROBE": "light probe",
+        "VOLUME": "volume",
+        "GREASEPENCIL": "grease pencil",
+        "CURVES": "curves",
+        "POINTCLOUD": "point cloud",
+    }
+    summary = []
+    for obj_type, names in grouped.items():
+        label = labels.get(obj_type, obj_type.lower())
+        if len(names) == 1:
+            summary.append(f"{label} {names[0]}")
+        else:
+            summary.append(f"{len(names)} {label}s")
+    return summary
 
 
 def world_sky(world):
@@ -538,6 +520,41 @@ def world_sky(world):
     return color, intensity
 
 
+class SHADOWENGINE_OT_export_environment(Operator):
+    bl_idname = "export_scene.shadow_engine_environment"
+    bl_label = "Export Environment"
+    bl_description = "Export the sun, point lights, area lights, and the world light to Config/Environment.json"
+    bl_options = {"REGISTER"}
+
+    point_radius: FloatProperty(
+        name="Point Radius",
+        description="Reach of a point or area light when the light object has no Radius property",
+        default=10.0,
+        min=0.001,
+    )
+    point_energy_scale: FloatProperty(
+        name="Point Energy Scale",
+        description="Blender point and area light watts multiplied into ShadowEngine intensity",
+        default=0.01,
+        min=0.0,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "OBJECT"
+
+    def execute(self, context):
+        root = Path(__file__).resolve().parent / "ExportData"
+        lights, warnings = export_lights(context, self.point_radius, self.point_energy_scale)
+        environment_path = root / "Config" / "Environment.json"
+        write_json(environment_path, {"Light": lights})
+        message = f"Exported {len(lights)} light(s) to {environment_path}"
+        if warnings:
+            self.report({"WARNING"}, " ".join(warnings))
+        self.report({"INFO"}, message)
+        return {"FINISHED"}
+
+
 class SHADOWENGINE_PT_export(Panel):
     bl_label = "ShadowEngine"
     bl_idname = "SHADOWENGINE_PT_export"
@@ -547,17 +564,20 @@ class SHADOWENGINE_PT_export(Panel):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator(SHADOWENGINE_OT_export.bl_idname, text="Export Scene")
-        layout.label(text="Writes the scene into ExportData.")
-        layout.label(text="Unsupported objects are skipped.")
+        layout.operator(SHADOWENGINE_OT_export_assets.bl_idname, text="Export Assets")
+        layout.operator(SHADOWENGINE_OT_export_environment.bl_idname, text="Export Environment")
+        layout.label(text="Assets write meshes and Scene.json.")
+        layout.label(text="Environment writes Environment.json.")
 
 
 def menu_export(self, context):
-    self.layout.operator(SHADOWENGINE_OT_export.bl_idname, text="ShadowEngine (.glb)")
+    self.layout.operator(SHADOWENGINE_OT_export_assets.bl_idname, text="ShadowEngine Assets (.glb)")
+    self.layout.operator(SHADOWENGINE_OT_export_environment.bl_idname, text="ShadowEngine Environment")
 
 
 CLASSES = (
-    SHADOWENGINE_OT_export,
+    SHADOWENGINE_OT_export_assets,
+    SHADOWENGINE_OT_export_environment,
     SHADOWENGINE_PT_export,
 )
 

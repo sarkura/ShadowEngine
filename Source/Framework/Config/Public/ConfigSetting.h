@@ -63,6 +63,14 @@ namespace ShadowEngine
             std::vector<MeshInstance> Instances;
         };
 
+        struct Setting
+        {
+            std::vector<Mesh> Meshes;
+        };
+    }
+
+    namespace EnvironmentSetting
+    {
         enum class LightType
         {
             Direct,
@@ -85,7 +93,6 @@ namespace ShadowEngine
 
         struct Setting
         {
-            std::vector<Mesh> Meshes;
             std::vector<Light> Lights;
         };
     }

@@ -105,6 +105,7 @@ namespace ShadowEngine
         Assets->SetShaderManager(*Shaders);
 
         const SceneSetting::Setting SceneConfig = ConfigManager::Get().GetSceneSetting();
+        const EnvironmentSetting::Setting EnvironmentConfig = ConfigManager::Get().GetEnvironmentSetting();
         MainScene = std::make_unique<Scene>();
         uint32 InstanceCount = 0;
         for (const SceneSetting::Mesh& MeshObject : SceneConfig.Meshes)
@@ -127,11 +128,11 @@ namespace ShadowEngine
             "Scene created ({} meshes, {} instances, {} lights)",
             SceneConfig.Meshes.size(),
             InstanceCount,
-            SceneConfig.Lights.size());
+            EnvironmentConfig.Lights.size());
 
-        for (const SceneSetting::Light& LightConfig : SceneConfig.Lights)
+        for (const EnvironmentSetting::Light& LightConfig : EnvironmentConfig.Lights)
         {
-            if (LightConfig.Type == SceneSetting::LightType::Direct)
+            if (LightConfig.Type == EnvironmentSetting::LightType::Direct)
             {
                 if (!MainScene->CreateDirectLight())
                 {
@@ -145,7 +146,7 @@ namespace ShadowEngine
                 Light.SetColor(LightConfig.Color[0], LightConfig.Color[1], LightConfig.Color[2]);
                 Light.SetIntensity(LightConfig.Intensity);
             }
-            else if (LightConfig.Type == SceneSetting::LightType::Point)
+            else if (LightConfig.Type == EnvironmentSetting::LightType::Point)
             {
                 PointLight& Light = MainScene->CreatePointLight();
                 Light.SetPosition(LightConfig.Position[0], LightConfig.Position[1], LightConfig.Position[2]);
@@ -153,7 +154,7 @@ namespace ShadowEngine
                 Light.SetIntensity(LightConfig.Intensity);
                 Light.SetRadius(LightConfig.Radius);
             }
-            else if (LightConfig.Type == SceneSetting::LightType::Area)
+            else if (LightConfig.Type == EnvironmentSetting::LightType::Area)
             {
                 AreaLight& Light = MainScene->CreateAreaLight();
                 Light.SetPosition(LightConfig.Position[0], LightConfig.Position[1], LightConfig.Position[2]);

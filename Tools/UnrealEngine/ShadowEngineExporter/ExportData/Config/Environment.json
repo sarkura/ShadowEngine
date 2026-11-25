@@ -1,0 +1,42 @@
+{
+	"Light": [
+		{
+			"Type": "DirectLight",
+			"Direction": [
+				0.638741,
+				-0.76060000000000005,
+				-0.116178
+			],
+			"Color": [
+				1,
+				1,
+				1
+			],
+			"Intensity": 8
+		},
+		{
+			"Type": "SkyLight",
+			"Color": [
+				1,
+				1,
+				1
+			],
+			"Intensity": 1
+		},
+		{
+			"Type": "PointLight",
+			"Position": [
+				-0.90000000000000002,
+				1.3999999999999999,
+				-5.7000000000000002
+			],
+			"Color": [
+				1,
+				1,
+				1
+			],
+			"Intensity": 0.12,
+			"Radius": 10
+		}
+	]
+}
