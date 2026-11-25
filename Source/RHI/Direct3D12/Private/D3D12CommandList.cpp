@@ -165,7 +165,25 @@ namespace ShadowEngine
 
     void D3D12CommandList::UseAsShaderResource(RHITexture& Texture)
     {
-        Transition(static_cast<D3D12Texture&>(Texture), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        Transition(
+            static_cast<D3D12Texture&>(Texture),
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    }
+
+    void D3D12CommandList::UseAsUnorderedAccess(RHITexture& Texture)
+    {
+        Transition(static_cast<D3D12Texture&>(Texture), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    }
+
+    void D3D12CommandList::CopyTexture(RHITexture& Source, RHITexture& Destination)
+    {
+        auto& SourceTexture = static_cast<D3D12Texture&>(Source);
+        auto& DestinationTexture = static_cast<D3D12Texture&>(Destination);
+        const D3D12_RESOURCE_STATES DestinationState = DestinationTexture.GetState();
+        Transition(SourceTexture, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        Transition(DestinationTexture, D3D12_RESOURCE_STATE_COPY_DEST);
+        CommandList->CopyResource(DestinationTexture.GetResource(), SourceTexture.GetResource());
+        Transition(DestinationTexture, DestinationState);
     }
 
     void D3D12CommandList::EndRenderPass()
@@ -187,8 +205,14 @@ namespace ShadowEngine
         ID3D12DescriptorHeap* Heaps[] = {ResourceHeap, SamplerHeap};
         CommandList->SetDescriptorHeaps(2, Heaps);
         CurrentPipeline = &D3D12PipelineObject;
-        CommandList->SetGraphicsRootSignature(D3D12PipelineObject.GetRootSignature());
         CommandList->SetPipelineState(D3D12PipelineObject.GetPipelineState());
+        if (D3D12PipelineObject.IsCompute())
+        {
+            CommandList->SetComputeRootSignature(D3D12PipelineObject.GetRootSignature());
+            return;
+        }
+
+        CommandList->SetGraphicsRootSignature(D3D12PipelineObject.GetRootSignature());
         if (!D3D12PipelineObject.IsMesh())
         {
             CommandList->IASetPrimitiveTopology(D3D12PipelineObject.GetTopology());
@@ -211,6 +235,12 @@ namespace ShadowEngine
     {
         const D3D12_GPU_VIRTUAL_ADDRESS Address =
             static_cast<D3D12Buffer&>(Buffer).GetGPUVirtualAddress() + Offset;
+        if (CurrentPipeline != nullptr && CurrentPipeline->IsCompute())
+        {
+            CommandList->SetComputeRootConstantBufferView(0, Address);
+            return;
+        }
+
         CommandList->SetGraphicsRootConstantBufferView(0, Address);
     }
 
@@ -380,6 +410,17 @@ namespace ShadowEngine
         CommandList->SetGraphicsRootShaderResourceView(Root + 2, Address(PrimitiveIndices));
         CommandList->SetGraphicsRootShaderResourceView(Root + 3, Address(Meshlets));
         MeshCommands->DispatchMesh(MeshletCount, 1, 1);
+    }
+
+    void D3D12CommandList::Dispatch(uint32 ThreadGroupCountX, uint32 ThreadGroupCountY, uint32 ThreadGroupCountZ)
+    {
+        if (ThreadGroupCountX == 0 || ThreadGroupCountY == 0 || ThreadGroupCountZ == 0 ||
+            CurrentPipeline == nullptr || !CurrentPipeline->IsCompute())
+        {
+            return;
+        }
+
+        CommandList->Dispatch(ThreadGroupCountX, ThreadGroupCountY, ThreadGroupCountZ);
     }
 
     ID3D12GraphicsCommandList* D3D12CommandList::GetHandle() const

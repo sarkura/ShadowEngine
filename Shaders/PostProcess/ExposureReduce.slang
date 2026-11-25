@@ -1,10 +1,16 @@
-#include "PostConstants.slang"
+#include "../Common/PostConstants.slang"
 
 static const int ExposureGrid = 16;
 
-[shader("fragment")]
-float4 PixelMain(float4 Position : SV_Position) : SV_Target
+[shader("compute")]
+[numthreads(8, 8, 1)]
+void ComputeMain(uint3 DispatchThreadID : SV_DispatchThreadID)
 {
+    if (DispatchThreadID.x >= (uint)DestSize.x || DispatchThreadID.y >= (uint)DestSize.y)
+    {
+        return;
+    }
+
     const Texture2D Luminance = LoadResourceDescriptor<Texture2D>(Source);
     const SamplerState ClampSampler = LoadSamplerDescriptor<SamplerState>(Sampler);
     float Sum = 0.0;
@@ -19,5 +25,6 @@ float4 PixelMain(float4 Position : SV_Position) : SV_Target
         }
     }
 
-    return float4(Sum / float(ExposureGrid * ExposureGrid), 0.0, 0.0, 1.0);
+    RWTexture2D<float4> OutputTexture = LoadResourceDescriptor<RWTexture2D<float4>>(Output);
+    OutputTexture[DispatchThreadID.xy] = float4(Sum / float(ExposureGrid * ExposureGrid), 0.0, 0.0, 1.0);
 }

@@ -1,4 +1,4 @@
-#include "PostConstants.slang"
+#include "../Common/PostConstants.slang"
 
 float3 SampleSource(float2 Uv)
 {
@@ -7,15 +7,23 @@ float3 SampleSource(float2 Uv)
     return Color.SampleLevel(ClampSampler, Uv, 0).rgb;
 }
 
-[shader("fragment")]
-float4 PixelMain(float4 Position : SV_Position) : SV_Target
+[shader("compute")]
+[numthreads(8, 8, 1)]
+void ComputeMain(uint3 DispatchThreadID : SV_DispatchThreadID)
 {
-    const float2 Uv = Position.xy / DestSize;
+    if (DispatchThreadID.x >= (uint)DestSize.x || DispatchThreadID.y >= (uint)DestSize.y)
+    {
+        return;
+    }
+
+    const float2 Position = float2(DispatchThreadID.xy) + 0.5;
+    const float2 Uv = Position / DestSize;
     const float3 Color = SampleSource(Uv);
     const float Brightness = max(Color.r, max(Color.g, Color.b));
     const float Excess = max(Brightness - Threshold, 0.0);
     const float3 Extracted = Color * Excess / max(Brightness, 0.0001);
     const float ExtractedBrightness = max(Extracted.r, max(Extracted.g, Extracted.b));
     const float LimitScale = ExtractedBrightness > BloomLimit ? BloomLimit / ExtractedBrightness : 1.0;
-    return float4(Extracted * LimitScale, 1.0);
+    RWTexture2D<float4> OutputTexture = LoadResourceDescriptor<RWTexture2D<float4>>(Output);
+    OutputTexture[DispatchThreadID.xy] = float4(Extracted * LimitScale, 1.0);
 }

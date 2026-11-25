@@ -1,7 +1,7 @@
 #pragma once
 #pragma pack_matrix(column_major)
 
-#include "../Common/DescriptorHeap.slang"
+#include "DescriptorHeap.slang"
 
 cbuffer IblConstants : register(b0)
 {

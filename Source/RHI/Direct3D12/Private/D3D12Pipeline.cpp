@@ -205,7 +205,8 @@ namespace ShadowEngine
         }
 
         bMesh = Desc.MeshShader != nullptr;
-        if (!CreateRootSignature(Device, Desc.Layout, bMesh, ErrorMessage))
+        bCompute = false;
+        if (!CreateRootSignature(Device, Desc.Layout, bMesh, !bMesh, ErrorMessage))
         {
             return false;
         }
@@ -299,10 +300,38 @@ namespace ShadowEngine
         return true;
     }
 
+    bool D3D12Pipeline::InitializeCompute(
+        ID3D12Device* Device,
+        RHIShader& ComputeShader,
+        std::string* ErrorMessage)
+    {
+        bMesh = false;
+        bCompute = true;
+        if (!CreateRootSignature(Device, nullptr, false, false, ErrorMessage))
+        {
+            return false;
+        }
+
+        D3D12_COMPUTE_PIPELINE_STATE_DESC PipelineDesc{};
+        PipelineDesc.pRootSignature = RootSignature.Get();
+        PipelineDesc.CS = static_cast<D3D12Shader&>(ComputeShader).GetBytecode();
+        const HRESULT Result = Device->CreateComputePipelineState(
+            &PipelineDesc,
+            IID_PPV_ARGS(PipelineState.GetAddressOf()));
+        if (FAILED(Result))
+        {
+            SetErrorMessage(ErrorMessage, "CreateComputePipelineState failed: " + FormatHResult(Result));
+            return false;
+        }
+
+        return true;
+    }
+
     bool D3D12Pipeline::CreateRootSignature(
         ID3D12Device* Device,
         const RHIPipelineLayout* Layout,
         bool bUseMeshResources,
+        bool bAllowInputAssembler,
         std::string* ErrorMessage)
     {
         std::vector<D3D12_ROOT_PARAMETER> Parameters;
@@ -351,7 +380,7 @@ namespace ShadowEngine
         Desc.Flags =
             D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED |
             D3D12_ROOT_SIGNATURE_FLAG_SAMPLER_HEAP_DIRECTLY_INDEXED;
-        if (!bUseMeshResources)
+        if (!bUseMeshResources && bAllowInputAssembler)
         {
             Desc.Flags |= D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
         }
@@ -409,6 +438,11 @@ namespace ShadowEngine
     bool D3D12Pipeline::IsMesh() const
     {
         return bMesh;
+    }
+
+    bool D3D12Pipeline::IsCompute() const
+    {
+        return bCompute;
     }
 
     uint32 D3D12Pipeline::GetMeshResourceRoot() const

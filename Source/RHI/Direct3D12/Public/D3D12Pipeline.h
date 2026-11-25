@@ -8,6 +8,8 @@
 
 namespace ShadowEngine
 {
+    class RHIShader;
+
     class D3D12Pipeline final : public RHIPipeline
     {
         public:
@@ -16,10 +18,16 @@ namespace ShadowEngine
                 const RHIGraphicsPipelineDesc& Desc,
                 std::string* ErrorMessage = nullptr);
 
+            bool InitializeCompute(
+                ID3D12Device* Device,
+                RHIShader& ComputeShader,
+                std::string* ErrorMessage = nullptr);
+
             [[nodiscard]] ID3D12RootSignature* GetRootSignature() const;
             [[nodiscard]] ID3D12PipelineState* GetPipelineState() const;
             [[nodiscard]] D3D_PRIMITIVE_TOPOLOGY GetTopology() const;
             [[nodiscard]] bool IsMesh() const;
+            [[nodiscard]] bool IsCompute() const;
             [[nodiscard]] uint32 GetMeshResourceRoot() const;
 
         private:
@@ -27,12 +35,14 @@ namespace ShadowEngine
                 ID3D12Device* Device,
                 const RHIPipelineLayout* Layout,
                 bool bMesh,
+                bool bAllowInputAssembler,
                 std::string* ErrorMessage);
 
             ComPtr<ID3D12RootSignature> RootSignature;
             ComPtr<ID3D12PipelineState> PipelineState;
             D3D_PRIMITIVE_TOPOLOGY Topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
             bool bMesh = false;
+            bool bCompute = false;
             uint32 MeshResourceRoot = 0;
     };
 }

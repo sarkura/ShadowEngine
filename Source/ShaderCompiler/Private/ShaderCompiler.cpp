@@ -116,6 +116,8 @@ namespace ShadowEngine
                     return SLANG_STAGE_FRAGMENT;
                 case ERHIShaderStage::Mesh:
                     return SLANG_STAGE_MESH;
+                case ERHIShaderStage::Compute:
+                    return SLANG_STAGE_COMPUTE;
             }
 
             return SLANG_STAGE_NONE;

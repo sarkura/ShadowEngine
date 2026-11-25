@@ -18,7 +18,8 @@ namespace ShadowEngine
     {
         Vertex,
         Pixel,
-        Mesh
+        Mesh,
+        Compute
     };
 
     enum class ERHIShaderFormat : uint8

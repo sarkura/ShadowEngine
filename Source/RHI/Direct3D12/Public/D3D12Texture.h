@@ -44,6 +44,7 @@ namespace ShadowEngine
                 uint32 InWidth,
                 uint32 InHeight,
                 ERHIFormat InFormat,
+                bool bUnorderedAccess,
                 std::string* ErrorMessage = nullptr);
 
             [[nodiscard]] static std::unique_ptr<D3D12Texture> CreateCubeTarget(

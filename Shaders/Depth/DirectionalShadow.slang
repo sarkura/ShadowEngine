@@ -1,4 +1,4 @@
-#include "ShadowConstants.slang"
+#include "../Common/ShadowConstants.slang"
 
 [shader("vertex")]
 float4 VertexMain(ShadowVertexInput Input) : SV_Position

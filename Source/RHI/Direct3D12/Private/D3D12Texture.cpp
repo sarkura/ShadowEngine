@@ -114,6 +114,7 @@ namespace ShadowEngine
         uint32 InWidth,
         uint32 InHeight,
         ERHIFormat InFormat,
+        bool bUnorderedAccess,
         std::string* ErrorMessage)
     {
         if (InWidth == 0 || InHeight == 0 ||
@@ -140,6 +141,10 @@ namespace ShadowEngine
         ResourceDesc.SampleDesc.Count = 1;
         ResourceDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
         ResourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+        if (bUnorderedAccess)
+        {
+            ResourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+        }
 
         D3D12_CLEAR_VALUE ClearValue{};
         ClearValue.Format = Format;

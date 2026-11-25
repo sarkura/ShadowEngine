@@ -36,6 +36,10 @@ namespace ShadowEngine
                 const RHIGraphicsPipelineDesc& Desc,
                 std::string* ErrorMessage = nullptr) override;
 
+            std::unique_ptr<RHIPipeline> CreateComputePipeline(
+                RHIShader& ComputeShader,
+                std::string* ErrorMessage = nullptr) override;
+
             std::unique_ptr<RHIBuffer> CreateVertexBuffer(
                 const RHIBufferDesc& Desc,
                 std::string* ErrorMessage = nullptr) override;
@@ -62,7 +66,8 @@ namespace ShadowEngine
                 uint32 Width,
                 uint32 Height,
                 ERHIFormat Format,
-                std::string* ErrorMessage = nullptr) override;
+                std::string* ErrorMessage = nullptr,
+                bool bUnorderedAccess = false) override;
 
             std::unique_ptr<RHITexture> CreateCubeTarget(
                 uint32 FaceSize,
@@ -87,6 +92,16 @@ namespace ShadowEngine
                 std::string* ErrorMessage = nullptr) override;
 
             bool UpdateShaderResourceView(
+                RHITexture& Texture,
+                uint32 Index,
+                std::string* ErrorMessage = nullptr) override;
+
+            bool CreateUnorderedAccessView(
+                RHITexture& Texture,
+                uint32& OutIndex,
+                std::string* ErrorMessage = nullptr) override;
+
+            bool UpdateUnorderedAccessView(
                 RHITexture& Texture,
                 uint32 Index,
                 std::string* ErrorMessage = nullptr) override;

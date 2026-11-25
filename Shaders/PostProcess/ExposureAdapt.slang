@@ -1,8 +1,14 @@
-#include "PostConstants.slang"
+#include "../Common/PostConstants.slang"
 
-[shader("fragment")]
-float4 PixelMain(float4 Position : SV_Position) : SV_Target
+[shader("compute")]
+[numthreads(8, 8, 1)]
+void ComputeMain(uint3 DispatchThreadID : SV_DispatchThreadID)
 {
+    if (DispatchThreadID.x >= (uint)DestSize.x || DispatchThreadID.y >= (uint)DestSize.y)
+    {
+        return;
+    }
+
     const Texture2D AverageLuminance = LoadResourceDescriptor<Texture2D>(Source);
     const Texture2D PreviousExposure = LoadResourceDescriptor<Texture2D>(Secondary);
     const SamplerState ClampSampler = LoadSamplerDescriptor<SamplerState>(Sampler);
@@ -16,5 +22,6 @@ float4 PixelMain(float4 Position : SV_Position) : SV_Target
         Exposure = lerp(Previous, Target, Blend);
     }
 
-    return float4(Exposure, 0.0, 0.0, 1.0);
+    RWTexture2D<float4> OutputTexture = LoadResourceDescriptor<RWTexture2D<float4>>(Output);
+    OutputTexture[DispatchThreadID.xy] = float4(Exposure, 0.0, 0.0, 1.0);
 }

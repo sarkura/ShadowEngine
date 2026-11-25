@@ -53,16 +53,23 @@ namespace ShadowEngine
             {
                 std::unique_ptr<RHITexture> Texture;
                 uint32 Descriptor = 0xffffffff;
+                uint32 UnorderedAccess = 0xffffffff;
                 uint32 Width = 0;
                 uint32 Height = 0;
             };
 
-            bool CreateTarget(RHIDevice& Device, Target& Out, uint32 Width, uint32 Height, std::string* ErrorMessage);
-            bool CreateFullscreenPipeline(
+            bool CreateTarget(
+                RHIDevice& Device,
+                Target& Out,
+                uint32 Width,
+                uint32 Height,
+                std::string* ErrorMessage,
+                bool bUnorderedAccess = false,
+                ERHIFormat Format = ERHIFormat::R16G16B16A16_Float);
+            bool CreateComputePipeline(
                 RHIDevice& Device,
                 ShaderManager& Shaders,
-                const char* PixelPath,
-                ERHIFormat Format,
+                const char* ComputePath,
                 std::unique_ptr<RHIPipeline>& Out,
                 std::string* ErrorMessage);
 
@@ -92,18 +99,17 @@ namespace ShadowEngine
                 float BloomLimit;
                 float ReservedFloat;
                 uint32 PostFlags;
-                uint32 ReservedUint;
+                uint32 Output;
             };
 
-            bool DrawFullscreen(
+            bool DrawCompute(
                 RHICommandList& Commands,
-                RHITexture& TargetTexture,
+                Target& TargetTexture,
                 RHIPipeline& Pipeline,
-                uint32 TargetWidth,
-                uint32 TargetHeight,
                 const PostGpuConstants& Constants);
 
             Target SceneColor;
+            Target TonemapColor;
             Target Motion;
             Target History[2];
             Target BloomDown[4];

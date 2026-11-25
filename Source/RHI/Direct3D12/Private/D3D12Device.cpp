@@ -227,6 +227,19 @@ namespace ShadowEngine
         return Pipeline;
     }
 
+    std::unique_ptr<RHIPipeline> D3D12Device::CreateComputePipeline(
+        RHIShader& ComputeShader,
+        std::string* ErrorMessage)
+    {
+        auto Pipeline = std::make_unique<D3D12Pipeline>();
+        if (!Pipeline->InitializeCompute(Device.Get(), ComputeShader, ErrorMessage))
+        {
+            return nullptr;
+        }
+
+        return Pipeline;
+    }
+
     std::unique_ptr<RHIBuffer> D3D12Device::CreateVertexBuffer(
         const RHIBufferDesc& Desc,
         std::string* ErrorMessage)
@@ -292,9 +305,10 @@ namespace ShadowEngine
         uint32 Width,
         uint32 Height,
         ERHIFormat Format,
-        std::string* ErrorMessage)
+        std::string* ErrorMessage,
+        bool bUnorderedAccess)
     {
-        return D3D12Texture::CreateColorTarget(Device.Get(), Width, Height, Format, ErrorMessage);
+        return D3D12Texture::CreateColorTarget(Device.Get(), Width, Height, Format, bUnorderedAccess, ErrorMessage);
     }
 
     std::unique_ptr<RHITexture> D3D12Device::CreateCubeTarget(uint32 FaceSize, std::string* ErrorMessage)
@@ -488,6 +502,46 @@ namespace ShadowEngine
         D3D12_CPU_DESCRIPTOR_HANDLE Cpu = ResourceHeap->GetCPUDescriptorHandleForHeapStart();
         Cpu.ptr += static_cast<SIZE_T>(Index) * ResourceIncrement;
         Device->CreateShaderResourceView(Sampled.GetResource(), &View, Cpu);
+        return true;
+    }
+
+    bool D3D12Device::CreateUnorderedAccessView(RHITexture& Texture, uint32& OutIndex, std::string* ErrorMessage)
+    {
+        constexpr uint32 ResourceCapacity = 1024;
+        if (ResourceHeap == nullptr || ResourceCount >= ResourceCapacity)
+        {
+            SetErrorMessage(ErrorMessage, "Shader resource descriptor heap is full");
+            return false;
+        }
+
+        auto& Target = static_cast<D3D12Texture&>(Texture);
+        D3D12_UNORDERED_ACCESS_VIEW_DESC View{};
+        View.Format = ToDXGIFormat(Target.GetFormat());
+        View.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+        D3D12_CPU_DESCRIPTOR_HANDLE Cpu = ResourceHeap->GetCPUDescriptorHandleForHeapStart();
+        Cpu.ptr += static_cast<SIZE_T>(ResourceCount) * ResourceIncrement;
+        Device->CreateUnorderedAccessView(Target.GetResource(), nullptr, &View, Cpu);
+        OutIndex = ResourceCount;
+        ++ResourceCount;
+        return true;
+    }
+
+    bool D3D12Device::UpdateUnorderedAccessView(RHITexture& Texture, uint32 Index, std::string* ErrorMessage)
+    {
+        constexpr uint32 ResourceCapacity = 1024;
+        if (ResourceHeap == nullptr || Index >= ResourceCount || Index >= ResourceCapacity)
+        {
+            SetErrorMessage(ErrorMessage, "Unordered access descriptor is missing");
+            return false;
+        }
+
+        auto& Target = static_cast<D3D12Texture&>(Texture);
+        D3D12_UNORDERED_ACCESS_VIEW_DESC View{};
+        View.Format = ToDXGIFormat(Target.GetFormat());
+        View.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+        D3D12_CPU_DESCRIPTOR_HANDLE Cpu = ResourceHeap->GetCPUDescriptorHandleForHeapStart();
+        Cpu.ptr += static_cast<SIZE_T>(Index) * ResourceIncrement;
+        Device->CreateUnorderedAccessView(Target.GetResource(), nullptr, &View, Cpu);
         return true;
     }
 

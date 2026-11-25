@@ -1,7 +1,7 @@
 #pragma once
 #pragma pack_matrix(column_major)
 
-#include "../Common/DescriptorHeap.slang"
+#include "DescriptorHeap.slang"
 
 cbuffer PostConstants : register(b0)
 {
@@ -29,7 +29,7 @@ cbuffer PostConstants : register(b0)
     float BloomLimit;
     float ReservedFloat;
     uint PostFlags;
-    uint ReservedUint;
+    uint Output;
 };
 
 static const uint PostFlagAutoExposure = 1;

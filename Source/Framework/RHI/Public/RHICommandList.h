@@ -47,6 +47,8 @@ namespace ShadowEngine
             virtual void EndRenderPass() = 0;
             virtual void BeginDepthPass(RHITexture& DepthTarget, bool bClearDepth, uint32 ArraySlice = 0) = 0;
             virtual void UseAsShaderResource(RHITexture& Texture) = 0;
+            virtual void UseAsUnorderedAccess(RHITexture& Texture) = 0;
+            virtual void CopyTexture(RHITexture& Source, RHITexture& Destination) = 0;
 
             virtual void SetPipeline(RHIPipeline& Pipeline) = 0;
             virtual void SetVertexBuffer(RHIBuffer& Buffer) = 0;
@@ -59,6 +61,7 @@ namespace ShadowEngine
             virtual void Draw(uint32 VertexCount, uint32 FirstVertex = 0) = 0;
             virtual void DrawIndexed(uint32 IndexCount, uint32 FirstIndex = 0, int32 VertexOffset = 0) = 0;
             virtual void ExecuteIndirect(RHIBuffer& Arguments, uint32 CommandCount) = 0;
+            virtual void Dispatch(uint32 ThreadGroupCountX, uint32 ThreadGroupCountY, uint32 ThreadGroupCountZ) = 0;
             virtual void DrawMeshlets(
                 RHIBuffer& Vertices,
                 RHIBuffer& VertexIds,

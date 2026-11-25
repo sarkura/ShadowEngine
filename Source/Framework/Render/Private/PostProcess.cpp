@@ -39,15 +39,15 @@ namespace ShadowEngine
 
         if (!bPipelinesReady)
         {
-            if (!CreateFullscreenPipeline(Device, Shaders, "PostProcess/CameraVelocity.slang", ERHIFormat::R16G16B16A16_Float, CameraVelocityPipeline, ErrorMessage) ||
-                !CreateFullscreenPipeline(Device, Shaders, "PostProcess/TAA.slang", ERHIFormat::R16G16B16A16_Float, TAAPipeline, ErrorMessage) ||
-                !CreateFullscreenPipeline(Device, Shaders, "PostProcess/BloomExtract.slang", ERHIFormat::R16G16B16A16_Float, BloomExtractPipeline, ErrorMessage) ||
-                !CreateFullscreenPipeline(Device, Shaders, "PostProcess/BloomDownsample.slang", ERHIFormat::R16G16B16A16_Float, BloomDownsamplePipeline, ErrorMessage) ||
-                !CreateFullscreenPipeline(Device, Shaders, "PostProcess/BloomUpsample.slang", ERHIFormat::R16G16B16A16_Float, BloomUpsamplePipeline, ErrorMessage) ||
-                !CreateFullscreenPipeline(Device, Shaders, "PostProcess/ExposureLuminance.slang", ERHIFormat::R16G16B16A16_Float, ExposureLuminancePipeline, ErrorMessage) ||
-                !CreateFullscreenPipeline(Device, Shaders, "PostProcess/ExposureReduce.slang", ERHIFormat::R16G16B16A16_Float, ExposureReducePipeline, ErrorMessage) ||
-                !CreateFullscreenPipeline(Device, Shaders, "PostProcess/ExposureAdapt.slang", ERHIFormat::R16G16B16A16_Float, ExposureAdaptPipeline, ErrorMessage) ||
-                !CreateFullscreenPipeline(Device, Shaders, "PostProcess/Tonemap.slang", OutputFormat, TonemapPipeline, ErrorMessage))
+            if (!CreateComputePipeline(Device, Shaders, "PostProcess/CameraVelocity.slang", CameraVelocityPipeline, ErrorMessage) ||
+                !CreateComputePipeline(Device, Shaders, "PostProcess/TAA.slang", TAAPipeline, ErrorMessage) ||
+                !CreateComputePipeline(Device, Shaders, "PostProcess/BloomExtract.slang", BloomExtractPipeline, ErrorMessage) ||
+                !CreateComputePipeline(Device, Shaders, "PostProcess/BloomDownsample.slang", BloomDownsamplePipeline, ErrorMessage) ||
+                !CreateComputePipeline(Device, Shaders, "PostProcess/BloomUpsample.slang", BloomUpsamplePipeline, ErrorMessage) ||
+                !CreateComputePipeline(Device, Shaders, "PostProcess/ExposureLuminance.slang", ExposureLuminancePipeline, ErrorMessage) ||
+                !CreateComputePipeline(Device, Shaders, "PostProcess/ExposureReduce.slang", ExposureReducePipeline, ErrorMessage) ||
+                !CreateComputePipeline(Device, Shaders, "PostProcess/ExposureAdapt.slang", ExposureAdaptPipeline, ErrorMessage) ||
+                !CreateComputePipeline(Device, Shaders, "PostProcess/Tonemap.slang", TonemapPipeline, ErrorMessage))
             {
                 return false;
             }
@@ -114,10 +114,10 @@ namespace ShadowEngine
 
         if (ExposureLum.Texture == nullptr)
         {
-            if (!CreateTarget(Device, ExposureLum, 16, 16, ErrorMessage) ||
-                !CreateTarget(Device, ExposureAverage, 1, 1, ErrorMessage) ||
-                !CreateTarget(Device, Exposure[0], 1, 1, ErrorMessage) ||
-                !CreateTarget(Device, Exposure[1], 1, 1, ErrorMessage))
+            if (!CreateTarget(Device, ExposureLum, 16, 16, ErrorMessage, true) ||
+                !CreateTarget(Device, ExposureAverage, 1, 1, ErrorMessage, true) ||
+                !CreateTarget(Device, Exposure[0], 1, 1, ErrorMessage, true) ||
+                !CreateTarget(Device, Exposure[1], 1, 1, ErrorMessage, true))
             {
                 return false;
             }
@@ -127,9 +127,10 @@ namespace ShadowEngine
         if (bResize)
         {
             if (!CreateTarget(Device, SceneColor, InWidth, InHeight, ErrorMessage) ||
-                !CreateTarget(Device, Motion, InWidth, InHeight, ErrorMessage) ||
-                !CreateTarget(Device, History[0], InWidth, InHeight, ErrorMessage) ||
-                !CreateTarget(Device, History[1], InWidth, InHeight, ErrorMessage))
+                !CreateTarget(Device, TonemapColor, InWidth, InHeight, ErrorMessage, true, OutputFormat) ||
+                !CreateTarget(Device, Motion, InWidth, InHeight, ErrorMessage, true) ||
+                !CreateTarget(Device, History[0], InWidth, InHeight, ErrorMessage, true) ||
+                !CreateTarget(Device, History[1], InWidth, InHeight, ErrorMessage, true))
             {
                 return false;
             }
@@ -138,7 +139,7 @@ namespace ShadowEngine
             uint32 LevelHeight = std::max(1u, InHeight / 2);
             for (Target& Level : BloomDown)
             {
-                if (!CreateTarget(Device, Level, LevelWidth, LevelHeight, ErrorMessage))
+                if (!CreateTarget(Device, Level, LevelWidth, LevelHeight, ErrorMessage, true))
                 {
                     return false;
                 }
@@ -151,7 +152,7 @@ namespace ShadowEngine
             LevelHeight = std::max(1u, InHeight / 2);
             for (Target& Level : BloomUp)
             {
-                if (!CreateTarget(Device, Level, LevelWidth, LevelHeight, ErrorMessage))
+                if (!CreateTarget(Device, Level, LevelWidth, LevelHeight, ErrorMessage, true))
                 {
                     return false;
                 }
@@ -198,9 +199,16 @@ namespace ShadowEngine
         Target& Out,
         uint32 InWidth,
         uint32 InHeight,
-        std::string* ErrorMessage)
+        std::string* ErrorMessage,
+        bool bUnorderedAccess,
+        ERHIFormat Format)
     {
-        Out.Texture = Device.CreateColorTarget(InWidth, InHeight, ERHIFormat::R16G16B16A16_Float, ErrorMessage);
+        Out.Texture = Device.CreateColorTarget(
+            InWidth,
+            InHeight,
+            Format,
+            ErrorMessage,
+            bUnorderedAccess);
         if (Out.Texture == nullptr)
         {
             return false;
@@ -214,52 +222,62 @@ namespace ShadowEngine
             return false;
         }
 
+        if (bUnorderedAccess)
+        {
+            const bool bView = Out.UnorderedAccess == 0xffffffff
+                ? Device.CreateUnorderedAccessView(*Out.Texture, Out.UnorderedAccess, ErrorMessage)
+                : Device.UpdateUnorderedAccessView(*Out.Texture, Out.UnorderedAccess, ErrorMessage);
+            if (!bView)
+            {
+                return false;
+            }
+        }
+
         Out.Width = InWidth;
         Out.Height = InHeight;
         return true;
     }
 
-    bool PostProcess::CreateFullscreenPipeline(
+    bool PostProcess::CreateComputePipeline(
         RHIDevice& Device,
         ShaderManager& Shaders,
-        const char* PixelPath,
-        ERHIFormat Format,
+        const char* ComputePath,
         std::unique_ptr<RHIPipeline>& Out,
         std::string* ErrorMessage)
     {
-        const ShaderHandle Shader = Shaders.Register("PostProcess/Fullscreen.slang", PixelPath, {}, {});
-        if (!Shader.IsValid() || !Shaders.LoadShaders(Device, Shader, ErrorMessage))
+        RHIShader* ComputeShader = Shaders.LoadStandalone(
+            Device,
+            ComputePath,
+            "ComputeMain",
+            ERHIShaderStage::Compute,
+            ErrorMessage);
+        if (ComputeShader == nullptr)
         {
             return false;
         }
 
-        const ShaderReflection* VertexReflection = Shaders.GetReflection(Shader, ERHIShaderStage::Vertex);
-        const ShaderReflection* PixelReflection = Shaders.GetReflection(Shader, ERHIShaderStage::Pixel);
-        const RHIPipelineLayout Layout = VertexReflection != nullptr && PixelReflection != nullptr
-            ? RHIPipelineLayout::FromReflection(*VertexReflection, *PixelReflection)
-            : RHIPipelineLayout{};
-        RHIGraphicsPipelineDesc PipelineDesc;
-        PipelineDesc.VertexShader = Shaders.GetVertexShader(Shader);
-        PipelineDesc.PixelShader = Shaders.GetPixelShader(Shader);
-        PipelineDesc.Layout = &Layout;
-        PipelineDesc.RenderTargetFormats[0] = Format;
-        PipelineDesc.Topology = ERHIPrimitiveTopology::TriangleList;
-        PipelineDesc.bEnableDepth = false;
-        Out = Device.CreateGraphicsPipeline(PipelineDesc, ErrorMessage);
+        Out = Device.CreateComputePipeline(*ComputeShader, ErrorMessage);
         return Out != nullptr;
     }
 
-    bool PostProcess::DrawFullscreen(
+    bool PostProcess::DrawCompute(
         RHICommandList& Commands,
-        RHITexture& TargetTexture,
+        Target& TargetTexture,
         RHIPipeline& Pipeline,
-        uint32 TargetWidth,
-        uint32 TargetHeight,
         const PostGpuConstants& Constants)
     {
         static_assert(sizeof(PostGpuConstants) == 240);
         static_assert(sizeof(PostGpuConstants) <= 256);
-        const std::span<const uint8> Bytes(reinterpret_cast<const uint8*>(&Constants), sizeof(Constants));
+        if (TargetTexture.Texture == nullptr || TargetTexture.UnorderedAccess == 0xffffffff || TargetTexture.Width == 0 ||
+            TargetTexture.Height == 0)
+        {
+            Log::Error("Compute post target is missing an unordered access view");
+            return false;
+        }
+
+        PostGpuConstants Written = Constants;
+        Written.Output = TargetTexture.UnorderedAccess;
+        const std::span<const uint8> Bytes(reinterpret_cast<const uint8*>(&Written), sizeof(Written));
         if (ConstantBuffer == nullptr || ConstantSlot >= 16 || !ConstantBuffer->Update(ConstantSlot * 256, Bytes))
         {
             Log::Error("Failed to write post constants");
@@ -268,14 +286,12 @@ namespace ShadowEngine
 
         const uint32 Offset = ConstantSlot * 256;
         ++ConstantSlot;
-        Commands.BeginRenderPass(TargetTexture, nullptr, {}, true);
-        Commands.SetViewport({0.0F, 0.0F, static_cast<float>(TargetWidth), static_cast<float>(TargetHeight), 0.0F, 1.0F});
-        Commands.SetScissor({0, 0, static_cast<int32>(TargetWidth), static_cast<int32>(TargetHeight)});
+        Commands.UseAsUnorderedAccess(*TargetTexture.Texture);
         Commands.SetPipeline(Pipeline);
         Commands.BindShaderResources();
         Commands.SetConstantBuffer(*ConstantBuffer, Offset);
-        Commands.Draw(3);
-        Commands.EndRenderPass();
+        Commands.Dispatch((TargetTexture.Width + 7u) / 8u, (TargetTexture.Height + 7u) / 8u, 1);
+        Commands.UseAsShaderResource(*TargetTexture.Texture);
         return true;
     }
 
@@ -299,7 +315,8 @@ namespace ShadowEngine
             BloomExtractPipeline == nullptr ||
             BloomDownsamplePipeline == nullptr || BloomUpsamplePipeline == nullptr ||
             ExposureLuminancePipeline == nullptr || ExposureReducePipeline == nullptr || ExposureAdaptPipeline == nullptr ||
-            TonemapPipeline == nullptr || ClampSampler == nullptr || ExposureLum.Texture == nullptr)
+            TonemapPipeline == nullptr || TonemapColor.Texture == nullptr || ClampSampler == nullptr ||
+            ExposureLum.Texture == nullptr)
         {
             Log::Error("Forward post process is not ready");
             return false;
@@ -363,7 +380,7 @@ namespace ShadowEngine
                 Constants.DestSize[0] = static_cast<float>(InWidth);
                 Constants.DestSize[1] = static_cast<float>(InHeight);
                 Constants.Source = SceneColor.Descriptor;
-                return DrawFullscreen(Commands, *Motion.Texture, *CameraVelocityPipeline, InWidth, InHeight, Constants);
+                return DrawCompute(Commands, Motion, *CameraVelocityPipeline, Constants);
             });
             Graph.AddPass("Post.MeshVelocity", {CameraMotion, DepthInput}, {MeshMotion}, [&]()
             {
@@ -397,7 +414,7 @@ namespace ShadowEngine
                 Constants.Source = SceneColor.Descriptor;
                 Constants.Secondary = History[HistoryIndex].Descriptor;
                 Constants.CurrentWeight = bHistoryValid ? Interface.Post.TAACurrentWeight : 1.0F;
-                if (!DrawFullscreen(Commands, *History[WriteIndex].Texture, *TAAPipeline, InWidth, InHeight, Constants))
+                if (!DrawCompute(Commands, History[WriteIndex], *TAAPipeline, Constants))
                 {
                     return false;
                 }
@@ -422,7 +439,7 @@ namespace ShadowEngine
                 Constants.Source = ResolvedColor;
                 Constants.DestSize[0] = static_cast<float>(ExposureLum.Width);
                 Constants.DestSize[1] = static_cast<float>(ExposureLum.Height);
-                if (!DrawFullscreen(Commands, *ExposureLum.Texture, *ExposureLuminancePipeline, ExposureLum.Width, ExposureLum.Height, Constants))
+                if (!DrawCompute(Commands, ExposureLum, *ExposureLuminancePipeline, Constants))
                 {
                     return false;
                 }
@@ -434,7 +451,7 @@ namespace ShadowEngine
                 Constants.Source = ExposureLum.Descriptor;
                 Constants.DestSize[0] = 1.0F;
                 Constants.DestSize[1] = 1.0F;
-                if (!DrawFullscreen(Commands, *ExposureAverage.Texture, *ExposureReducePipeline, 1, 1, Constants))
+                if (!DrawCompute(Commands, ExposureAverage, *ExposureReducePipeline, Constants))
                 {
                     return false;
                 }
@@ -448,7 +465,7 @@ namespace ShadowEngine
                 Constants.Secondary = Exposure[ExposureIndex].Descriptor;
                 Constants.CurrentWeight = bExposureValid ? 0.0F : 1.0F;
                 Constants.ExposureDelta = DeltaTime;
-                if (!DrawFullscreen(Commands, *Exposure[ExposureWrite].Texture, *ExposureAdaptPipeline, 1, 1, Constants))
+                if (!DrawCompute(Commands, Exposure[ExposureWrite], *ExposureAdaptPipeline, Constants))
                 {
                     return false;
                 }
@@ -482,7 +499,7 @@ namespace ShadowEngine
                 Constants.DestSize[1] = static_cast<float>(BloomDown[0].Height);
                 Constants.SourceTexel[0] = 1.0F / static_cast<float>(InWidth);
                 Constants.SourceTexel[1] = 1.0F / static_cast<float>(InHeight);
-                if (!DrawFullscreen(Commands, *BloomDown[0].Texture, *BloomExtractPipeline, BloomDown[0].Width, BloomDown[0].Height, Constants))
+                if (!DrawCompute(Commands, BloomDown[0], *BloomExtractPipeline, Constants))
                 {
                     return false;
                 }
@@ -503,7 +520,7 @@ namespace ShadowEngine
                     Constants.DestSize[1] = static_cast<float>(BloomDown[Level + 1].Height);
                     Constants.SourceTexel[0] = 1.0F / static_cast<float>(BloomDown[Level].Width);
                     Constants.SourceTexel[1] = 1.0F / static_cast<float>(BloomDown[Level].Height);
-                    if (!DrawFullscreen(Commands, *BloomDown[Level + 1].Texture, *BloomDownsamplePipeline, BloomDown[Level + 1].Width, BloomDown[Level + 1].Height, Constants))
+                    if (!DrawCompute(Commands, BloomDown[Level + 1], *BloomDownsamplePipeline, Constants))
                     {
                         return false;
                     }
@@ -527,7 +544,7 @@ namespace ShadowEngine
                     Constants.Secondary = BloomDown[Level].Descriptor;
                     Constants.DestSize[0] = static_cast<float>(BloomUp[Level].Width);
                     Constants.DestSize[1] = static_cast<float>(BloomUp[Level].Height);
-                    if (!DrawFullscreen(Commands, *BloomUp[Level].Texture, *BloomUpsamplePipeline, BloomUp[Level].Width, BloomUp[Level].Height, Constants))
+                    if (!DrawCompute(Commands, BloomUp[Level], *BloomUpsamplePipeline, Constants))
                     {
                         return false;
                     }
@@ -551,7 +568,12 @@ namespace ShadowEngine
             Constants.Source = ResolvedColor;
             Constants.DestSize[0] = static_cast<float>(InWidth);
             Constants.DestSize[1] = static_cast<float>(InHeight);
-            return DrawFullscreen(Commands, BackBuffer, *TonemapPipeline, InWidth, InHeight, Constants);
+            if (!DrawCompute(Commands, TonemapColor, *TonemapPipeline, Constants))
+            {
+                return false;
+            }
+            Commands.CopyTexture(*TonemapColor.Texture, BackBuffer);
+            return true;
         });
 
         std::string GraphError;

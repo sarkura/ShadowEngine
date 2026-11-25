@@ -1,4 +1,4 @@
-#include "PostConstants.slang"
+#include "../Common/PostConstants.slang"
 
 float3 SampleCurrent(float2 Pixel)
 {
@@ -12,14 +12,22 @@ float2 SampleMotion(float2 Pixel)
     return MotionTexture.Load(int3(int2(Pixel), 0)).xy;
 }
 
-[shader("fragment")]
-float4 PixelMain(float4 Position : SV_Position) : SV_Target
+[shader("compute")]
+[numthreads(8, 8, 1)]
+void ComputeMain(uint3 DispatchThreadID : SV_DispatchThreadID)
 {
-    const float2 Pixel = Position.xy;
+    if (DispatchThreadID.x >= (uint)DestSize.x || DispatchThreadID.y >= (uint)DestSize.y)
+    {
+        return;
+    }
+
+    const float2 Pixel = float2(DispatchThreadID.xy) + 0.5;
     const float3 Current = SampleCurrent(Pixel);
+    RWTexture2D<float4> OutputTexture = LoadResourceDescriptor<RWTexture2D<float4>>(Output);
     if (CurrentWeight >= 1.0)
     {
-        return float4(Current, 1.0);
+        OutputTexture[DispatchThreadID.xy] = float4(Current, 1.0);
+        return;
     }
 
     float3 MinColor = Current;
@@ -41,5 +49,5 @@ float4 PixelMain(float4 Position : SV_Position) : SV_Target
     const SamplerState ClampSampler = LoadSamplerDescriptor<SamplerState>(Sampler);
     const Texture2D History = LoadResourceDescriptor<Texture2D>(Secondary);
     const float3 HistoryColor = clamp(History.SampleLevel(ClampSampler, HistoryUv, 0).rgb, MinColor, MaxColor);
-    return float4(lerp(HistoryColor, Current, CurrentWeight), 1.0);
+    OutputTexture[DispatchThreadID.xy] = float4(lerp(HistoryColor, Current, CurrentWeight), 1.0);
 }
